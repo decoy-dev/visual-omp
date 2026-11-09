@@ -16,6 +16,8 @@ export interface PreviewGrantRequest {
 	 * applies (the subject's folders are broad), and never widen a grant that has an asset root.
 	 */
 	related: string[];
+	/** Grant only this file, without a folder or related assets (saved media and attachments). */
+	fileOnly?: boolean;
 }
 
 export interface PreviewGrant {
@@ -31,7 +33,7 @@ export interface PreviewGrant {
 export interface PreviewPolicy { scripts: boolean; network: boolean }
 
 /** Whether main prepared the exact document bytes served for this revision under the grant's read limits. */
-export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** App-injected script-free change target. */ anchor?: string; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
+export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** Immutable live-PDF revision, owned by the subject's grant. */ pdf?: PreviewGrant; /** App-injected script-free change target. */ anchor?: string; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
 
 export type PreviewBinary =
 	| { ok: true; bytes: Uint8Array<ArrayBuffer>; size: number; mtimeMs: number }
@@ -88,8 +90,8 @@ declare module "../ipc" {
 		"preview:live": { args: [token: string, revision: number, text: string]; result: void };
 		/** Serve the subject's document from disk from now on. */
 		"preview:saved": { args: [token: string]; result: void };
-		/** Snapshot the document for `?rev=<revision>` before replacing the last successfully loaded frame. */
-		"preview:prepare": { args: [token: string, revision: number]; result: PreviewPrepared };
+		/** Snapshot HTML or check a PDF's header; live PDFs also require a completed EOF marker. */
+		"preview:prepare": { args: [token: string, revision: number, completePdf?: boolean]; result: PreviewPrepared };
 		/** Read only an Office subject's validated ZIP snapshot, under its original grant. */
 		"preview:readBinary": { args: [token: string]; result: PreviewBinary };
 		"preview:officeTools": { args: []; result: PreviewOfficeTools };

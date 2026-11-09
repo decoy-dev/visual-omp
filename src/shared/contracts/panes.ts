@@ -1,16 +1,24 @@
 /**
- * Right-dock pane services: file viewer reads (text / image / binary detection with a size cap),
- * Outputs pane reads (images, PDFs, thumbnails, files made by commands) and opening, and the chat's
- * plan file lookup.
+ * Right-dock pane services: file metadata and bounded text prefixes for viewers, scoped image-blob grants,
+ * native thumbnails, files made by commands and plan-file lookup. Bounded payload readers remain for
+ * model attachment transfer, live text recovery and Office conversion snapshots.
  */
 
-/** What the Files viewer can show for a path. */
+import type { PreviewGrant } from "./preview";
+
+/** Bounded payloads for attachment transfer and live text recovery. Local media viewers use PaneFilePreview. */
 export type PaneFileContent =
 	| { kind: "text"; text: string; size: number }
 	/** `dataUrl` is a `data:<mime>;base64,…` URL, safe for `<img src>` under the app CSP. */
 	| { kind: "image"; dataUrl: string; size: number }
 	| { kind: "binary"; size: number }
 	| { kind: "tooLarge"; size: number; limit: number };
+
+/** A bounded text prefix or media metadata. Media bytes travel only through a scoped protocol grant. */
+export type PaneFilePreview =
+	| { kind: "text"; text: string; size: number; truncated: boolean }
+	| { kind: "media"; media: "image" | "pdf" | "video" | "audio"; size: number }
+	| { kind: "binary"; size: number };
 
 export interface PanePlanFile {
 	/** Absolute path of the plan markdown file. */
@@ -37,14 +45,13 @@ export interface PaneMadeFile {
 
 declare module "../ipc" {
 	interface IpcInvokeMap {
-		/** Read a file for the viewer: text up to 2 MB, images up to 8 MB as a data URL. */
+		/** Bounded payload reader for model attachment transfer and live text recovery; viewers use inspect and grants. */
 		"panes:readFile": { args: [path: string]; result: PaneFileContent };
-		/**
-		 * An image from omp's blob store (`blob:sha256:<hash>` in saved sessions) as a data URL, up to
-		 * 8 MB. Null when the blob is missing, too large or not an image; non-hash ids are rejected.
-		 */
-		"panes:readBlob": { args: [hash: string]; result: string | null };
-		/** A PDF's bytes for the in-pane viewer, read through one handle: a regular file up to 64 MB starting with `%PDF-`. */
+		/** Inspect a regular file, returning media metadata or at most the first 2 MiB of text. */
+		"panes:inspect": { args: [path: string]; result: PaneFilePreview };
+		/** A file-only read grant for an omp raster-image blob; null when missing or invalid. */
+		"panes:readBlob": { args: [hash: string]; result: PreviewGrant | null };
+		/** Bounded Office-conversion snapshot reader. Local PDF viewers use protocol grants. */
 		"panes:readPdf": { args: [path: string]; result: Uint8Array<ArrayBuffer> };
 		/**
 		 * The operating system's thumbnail of an image or a PDF's first page as a PNG data URL (at most 480px), when the

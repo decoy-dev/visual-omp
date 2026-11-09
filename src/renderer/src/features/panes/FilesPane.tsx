@@ -7,7 +7,7 @@ import { ArrowSquareOut, ArrowsClockwise, CaretRight, FileCode, FileIcon, FileIm
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type MouseEvent, memo, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PaneFileContent } from "@shared/contracts/panes";
+import type { PaneFilePreview } from "@shared/contracts/panes";
 import type { DirEntry } from "@shared/ipc";
 import type { PaneProps } from "../../registry/slots";
 import { lazyView, LoadFailed } from "../../registry/lazy";
@@ -37,7 +37,8 @@ import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { EMPTY_VIEW, filesView, useFiles } from "./files-store";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
-import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
+import { ExpandPreview, loadFileImage, MediaPlayer, PdfFrame, PreviewImage, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
+import { useFileSource } from "./file-source";
 
 /** Lines rendered before "Show all" in the viewer. */
 const VIEW_LINE_BUDGET = 4000;
@@ -332,7 +333,7 @@ function FolderTile({ entry, sourceKey, onOpen }: { entry: DirEntry; sourceKey: 
 }
 
 /** What a viewer tab shows: a file's content, or a folder whose listing is in the store. */
-type Shown = PaneFileContent | { kind: "folder" };
+type Shown = PaneFilePreview | { kind: "folder" };
 
 function Viewer({ path, projectPath, viewKey, home, version }: { path: string; projectPath: string; viewKey: string; home: string | null; version: number }) {
 	const { t } = useTranslation("panes");
@@ -353,7 +354,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	useEffect(() => {
 		let cancelled = false;
 		window.vomp
-			.invoke("panes:readFile", path)
+			.invoke("panes:inspect", path)
 			.then(next => {
 				if (cancelled) return;
 				setContent(next);
@@ -376,9 +377,11 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	const name = fileName(path);
 	const folder = content?.kind === "folder";
 	const file = content !== null && content.kind !== "folder";
-	// A `.pdf` path goes to the PDF viewer once the probe above shows it is a file (a folder can be named `x.pdf`); the
-	// viewer reads and checks the bytes itself. The probe stays cheap: main sniffs a PDF as binary or too large.
-	const pdf = file && !error && PDF_EXT.test(path);
+	const pdf = file && !error && content.kind === "media" && content.media === "pdf";
+	const image = file && !error && content.kind === "media" && content.media === "image";
+	const playable = file && !error && content.kind === "media" && (content.media === "video" || content.media === "audio") ? content.media : null;
+	const imageSource = useFileSource(image ? path : null, version + reload);
+	const imageUrl = imageSource.src;
 	const html = file && !error && HTML_EXT.test(path);
 	// Inside the project the tree's menu has Show in folder; outside it, the viewer offers it.
 	const outside = relativePath(projectPath, path) === path;
@@ -395,21 +398,21 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 					<span className="hidden shrink-0 text-xs text-fg-faint tabular-nums @min-[16rem]/viewer:inline">{t("files.itemCount", { count: listing.length })}</span>
 				)}
 				{pdf && <ExpandPreview name={name} path={path} image={false} render={() => <PdfFrame path={path} revision={version + reload} name={name} />} />}
-				{content?.kind === "image" && (
+				{image && imageUrl && (
 					<ExpandPreview
 						name={name}
 						path={path}
 						image
 						render={zoom =>
-							broken === content.dataUrl ? (
+							broken === imageUrl ? (
 								<Unavailable message={t("outputs.unavailable")} explain />
 							) : (
-								<ZoomImage src={content.dataUrl} alt={name} control={zoom} onError={() => setBroken(content.dataUrl)} />
+								<ZoomImage src={imageUrl} alt={name} control={zoom} onError={() => setBroken(imageUrl)} />
 							)
 						}
 					/>
 				)}
-				{file && OPENABLE_EXT.test(path) && (
+				{file && (OPENABLE_EXT.test(path) || playable) && (
 					<IconButton size="sm" label={t("outputs.openDefault")} icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t)} />
 				)}
 				{file && outside && <IconButton size="sm" label={revealLabel(t)} icon={<FolderSimpleDashed />} onClick={reveal} />}
@@ -435,13 +438,15 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 					{/* Both triggers only grow, so their sum changes whenever either does. */}
 					<PdfFrame path={path} revision={version + reload} name={name} />
 				</div>
-			) : !error && content?.kind === "image" ? (
+			) : playable ? (
+				<MediaPlayer key={path} path={path} revision={reload} name={name} kind={playable} />
+			) : image ? (
 				<div className="flex min-h-0 flex-1 items-center justify-center bg-inset">
-					{broken === content.dataUrl ? (
+					{imageSource.error || (imageUrl && broken === imageUrl) ? (
 						<Unavailable message={t("outputs.unavailable")} explain />
-					) : (
-						<ZoomImage src={content.dataUrl} alt={name} className="rounded-md border border-border" onError={() => setBroken(content.dataUrl)} />
-					)}
+					) : imageUrl ? (
+						<ZoomImage src={imageUrl} alt={name} className="rounded-md border border-border" onError={() => setBroken(imageUrl)} />
+					) : <Spinner />}
 				</div>
 			) : (
 				<div className="min-h-0 flex-1 overflow-auto">
@@ -454,15 +459,21 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 					) : content.kind === "folder" ? (
 						<FolderView dir={path} viewKey={viewKey} revision={version + reload} />
 					) : content.kind === "text" ? (
-						<CodeView path={path} text={content.text} />
+						<>
+							{content.truncated && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm text-fg-muted">
+								<p className="flex-1">{t("files.tooLarge", { size: formatSize(content.size) })}</p>
+								<Button size="sm" variant="secondary" onClick={() => openWithDefaultApp(path, t)}>{t("outputs.openDefault")}</Button>
+							</div>}
+							<CodeView path={path} text={content.text} />
+						</>
 					) : (
 						<EmptyState
 							icon={<FileIcon />}
-							title={t(content.kind === "binary" ? "files.binaryTitle" : "files.tooLargeTitle")}
-							body={t(content.kind === "binary" ? "files.binary" : "files.tooLarge", { size: formatSize(content.size) })}
+							title={t("files.binaryTitle")}
+							body={t("files.binary")}
 							actions={
-								<Button size="sm" variant="secondary" onClick={reveal}>
-									{revealLabel(t)}
+								<Button size="sm" variant="secondary" onClick={() => openWithDefaultApp(path, t)}>
+									{t("outputs.openDefault")}
 								</Button>
 							}
 						/>
@@ -605,7 +616,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 							/>
 							{state.active && (
 								<PresenceSwap swapKey={state.active} className="flex min-h-0 flex-1 flex-col">
-									<Viewer path={state.active} projectPath={projectPath} viewKey={viewKey} home={home} version={git.version} />
+									<Viewer key={viewKey} path={state.active} projectPath={projectPath} viewKey={viewKey} home={home} version={git.version} />
 								</PresenceSwap>
 							)}
 						</div>

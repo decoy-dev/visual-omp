@@ -16,6 +16,7 @@ export function Frame(props: LiveFrameProps) {
 		if (!frame) return;
 		let live = true;
 		const image = new Image();
+		image.crossOrigin = "anonymous";
 		const url = `${frame.grant.url}?rev=${frame.revision}`;
 		image.onload = () => { if (live) { setGood(url); setFailed(false); } };
 		image.onerror = () => { if (live) setFailed(true); };

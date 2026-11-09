@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, open, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type * as FsPromises from "node:fs/promises";
 import { constants } from "node:fs";
 import type { ReadStream } from "node:fs";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { PreviewGrant } from "@shared/contracts/preview";
 import { zipSync, strToU8 } from "fflate";
 
@@ -52,7 +52,7 @@ vi.mock("node:fs/promises", async importOriginal => {
 import {
 	grantPreview, handlePreviewRequest, previewPolicy, previewDocumentUrl, previewNavigationRule, preparePreview,
 	registerPreviewProtocol, registerPreviewScheme, revokeAllPreviews, revokePreview, savePreview, setPreviewLive,
-	readPreviewBinary,
+	readPreviewBinary, grantBlobPreview,
 } from "./preview-protocol";
 
 let folder: string;
@@ -230,11 +230,71 @@ it("refuses directories and unsupported scripts", async () => {
 	}
 });
 
-it.each([["large.html", 2], ["large.css", 2], ["large.svg", 2], ["large.txt", 2], ["large.png", 8], ["large.pdf", 32]] as const)("caps %s reads", async (name, mib) => {
+it.each([["large.html", 2], ["large.css", 2], ["large.txt", 2]] as const)("caps %s reads", async (name, mib) => {
 	const grant = await page();
 	const file = await open(join(folder, name), "w");
 	try { await file.truncate(mib * 1024 * 1024 + 1); } finally { await file.close(); }
 	expect((await get(new URL(name, grant.url).href)).status).toBe(413);
+});
+
+it.each(["large.mp4", "large.m4a", "large.png", "large.pdf"])("streams %s beyond its former limit through a file-only grant", async name => {
+	const path = join(folder, name), size = 100 * 1024 * 1024;
+	const file = await open(path, "w");
+	await file.truncate(size);
+	if (name.endsWith(".pdf")) {
+		await file.write("%PDF-1.7\n", 0);
+		await file.write("%%EOF\n", size - 6);
+	}
+	await file.close();
+	await writeFile(join(folder, "secret.txt"), "unrelated");
+	const grant = await grantPreview({ path, root: folder, related: [join(folder, "secret.txt")], fileOnly: true });
+	expect(grant.assetRoot).toBe(false);
+	expect((await get(new URL("secret.txt", grant.url).href)).status).toBe(403);
+	const response = await handlePreviewRequest(new Request(grant.url, { headers: { Range: `bytes=${size - 16}-${size - 1}` } }));
+	expect(response.status).toBe(206);
+	expect(response.headers.get("content-range")).toBe(`bytes ${size - 16}-${size - 1}/${size}`);
+	expect((await response.arrayBuffer()).byteLength).toBe(16);
+	revokePreview(grant.token);
+	expect((await get(grant.url)).status).toBe(404);
+});
+
+it("refuses a symlink swap for a file-only image grant, including a sibling in the same folder", async () => {
+	const path = join(folder, "image.png");
+	await writeFile(path, "original");
+	await writeFile(join(folder, "other.png"), "secret");
+	const grant = await grantPreview({ path, root: folder, related: [], fileOnly: true });
+	await rename(path, `${path}.old`);
+	await symlink(join(folder, "other.png"), path);
+	expect((await get(grant.url)).status).toBe(403);
+});
+
+it("repairs small SVG namespaces while streaming without a file size cap", async () => {
+	const path = join(folder, "large.svg"), file = await open(path, "w");
+	await file.write("<svg width='1' height='1'/>", 0);
+	await file.truncate(20 * 1024 * 1024);
+	await file.close();
+	const grant = await grantPreview({ path, root: null, related: [], fileOnly: true });
+	const response = await get(grant.url);
+	expect(response.status).toBe(200);
+	expect(response.headers.get("content-length")).toBeNull();
+	const reader = response.body!.getReader();
+	const first = await reader.read();
+	expect(new TextDecoder().decode(first.value).startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
+	await reader.cancel();
+});
+
+it("streams a large extensionless image blob and refuses sibling paths", async () => {
+	const hash = "a".repeat(64), path = join(folder, hash), file = await open(path, "w");
+	await file.write(Buffer.from([0x89, 0x50, 0x4e, 0x47]), 0, 4, 0);
+	await file.truncate(20 * 1024 * 1024);
+	await file.close();
+	const grant = await grantBlobPreview(folder, hash);
+	expect(grant).not.toBeNull();
+	const response = await handlePreviewRequest(new Request(grant!.url, { headers: { Range: "bytes=0-3" } }));
+	expect(response.status).toBe(206);
+	expect(response.headers.get("content-type")).toBe("image/png");
+	expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+	expect((await get(new URL("secret.png", grant!.url).href)).status).toBe(403);
 });
 
 it("serves the newest live revision and then permanently switches to the saved file", async () => {
@@ -285,15 +345,59 @@ it.each(["woff", "woff2", "ttf", "otf"])("serves local %s fonts with a font MIME
 	}
 });
 
-it.each(["html", "css", "png", "jpg", "webp", "svg", "pdf", "txt", "eot"])("serves %s files without CORS permission", async extension => {
+it.each(["html", "css", "pdf", "txt", "eot"])("serves %s files without CORS permission", async extension => {
 	const grant = await page();
 	const name = `asset.${extension}`;
-	await writeFile(join(folder, name), "asset bytes");
+	await writeFile(join(folder, name), extension === "pdf" ? "%PDF-1.7\n" : "asset bytes");
 	for (const method of ["GET", "HEAD"]) {
 		const response = await handlePreviewRequest(new Request(new URL(name, grant.url), { method }));
 		expect(response.status).toBe(200);
 		expect(response.headers.has("access-control-allow-origin")).toBe(false);
 	}
+});
+
+it.each(["png", "jpg", "webp", "svg"])("serves %s images with CORS for the app's image-copy canvas", async extension => {
+	const path = join(folder, `asset.${extension}`);
+	await writeFile(path, "asset bytes");
+	const grant = await grantPreview({ path, root: null, related: [], fileOnly: true });
+	const response = await get(grant.url);
+	expect(response.status).toBe(200);
+	expect(response.headers.get("access-control-allow-origin")).toBe("*");
+	await response.arrayBuffer();
+});
+
+it("queues image-grid requests without opening excess descriptors or returning a broken tile", async () => {
+	const path = join(folder, "grid.png"), file = await open(path, "w");
+	await file.truncate(20 * 1024 * 1024); await file.close();
+	const grants = await Promise.all(Array.from({ length: 20 }, () => grantPreview({ path, root: null, related: [], fileOnly: true })));
+	const responses = grants.map(grant => get(grant.url));
+	const active = await Promise.all(responses.slice(0, 16));
+	await Promise.all(active.map(response => response.body!.cancel()));
+	const queued = await Promise.all(responses.slice(16));
+	expect(queued.map(response => response.status)).toEqual([200, 200, 200, 200]);
+	await Promise.all(queued.map(response => response.body!.cancel()));
+});
+
+it("releases a queued image request when its grant closes", async () => {
+	const path = join(folder, "grid.png"), file = await open(path, "w");
+	await file.truncate(20 * 1024 * 1024); await file.close();
+	const grant = await grantPreview({ path, root: null, related: [], fileOnly: true });
+	const active = await Promise.all(Array.from({ length: 4 }, () => get(grant.url)));
+	const queued = get(grant.url);
+	revokePreview(grant.token);
+	expect((await queued).status).toBe(404);
+	await Promise.all(active.map(response => response.body!.cancel().catch(() => {})));
+});
+
+it("checks a saved PDF header without imposing the live EOF check or buffering its payload", async () => {
+	const path = join(folder, "partial.pdf");
+	await writeFile(path, "%PDF-1.7\npartial");
+	const grant = await grantPreview({ path, root: null, related: [], fileOnly: true });
+	expect(await preparePreview(grant.token, 0)).toMatchObject({ ok: true });
+	expect(await preparePreview(grant.token, 1, null, true)).toEqual({ ok: false, reason: "missing" });
+	await writeFile(path, "%PDF-1.7\n%%EOF\n\0\0");
+	expect(await preparePreview(grant.token, 1, null, true)).toMatchObject({ ok: true });
+	expect(previewNavigationRule({ url: `${grant.url}?rev=0#navpanes=0&view=FitH`, currentUrl: "app://index.html", isMainFrame: false, initiatedByMainFrame: true, documentUrl: grant.url })).toEqual({ cancel: false });
 });
 
 it("withholds CORS permission when a font request is refused", async () => {
@@ -1056,4 +1160,82 @@ describe("Office binary grant snapshots", () => {
 		files.afterOpen = async () => { await writeFile(path, bytes.subarray(0, 10)); };
 		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "incomplete" });
 	});
+});
+
+describe("immutable live PDF revisions", () => {
+	it("keeps earlier bytes readable after overwrite, incomplete saves and replacement-viewer rollback", async () => {
+		const path = join(folder, "live.pdf"), first = "%PDF-1.7\nfirst\n%%EOF\n", second = "%PDF-1.7\nsecond\n%%EOF\n";
+		await writeFile(path, first);
+		const parent = await grantPreview({ path, root: null, related: [], fileOnly: true });
+		let snapshotPath = "";
+		files.afterOpen = async () => { files.afterOpen = async (_file, path) => { snapshotPath = String(path); }; };
+		const one = await preparePreview(parent.token, 1, null, true);
+		expect(one.ok && one.pdf).toBeTruthy();
+		if (!one.ok || !one.pdf) throw new Error("Missing first PDF revision");
+		expect(await (await get(one.pdf.url)).text()).toBe(first);
+		await writeFile(path, "%PDF-1.7\npartial");
+		expect(await preparePreview(parent.token, 2, null, true)).toEqual({ ok: false, reason: "missing" });
+		expect(await (await get(one.pdf.url)).text()).toBe(first);
+		await writeFile(path, second);
+		const two = await preparePreview(parent.token, 2, null, true);
+		if (!two.ok || !two.pdf) throw new Error("Missing second PDF revision");
+		expect(await (await get(two.pdf.url)).text()).toBe(second);
+		expect(await (await get(one.pdf.url)).text()).toBe(first);
+		revokePreview(two.pdf.token);
+		expect((await get(two.pdf.url)).status).toBe(404);
+		expect(await (await get(one.pdf.url)).text()).toBe(first);
+		revokePreview(parent.token);
+		expect((await get(one.pdf.url)).status).toBe(404);
+		expect(snapshotPath).toContain("vomp-pdf-revision-");
+		await vi.waitFor(async () => { expect(await stat(dirname(snapshotPath)).catch(() => null)).toBeNull(); });
+	});
+
+	it("bounds retained disk revisions and accepts another after an obsolete child is released", async () => {
+		const path = join(folder, "live.pdf");
+		await writeFile(path, "%PDF-1.7\ncomplete\n%%EOF\n");
+		const parent = await grantPreview({ path, root: null, related: [], fileOnly: true });
+		const revisions = [];
+		for (let revision = 1; revision <= 3; revision++) {
+			const prepared = await preparePreview(parent.token, revision, null, true);
+			if (!prepared.ok || !prepared.pdf) throw new Error("Missing PDF revision");
+			revisions.push(prepared.pdf);
+		}
+		expect(await preparePreview(parent.token, 4, null, true)).toEqual({ ok: false, reason: "missing" });
+		revokePreview(revisions[0]!.token);
+		expect(await preparePreview(parent.token, 4, null, true)).toMatchObject({ ok: true, pdf: { assetRoot: false } });
+	});
+
+	it("refuses a source that changes during the bounded snapshot copy", async () => {
+		const path = join(folder, "live.pdf");
+		await writeFile(path, "%PDF-1.7\ncomplete\n%%EOF\n");
+		const parent = await grantPreview({ path, root: null, related: [], fileOnly: true });
+		files.afterOpen = async () => { files.afterOpen = async () => { await writeFile(path, "%PDF-1.7\npartial"); }; };
+		expect(await preparePreview(parent.token, 1, null, true)).toEqual({ ok: false, reason: "missing" });
+	});
+
+	it("cancels an in-flight snapshot when its parent view closes", async () => {
+		const path = join(folder, "live.pdf");
+		await writeFile(path, "%PDF-1.7\ncomplete\n%%EOF\n");
+		const parent = await grantPreview({ path, root: null, related: [], fileOnly: true });
+		files.afterOpen = async () => { files.afterOpen = async () => { revokePreview(parent.token); }; };
+		expect(await preparePreview(parent.token, 1, null, true)).toEqual({ ok: false, reason: "revoked" });
+	});
+});
+
+it("waits for aborted PDF preparation cleanup and retains only the newest pending request", async () => {
+	const path = join(folder, "live.pdf");
+	await writeFile(path, "%PDF-1.7\ncomplete\n%%EOF\n");
+	const parent = await grantPreview({ path, root: null, related: [], fileOnly: true });
+	const opened = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+	const before = files.openCalls;
+	files.afterOpen = async () => { opened.resolve(); await release.promise; };
+	const first = preparePreview(parent.token, 1, null, true);
+	await opened.promise;
+	const second = preparePreview(parent.token, 2, null, true);
+	const newest = preparePreview(parent.token, 3, null, true);
+	await expect(second).resolves.toEqual({ ok: false, reason: "revoked" });
+	expect(files.openCalls - before).toBe(1);
+	release.resolve();
+	await expect(first).resolves.toEqual({ ok: false, reason: "revoked" });
+	await expect(newest).resolves.toMatchObject({ ok: true, pdf: { assetRoot: false } });
 });

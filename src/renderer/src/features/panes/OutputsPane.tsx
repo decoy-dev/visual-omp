@@ -8,7 +8,7 @@
  */
 import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FolderSimpleDashed, Images } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { outputPathKey } from "@shared/outputPaths";
 import type { PaneProps } from "../../registry/slots";
@@ -20,12 +20,13 @@ import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { FileName, listRowMotion, PaneToolbar, relativePath, Section, SectionCount } from "./common";
 import { type ChatOutput, IMAGE_EXT, isIntactBase64, OPENABLE_EXT, type OutputRelation } from "./derive";
 import { languageFor } from "./highlight";
-import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
+import { ExpandPreview, type ImageSource, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
 import { Stage } from "../live-preview/Stage";
 import { TrackerLoadNotice } from "../live-preview/loader";
 import { followedSubject, usePreviewChat, visibleSubjects } from "../live-preview/store";
 import { useApp } from "../../state/app";
+import { sourceForGrant } from "./file-source";
 
 function baseName(path: string): string {
 	return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1) || path;
@@ -68,15 +69,18 @@ function isOpenable(output: ChatOutput): output is ChatOutput & { path: string }
  * A PDF's thumbnail from the operating system (null when it makes none); for an image, the file on disk first (its
  * current version), then intact inline data, then omp's blob store. Null when none works.
  */
-async function loadImage(output: ChatOutput): Promise<string | null> {
+async function loadImage(output: ChatOutput, skipFile = false): Promise<ImageSource> {
 	if (output.kind === "pdf") return output.path ? window.vomp.invoke("panes:thumbnail", output.path).catch(() => null) : null;
-	if (output.path && IMAGE_EXT.test(output.path)) {
+	if (!skipFile && output.path && IMAGE_EXT.test(output.path)) {
 		const file = await loadFileImage(output.path);
 		if (file) return file;
 	}
 	const inline = output.inline;
 	if (inline?.kind === "data") return isIntactBase64(inline.data) ? `data:${inline.mimeType};base64,${inline.data}` : null;
-	if (inline?.kind === "blob") return window.vomp.invoke("panes:readBlob", inline.hash).catch(() => null);
+	if (inline?.kind === "blob") {
+		const grant = await window.vomp.invoke("panes:readBlob", inline.hash).catch(() => null);
+		return grant ? sourceForGrant(grant) : null;
+	}
 	return null;
 }
 
@@ -97,6 +101,7 @@ function OutputImage({
 		<PreviewImage
 			sourceKey={`${mount}|${output.key}@${output.time}`}
 			load={() => loadImage(output)}
+			fallback={() => loadImage(output, true)}
 			pdf={output.kind === "pdf"}
 			enabled={enabled}
 			alt={alt}
@@ -343,10 +348,10 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 export function OutputsPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
-	// Counted before the outputs hook runs, so this mount's scan and image cache are fresh.
-	const [mount] = useState(countOutputsMount);
-	const outputs = useChatOutputs(session, view)?.outputs ?? null;
 	const tabId = session?.tabId ?? null;
+	// A new chat gets independent image grants even when it names the same saved files.
+	const mount = useMemo(countOutputsMount, [tabId]);
+	const outputs = useChatOutputs(session, view)?.outputs ?? null;
 	const preview = usePreviewChat(tabId);
 	const hasStage = useApp(state => state.prefs?.livePreview === true) && visibleSubjects(preview).length > 0;
 	const showStage = hasStage && followedSubject(preview) !== undefined;
@@ -358,12 +363,12 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const project = projectPath ?? session?.projectPath ?? null;
 
 	if (!session) return <EmptyState icon={<Images />} title={t("outputs.noChatTitle")} body={t("outputs.noChat")} />;
-	const swapKey = selected ? `view:${selected.key}` : outputs && outputs.length > 0 ? "list" : "empty";
+	const swapKey = `${tabId}:${selected ? `view:${selected.key}` : outputs && outputs.length > 0 ? "list" : "empty"}`;
 	return (
 		<TargetContextMenu projectPath={project} tabId={tabId}>
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 		<TrackerLoadNotice />
-		{!selected && <Stage session={session} onShowOutput={path => {
+		{!selected && <Stage key={tabId} session={session} onShowOutput={path => {
 			const output = outputs?.find(item => item.path !== null && outputPathKey(item.path, window.vomp.platform) === outputPathKey(path, window.vomp.platform));
 			if (!output) return;
 			setOpened(null);

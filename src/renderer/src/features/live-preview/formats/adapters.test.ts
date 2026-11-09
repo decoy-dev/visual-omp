@@ -16,7 +16,7 @@ vi.mock("../../../ui/diagram-source", async importOriginal => ({ ...await import
 vi.mock("../../../transcript/Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", null, text) }));
 vi.mock("../../panes/media", () => ({
 	ZoomImage: ({ src, alt }: { src: string; alt: string }) => createElement("img", { src, alt }),
-	PdfFrame: ({ bytes, revision }: { bytes: Uint8Array; revision: number }) => createElement("div", { "data-pdf-revision": revision }, new TextDecoder().decode(bytes)),
+	PdfFrame: ({ bytes, sourceUrl, revision }: { bytes?: Uint8Array; sourceUrl?: string; revision: number }) => createElement("div", { "data-pdf-revision": revision }, bytes ? new TextDecoder().decode(bytes) : sourceUrl),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key === "live.waitingForSave" ? "Waiting for omp to finish saving" : key }) }));
 
@@ -44,6 +44,11 @@ afterEach(async () => { await act(() => root.unmount()); host.remove(); vi.unstu
 
 async function show(Frame: ComponentType<LiveFrameProps>, current: LiveSubject) {
 	await act(async () => { root.render(createElement(Frame, { subject: current, projectPath: "/project", related: [] })); });
+}
+
+async function showPdf(revision = 1) {
+	await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null, revision }));
+	await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 }
 
 describe("delimited table conversion", () => {
@@ -113,26 +118,38 @@ describe("Mermaid revision ordering", () => {
 });
 
 describe("PDF saves", () => {
-	it("retains the previous checked PDF bytes when a newer save is incomplete or unreadable", async () => {
-		const invoke = vi.fn().mockResolvedValueOnce(new TextEncoder().encode("%PDF-1.7\ncomplete\n%%EOF\n")).mockResolvedValueOnce(new TextEncoder().encode("%PDF-1.7\npartial")).mockRejectedValueOnce(new Error("File is being replaced"));
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+	it("retains the previous checked PDF revision when a newer save is incomplete or unreadable", async () => {
+		const invoke = vi.fn(async (channel: string, _token: unknown, revision?: number) => {
+			if (channel === "preview:grant") return { token: "parent", url: "vomp-preview://parent/report.pdf", assetRoot: false };
+			if (channel === "preview:prepare") {
+				if (revision === 2) return { ok: false, reason: "missing" };
+				if (revision === 3) throw new Error("File is being replaced");
+				return { ok: true, pdf: { token: "first", url: "vomp-preview://first/complete.pdf", assetRoot: false } };
+			}
+		});
 		Object.defineProperty(window, "vomp", { configurable: true, value: { invoke } });
-		await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null }));
+		await showPdf();
 		expect(host.textContent).toContain("complete");
-		await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null, revision: 2 }));
+		await showPdf(2);
 		expect(host.textContent).toContain("complete");
 		expect(host.textContent).toContain("Waiting for omp to finish saving");
 		expect(host.querySelector("[data-pdf-revision]")?.getAttribute("data-pdf-revision")).toBe("1");
-		await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null, revision: 3 }));
+		await showPdf(3);
 		expect(host.textContent).toContain("complete");
 	});
 	it("restores the preceding PDF when the replacement viewer reports an error", async () => {
-		const invoke = vi.fn().mockResolvedValueOnce(new TextEncoder().encode("%PDF-1.7\nfirst\n%%EOF\n")).mockResolvedValueOnce(new TextEncoder().encode("%PDF-1.7\nsecond\n%%EOF\n"));
+		const invoke = vi.fn(async (channel: string, _token: unknown, revision?: number) => channel === "preview:grant"
+			? { token: "parent", url: "vomp-preview://parent/report.pdf", assetRoot: false }
+			: channel === "preview:prepare" ? { ok: true, pdf: { token: revision === 1 ? "first" : "second", url: `vomp-preview://revision/${revision === 1 ? "first" : "second"}.pdf`, assetRoot: false } } : undefined);
 		Object.defineProperty(window, "vomp", { configurable: true, value: { invoke } });
-		await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null }));
-		await show(PdfFrame, subject({ kind: "file", format: "pdf", path: "/project/report.pdf", text: null, revision: 2 }));
+		await showPdf();
+		await showPdf(2);
 		expect(host.textContent).toContain("second");
 		await act(() => host.querySelector("[data-pdf-revision]")?.dispatchEvent(new Event("error")));
 		expect(host.textContent).toContain("first");
 		expect(host.textContent).toContain("Waiting for omp to finish saving");
+		expect(invoke).toHaveBeenCalledWith("preview:revoke", "second");
 	});
 });

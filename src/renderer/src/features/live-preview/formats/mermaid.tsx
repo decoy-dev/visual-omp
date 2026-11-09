@@ -11,7 +11,7 @@ export function Frame({ subject, onHeight }: LiveFrameProps) {
 	const { t } = useTranslation("chat");
 	const { ref, palette } = useFigurePalette();
 	usePictureHeight(ref, onHeight, true);
-	const { text, error } = useSourceText(subject);
+	const { text, error, tooLarge } = useSourceText(subject);
 	const [good, setGood] = useState<{ src: string; name: string; description: string } | null>(null);
 	const [failed, setFailed] = useState(false);
 	const work = useRef<{ mounted: boolean; running: boolean; newest: RenderJob | null; pending: RenderJob | null }>({ mounted: true, running: false, newest: null, pending: null });
@@ -44,7 +44,7 @@ export function Frame({ subject, onHeight }: LiveFrameProps) {
 		draw();
 	}, [text, subject.revision, subject.elided, palette]);
 	return <div ref={ref} className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-		{subject.elided ? <SizeNote /> : <>{good && <img src={good.src} alt={good.name || t("visual.mermaid")} aria-description={good.description || undefined} className="block h-auto max-h-full w-full shrink-0 object-contain object-top" />}{(failed || error) && <WaitingForSave />}</>}
+		{subject.elided ? <SizeNote /> : <>{good && <img src={good.src} alt={good.name || t("visual.mermaid")} aria-description={good.description || undefined} className="block h-auto max-h-full w-full shrink-0 object-contain object-top" />}{(failed || error) && <WaitingForSave tooLarge={tooLarge} />}</>}
 	</div>;
 }
 

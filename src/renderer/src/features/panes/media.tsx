@@ -12,39 +12,42 @@ import { focusRingInset } from "../../ui/styles";
 import { openWithDefaultApp, revealLabel } from "../../ui/contextActions";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { anchoredScroll, clampScale, clickScale, fitScale, type Point, type Size, ZOOM_STEP, wheelZoomFactor, zoomLayout } from "./zoom";
+import { type FileSource, grantFileSource, isSvgSource, useFileSource } from "./file-source";
 
 // ── image loading ───────────────────────────────────────────────────────────────────────────────
 
-const IMAGE_CACHE_LIMIT = 24;
-/** Image sources by the caller's key; a key that names a new read (a reopened pane, a newer use) reads again. */
-const imageCache = new Map<string, Promise<string | null>>();
+export type ImageSource = string | FileSource | null;
+/** Shared only while mounted: the final consumer releases a file grant instead of retaining read access in a cache. */
+const imageCache = new Map<string, { users: number; pending: Promise<ImageSource>; source?: ImageSource }>();
 
-function cachedImage(key: string, load: () => Promise<string | null>): Promise<string | null> {
-	let pending = imageCache.get(key);
-	if (!pending) {
-		pending = load();
-		imageCache.set(key, pending);
-		for (const old of imageCache.keys()) {
-			if (imageCache.size <= IMAGE_CACHE_LIMIT) break;
-			imageCache.delete(old);
-		}
+function acquireImage(key: string, load: () => Promise<ImageSource>) {
+	let entry = imageCache.get(key);
+	if (!entry) {
+		const created = { users: 0, pending: Promise.resolve(null) as Promise<ImageSource>, source: undefined as ImageSource | undefined };
+		created.pending = load().catch(() => null).then(source => { created.source = source; return source; });
+		entry = created;
+		imageCache.set(key, entry);
 	}
-	return pending;
+	entry.users++;
+	const current = entry;
+	return { pending: current.pending, release() {
+		if (--current.users !== 0) return;
+		if (imageCache.get(key) === current) imageCache.delete(key);
+		const dispose = (source: ImageSource) => { if (source && typeof source !== "string") source.release(); };
+		if (current.source !== undefined) dispose(current.source);
+		else void current.pending.then(dispose);
+	} };
 }
 
-/**
- * A file's picture from disk: the operating system's thumbnail of a PDF's first page (null when it makes none), or
- * an image file as a data URL. Null for anything else or when the read fails.
- */
-export async function loadFileImage(path: string): Promise<string | null> {
+/** PDFs use native thumbnails; images stream through a read-only grant owned by the mounted view. */
+export async function loadFileImage(path: string): Promise<ImageSource> {
 	if (PDF_EXT.test(path)) return window.vomp.invoke("panes:thumbnail", path).catch(() => null);
 	if (!IMAGE_EXT.test(path)) return null;
-	const file = await window.vomp.invoke("panes:readFile", path).catch(() => null);
-	return file?.kind === "image" ? file.dataUrl : null;
+	return grantFileSource(path).catch(() => null);
 }
 
 /** `undefined` while loading (or before `enabled`), null when the image can't be shown. */
-function useImageSource(sourceKey: string, load: () => Promise<string | null>, enabled: boolean): string | null | undefined {
+function useImageSource(sourceKey: string, load: () => Promise<ImageSource>, enabled: boolean): string | null | undefined {
 	const [state, setState] = useState<{ key: string; src: string | null } | null>(null);
 	// Callers rebuild `load` on every render; the key, not the function, says when the image changed.
 	const latest = useRef(load);
@@ -52,9 +55,11 @@ function useImageSource(sourceKey: string, load: () => Promise<string | null>, e
 	useEffect(() => {
 		if (!enabled) return;
 		let live = true;
-		void cachedImage(sourceKey, latest.current).then(src => live && setState({ key: sourceKey, src }));
+		const image = acquireImage(sourceKey, latest.current);
+		void image.pending.then(source => live && setState({ key: sourceKey, src: typeof source === "string" ? source : source?.src ?? null }));
 		return () => {
 			live = false;
+			image.release();
 		};
 	}, [enabled, sourceKey]);
 	return state?.key === sourceKey ? state.src : undefined;
@@ -94,6 +99,7 @@ export function PreviewImage({
 	sourceKey,
 	load,
 	pdf,
+	fallback,
 	enabled,
 	alt,
 	explain = false,
@@ -102,8 +108,9 @@ export function PreviewImage({
 	verticalAlign,
 }: {
 	sourceKey: string;
-	load(): Promise<string | null>;
+	load(): Promise<ImageSource>;
 	pdf: boolean;
+	fallback?(): Promise<ImageSource>;
 	enabled: boolean;
 	alt: string;
 	explain?: boolean;
@@ -112,15 +119,18 @@ export function PreviewImage({
 	verticalAlign?: "center" | "start";
 }) {
 	const { t } = useTranslation("panes");
-	const src = useImageSource(sourceKey, load, enabled);
+	const [fallbackKey, setFallbackKey] = useState<string | null>(null);
+	const retrying = fallbackKey === sourceKey && fallback !== undefined;
+	const src = useImageSource(retrying ? `${sourceKey}:fallback` : sourceKey, retrying ? fallback! : load, enabled);
 	const [broken, setBroken] = useState<string | null>(null);
+	const failed = () => { if (fallback && !retrying) setFallbackKey(sourceKey); else if (src) setBroken(src); };
 	if (src === undefined) return <span className="sr-only">{t("outputs.loading")}</span>;
 	if (src === null || broken === src) {
 		if (pdf) return <FilePdf aria-hidden className="size-6 text-fg-faint" />;
 		return <Unavailable message={t("outputs.unavailable")} explain={explain} />;
 	}
-	if (zoom) return <ZoomImage src={src} alt={alt} className={className} control={zoom === true ? undefined : zoom} verticalAlign={verticalAlign} onError={() => setBroken(src)} />;
-	return <img src={src} alt={alt} onError={() => setBroken(src)} className={className} />;
+	if (zoom) return <ZoomImage src={src} alt={alt} className={className} control={zoom === true ? undefined : zoom} verticalAlign={verticalAlign} onError={failed} />;
+	return <img src={src} crossOrigin={src.startsWith("data:") ? undefined : "anonymous"} alt={alt} onError={failed} className={className} />;
 }
 
 // ── zoom ────────────────────────────────────────────────────────────────────────────────────────
@@ -168,7 +178,7 @@ export function ZoomImage({ src, alt, className, control, onError, verticalAlign
 	const flight = useRef<AnimationPlaybackControlsWithThen | null>(null);
 
 	const natural = loaded?.src === src ? loaded.size : null;
-	const fit = natural && view ? fitScale(natural, view, src.startsWith("data:image/svg+xml")) : 1;
+	const fit = natural && view ? fitScale(natural, view, isSvgSource(src)) : 1;
 	const box = natural && view ? zoomLayout(natural, view, zoom ?? fit, verticalAlign) : null;
 	// The geometry as of the last change, so several wheel events between two renders each start from the one before.
 	const latest = useRef({ natural, view, fit, zoom, box });
@@ -361,6 +371,7 @@ export function ZoomImage({ src, alt, className, control, onError, verticalAlign
 				<img
 					ref={imageRef}
 					src={src}
+					crossOrigin={src.startsWith("data:") ? undefined : "anonymous"}
 					alt={alt}
 					draggable={false}
 					// An SVG without a size of its own reports the CSS default object size (300×150, or 300 wide at its
@@ -392,22 +403,15 @@ export function ThumbnailFrame({ pdf, children }: { pdf: boolean; children: Reac
 
 // ── PDF viewer ──────────────────────────────────────────────────────────────────────────────────
 
-/**
- * The PDF's bytes as a Blob URL in Chromium's built-in viewer. A new `revision` reads it again; the shown page stays
- * until the new bytes arrive, and each Blob URL is revoked once it is replaced or the view closes.
- */
-export function PdfFrame({ path, revision, name, bytes }: { path: string; revision: number; name: string; bytes?: Uint8Array<ArrayBuffer> }) {
+/** Saved PDFs use a scoped, range-capable URL. Office conversion snapshots retain their bounded Blob input. */
+export function PdfFrame({ path, revision, name, bytes, sourceUrl }: { path: string; revision: number; name: string; bytes?: Uint8Array<ArrayBuffer>; sourceUrl?: string }) {
 	const { t } = useTranslation("panes");
+	const source = useFileSource(bytes || sourceUrl ? null : path, revision);
 	const [state, setState] = useState<{ path: string; url: string | null } | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is a reload trigger
 	useEffect(() => {
-		let live = true;
-		const read = bytes ? Promise.resolve(bytes) : window.vomp.invoke("panes:readPdf", path);
-		read.then(value => live && setState({ path, url: URL.createObjectURL(new Blob([value], { type: "application/pdf" })) }))
-			.catch(() => live && setState({ path, url: null }));
-		return () => {
-			live = false;
-		};
+		if (!bytes) return;
+		setState({ path, url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })) });
 	}, [path, revision, bytes]);
 	const url = state?.url ?? null;
 	useEffect(
@@ -416,7 +420,8 @@ export function PdfFrame({ path, revision, name, bytes }: { path: string; revisi
 		},
 		[url],
 	);
-	const current = state?.path === path ? state : null;
+	const current = sourceUrl ? { path, url: sourceUrl } : bytes ? state?.path === path ? state : null
+		: source.error ? { path, url: null } : source.src ? { path, url: source.src } : null;
 	if (!current) {
 		return (
 			<div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted" role="status">
@@ -434,6 +439,19 @@ export function PdfFrame({ path, revision, name, bytes }: { path: string; revisi
 	// Chromium's viewer reads Adobe open parameters from the fragment: `navpanes=0` keeps the page-thumbnail sidebar
 	// closed (its toolbar stays), and `view=FitH` fits the page to the frame's width, so a wide spread fills the view.
 	return <iframe src={`${current.url}#navpanes=0&view=FitH`} title={t("outputs.pdfFrame", { name })} className="min-h-0 w-full flex-1 border-0" />;
+}
+
+/** Native controls provide keyboard playback and seeking without copying local media into JavaScript. */
+export function MediaPlayer({ path, revision, name, kind }: { path: string; revision: number; name: string; kind: "video" | "audio" }) {
+	const { t } = useTranslation("panes");
+	const { src, error } = useFileSource(path, revision);
+	const [failed, setFailed] = useState<string | null>(null);
+	return <div className="flex min-h-0 flex-1 items-center justify-center bg-inset p-3">
+		{error || (src && failed === src) ? <Unavailable message={t("files.mediaUnavailable")} explain />
+			: !src ? <Spinner />
+			: kind === "video" ? <video src={src} controls preload="metadata" aria-label={name} className="max-h-full w-full rounded-md" onError={() => setFailed(src)} />
+			: <audio src={src} controls preload="metadata" aria-label={name} className="w-full" onError={() => setFailed(src)} />}
+	</div>;
 }
 
 // ── actions ─────────────────────────────────────────────────────────────────────────────────────

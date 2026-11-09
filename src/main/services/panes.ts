@@ -1,8 +1,9 @@
 /** File reads for the Files viewer and Outputs pane, and plan-file lookup for the Plan pane (pure fs, no Electron). */
+import { constants } from "node:fs";
 import { type FileHandle, lstat, open, opendir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { extname, isAbsolute, join, parse, resolve } from "node:path";
-import type { PaneFileContent, PaneMadeFile, PaneMadeQuery, PanePlanFile } from "@shared/contracts/panes";
+import { dirname, extname, isAbsolute, join, parse, resolve } from "node:path";
+import type { PaneFileContent, PaneFilePreview, PaneMadeFile, PaneMadeQuery, PanePlanFile } from "@shared/contracts/panes";
 import { outputPathKey } from "@shared/outputPaths";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
@@ -74,6 +75,27 @@ export async function readPaneFile(path: string): Promise<PaneFileContent> {
 	} catch {
 		return { kind: "binary", size };
 	}
+}
+
+/** Media detection never reads the payload. Text stays bounded before decoding and syntax coloring. */
+export async function inspectPaneFile(path: string): Promise<PaneFilePreview> {
+	const file = await openForRead(path, true);
+	try {
+		const info = await file.stat();
+		if (!info.isFile()) throw new Error("Not a file");
+		const size = info.size;
+		const ext = extname(path).toLowerCase();
+		const media = IMAGE_TYPES[ext] || ext === ".apng" ? "image"
+			: ext === ".pdf" ? "pdf"
+			: [".mp4", ".m4v", ".mov", ".webm"].includes(ext) ? "video"
+			: [".mp3", ".m4a", ".aac", ".wav", ".ogg", ".oga", ".opus", ".flac"].includes(ext) ? "audio" : null;
+		if (media) return { kind: "media", media, size };
+		const data = await readHead(file, Math.min(size, TEXT_LIMIT));
+		if (looksBinary(data.subarray(0, SNIFF_BYTES))) return { kind: "binary", size };
+		try {
+			return { kind: "text", text: new TextDecoder("utf-8", { fatal: true }).decode(data, { stream: size > data.length }), size, truncated: size > data.length };
+		} catch { return { kind: "binary", size }; }
+	} finally { await file.close(); }
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -173,6 +195,18 @@ export function svgForImage(data: Buffer<ArrayBuffer>): Buffer<ArrayBuffer> {
 	return Buffer.from(text.slice(0, root.start) + added + text.slice(root.start), "utf8");
 }
 
+/** Byte-preserving SVG prefix repair, including a UTF-8 sequence split at the stream chunk boundary. */
+export function svgImagePrefix(data: Buffer<ArrayBuffer>): Buffer<ArrayBuffer> {
+	const text = data.toString("latin1"), root = svgRootAttributes(text);
+	if (!root) return data;
+	const attributes = text.slice(root.start, root.end);
+	let added = "";
+	if (!/\sxmlns\s*=/.test(attributes)) added += ` xmlns="${SVG_NS}"`;
+	// Later chunks may use xlink, so declare it without buffering the rest of the image.
+	if (!/\sxmlns:xlink\s*=/.test(attributes)) added += ` xmlns:xlink="${XLINK_NS}"`;
+	return added ? Buffer.concat([data.subarray(0, root.start), Buffer.from(added), data.subarray(root.start)]) : data;
+}
+
 /** omp's blob ids: saved sessions store image data as `blob:sha256:<hash>`, kept in `<agentDir>/blobs/<hash>`. */
 const BLOB_HASH = /^[0-9a-f]{64}$/;
 
@@ -220,9 +254,9 @@ export async function readWhole(file: Pick<FileHandle, "read">, size: number): P
 }
 
 /** Opens a path for reading; a folder (which Windows refuses to open) reports "Not a file", as the handle check does elsewhere. */
-async function openForRead(path: string): Promise<FileHandle> {
+async function openForRead(path: string, nonblocking = false): Promise<FileHandle> {
 	try {
-		return await open(path, "r");
+		return await open(path, nonblocking ? constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) : "r");
 	} catch (error) {
 		if ((await stat(path).catch(() => null))?.isDirectory()) throw new Error("Not a file");
 		throw error;
@@ -272,20 +306,19 @@ export async function readPdfFile(path: string, limit = PDF_LIMIT): Promise<Uint
 	}
 }
 
-/** A blob-store image as a data URL; null when the blob is missing, over the image cap, or not an image. */
-export async function readBlobImage(blobsDir: string, hash: string): Promise<string | null> {
+/** A hash-named raster blob's checked path and type; bytes stream through the preview grant. */
+export async function blobImage(blobsDir: string, hash: string): Promise<{ path: string; mime: string } | null> {
 	if (!BLOB_HASH.test(hash)) throw new Error("Not a blob id");
-	const file = await open(join(blobsDir, hash), "r").catch(() => null);
+	const root = await realpath(blobsDir).catch(() => null);
+	const path = root && await realpath(join(root, hash)).catch(() => null);
+	if (!root || !path || dirname(path) !== root) return null;
+	const file = await open(path, "r").catch(() => null);
 	if (!file) return null;
 	try {
-		const info = await file.stat();
-		if (!info.isFile() || info.size > IMAGE_LIMIT) return null;
-		const data = await readWhole(file, info.size);
-		const mime = data ? imageType(data) : null;
-		return mime && data ? `data:${mime};base64,${data.toString("base64")}` : null;
-	} finally {
-		await file.close();
-	}
+		if (!(await file.stat()).isFile()) return null;
+		const mime = imageType(await readHead(file, 16));
+		return mime ? { path, mime } : null;
+	} finally { await file.close(); }
 }
 
 export interface MadeScanLimits {

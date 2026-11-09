@@ -8,6 +8,7 @@ import { type Icon, ArrowUpRight, File, FileCode, FileImage, FilePdf, FileText, 
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { OPENABLE_EXT } from "../../features/panes/derive";
+import { grantFileSource } from "../../features/panes/file-source";
 import { fileRefOf, textRefs } from "./fileRefs";
 
 /** Links, code blocks and their headers, math and links already made hold no references. */
@@ -231,6 +232,8 @@ interface Thumb {
 	/** undefined while loading. */
 	value: string | null | undefined;
 	promise: Promise<string | null>;
+	users: number;
+	abort: AbortController;
 }
 
 /** Row thumbnails by path for the session (the most recent paths): `panes:thumbnail`, or {@link svgThumbnail}. */
@@ -238,30 +241,36 @@ const thumbs = new Map<string, Thumb>();
 
 /**
  * An SVG row's thumbnail. Main never hands SVG to the operating system's thumbnailer, because SVG can carry script, so
- * the renderer reads the file as an image (`panes:readFile`; scripts do not run in an image) and draws it into a small
- * PNG that fills the square tile like `object-fit: cover`. The cache then holds a few kilobytes instead of the file.
+ * the renderer streams the file through a temporary read grant and draws it into a small PNG tile. The cache holds
+ * the tile after the grant is revoked.
  */
-async function svgThumbnail(path: string): Promise<string | null> {
-	const file = await window.vomp.invoke("panes:readFile", path);
-	if (file.kind !== "image") return null;
+async function svgThumbnail(path: string, signal: AbortSignal): Promise<string | null> {
+	const source = await grantFileSource(path);
 	const image = new Image();
-	image.src = file.dataUrl;
-	await image.decode();
-	const { naturalWidth: width, naturalHeight: height } = image;
-	if (!width || !height) return null;
-	const scale = SVG_THUMB_PIXELS / Math.min(width, height);
-	const canvas = document.createElement("canvas");
-	canvas.width = SVG_THUMB_PIXELS;
-	canvas.height = SVG_THUMB_PIXELS;
-	canvas.getContext("2d")?.drawImage(image, (SVG_THUMB_PIXELS - width * scale) / 2, (SVG_THUMB_PIXELS - height * scale) / 2, width * scale, height * scale);
-	return canvas.toDataURL("image/png");
+	const cancel = () => { source.release(); image.src = ""; };
+	signal.addEventListener("abort", cancel, { once: true });
+	try {
+		signal.throwIfAborted();
+		image.crossOrigin = "anonymous";
+		image.src = source.src;
+		await image.decode();
+		signal.throwIfAborted();
+		const { naturalWidth: width, naturalHeight: height } = image;
+		if (!width || !height) return null;
+		const scale = SVG_THUMB_PIXELS / Math.min(width, height);
+		const canvas = document.createElement("canvas");
+		canvas.width = SVG_THUMB_PIXELS;
+		canvas.height = SVG_THUMB_PIXELS;
+		canvas.getContext("2d")?.drawImage(image, (SVG_THUMB_PIXELS - width * scale) / 2, (SVG_THUMB_PIXELS - height * scale) / 2, width * scale, height * scale);
+		return canvas.toDataURL("image/png");
+	} finally { signal.removeEventListener("abort", cancel); source.release(); }
 }
 
 function thumbnail(path: string): Thumb {
 	let entry = thumbs.get(path);
 	if (!entry) {
-		const created: Thumb = { value: undefined, promise: Promise.resolve(null) };
-		created.promise = (SVG_EXT.test(path) ? svgThumbnail(path) : window.vomp.invoke("panes:thumbnail", path))
+		const created: Thumb = { value: undefined, promise: Promise.resolve(null), users: 0, abort: new AbortController() };
+		created.promise = (SVG_EXT.test(path) ? svgThumbnail(path, created.abort.signal) : window.vomp.invoke("panes:thumbnail", path))
 			.catch(() => null)
 			.then(value => (created.value = value));
 		entry = created;
@@ -271,6 +280,7 @@ function thumbnail(path: string): Thumb {
 			thumbs.delete(old);
 		}
 	}
+	entry.users++;
 	return entry;
 }
 
@@ -292,13 +302,18 @@ function showThumb(tile: HTMLElement, src: string | null | undefined): void {
 export function fillThumbnails(root: HTMLElement): () => void {
 	const tiles = [...root.querySelectorAll<HTMLElement>(".tr-file-tile[data-thumb]")];
 	if (tiles.length === 0) return () => {};
+	let live = true;
+	const pending: { path: string; entry: Thumb }[] = [];
 	const observer = new IntersectionObserver(
 		items => {
+			if (!live) return;
 			for (const item of items) {
 				if (!item.isIntersecting) continue;
 				observer.unobserve(item.target);
 				const tile = item.target as HTMLElement;
-				void thumbnail(tile.dataset.thumb ?? "").promise.then(src => showThumb(tile, src));
+				const path = tile.dataset.thumb ?? "", entry = thumbnail(path);
+				pending.push({ path, entry });
+				void entry.promise.then(src => { if (live) showThumb(tile, src); });
 			}
 		},
 		{ rootMargin: "200px" },
@@ -308,5 +323,14 @@ export function fillThumbnails(root: HTMLElement): () => void {
 		if (known !== undefined) showThumb(tile, known);
 		else observer.observe(tile);
 	}
-	return () => observer.disconnect();
+	return () => {
+		live = false;
+		observer.disconnect();
+		for (const { path, entry } of pending) {
+			if (--entry.users === 0 && entry.value === undefined) {
+				entry.abort.abort();
+				if (thumbs.get(path) === entry) thumbs.delete(path);
+			}
+		}
+	};
 }

@@ -28,9 +28,9 @@ export function csvMarkdown(source: string, delimiter: "," | "\t", writing: bool
 }
 
 export function Frame({ subject, onHeight }: LiveFrameProps) {
-	const { text, error } = useSourceText(subject);
+	const { text, error, tooLarge } = useSourceText(subject);
 	const content = useContentHeight(onHeight);
-	return <div className="min-h-0 flex-1 overflow-auto p-4"><div ref={content} className="flow-root">{subject.elided ? <SizeNote /> : <><Markdown text={csvMarkdown(text ?? "", /\.tsv$/i.test(subject.path ?? "") ? "\t" : ",", subject.state === "writing")} />{error && <WaitingForSave />}</>}</div></div>;
+	return <div className="min-h-0 flex-1 overflow-auto p-4"><div ref={content} className="flow-root">{subject.elided ? <SizeNote /> : <><Markdown text={csvMarkdown(text ?? "", /\.tsv$/i.test(subject.path ?? "") ? "\t" : ",", subject.state === "writing")} />{error && <WaitingForSave tooLarge={tooLarge} />}</>}</div></div>;
 }
 
 export const adapter: LiveAdapter = { format: "csv", maxFps: 4, Frame };

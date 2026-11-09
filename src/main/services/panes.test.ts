@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, open, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { findPlanFile, MADE_SCAN, previewablePath, readBlobImage, readPaneFile, readPdfFile, readWhole, scanMadeFiles, svgForImage } from "./panes";
+import { blobImage, findPlanFile, inspectPaneFile, MADE_SCAN, previewablePath, readPaneFile, readPdfFile, readWhole, scanMadeFiles, svgForImage, svgImagePrefix } from "./panes";
 
 let dir: string;
 beforeEach(async () => {
@@ -41,6 +41,41 @@ describe("readPaneFile", () => {
 	it("rejects directories", async () => {
 		await expect(readPaneFile(dir)).rejects.toThrow("Not a file");
 	});
+});
+
+describe("inspectPaneFile", () => {
+	it.each([["movie.mp4", "video"], ["movie.m4v", "video"], ["movie.mov", "video"], ["movie.webm", "video"], ["song.mp3", "audio"], ["song.m4a", "audio"], ["song.wav", "audio"], ["song.ogg", "audio"], ["poster.png", "image"], ["pages.pdf", "pdf"]])("routes an arbitrarily large %s without returning its bytes", async (name, media) => {
+		const path = join(dir, name), file = await open(path, "w");
+		await file.truncate(120 * 1024 * 1024);
+		await file.close();
+		expect(await inspectPaneFile(path)).toEqual({ kind: "media", media, size: 120 * 1024 * 1024 });
+	});
+	it("returns the start of large text without a partial UTF-8 character", async () => {
+		const path = join(dir, "large.txt");
+		await writeFile(path, `${"a".repeat(2 * 1024 * 1024 - 1)}π after boundary`);
+		const result = await inspectPaneFile(path);
+		expect(result).toMatchObject({ kind: "text", text: "a".repeat(2 * 1024 * 1024 - 1), truncated: true });
+	});
+	it("sniffs a large binary before treating it as text", async () => {
+		const path = join(dir, "binary.bin");
+		await writeFile(path, Buffer.alloc(2 * 1024 * 1024 + 1));
+		expect(await inspectPaneFile(path)).toEqual({ kind: "binary", size: 2 * 1024 * 1024 + 1 });
+	});
+	it("rejects a directory with a media extension", async () => {
+		const path = join(dir, "folder.mp4");
+		await mkdir(path);
+		await expect(inspectPaneFile(path)).rejects.toThrow("Not a file");
+	});
+});
+
+it("repairs an SVG stream prefix without corrupting split UTF-8 or omitting later xlink declarations", () => {
+	const original = Buffer.from("<svg viewBox='0 0 1 1'>π</svg>");
+	const split = original.indexOf(Buffer.from("π")) + 1;
+	const prefix = svgImagePrefix(Buffer.from(original.subarray(0, split)));
+	const restored = Buffer.concat([prefix, original.subarray(split)]).toString("utf8");
+	expect(restored).toContain('xmlns="http://www.w3.org/2000/svg"');
+	expect(restored).toContain('xmlns:xlink="http://www.w3.org/1999/xlink"');
+	expect(restored).toContain("π</svg>");
 });
 
 describe("svgForImage", () => {
@@ -161,23 +196,23 @@ describe("svgForImage", () => {
 	}, 20_000);
 });
 
-describe("readBlobImage", () => {
+describe("blobImage", () => {
 	const hash = "a".repeat(64);
 
 	it("types extensionless blobs by their leading bytes", async () => {
 		await writeFile(join(dir, hash), Buffer.from("RIFF\0\0\0\0WEBPVP8 "));
-		expect(await readBlobImage(dir, hash)).toMatch(/^data:image\/webp;base64,/);
+		expect(await blobImage(dir, hash)).toEqual({ path: await realpath(join(dir, hash)), mime: "image/webp" });
 	});
 
 	it("returns null for missing blobs and blobs that are not images", async () => {
-		expect(await readBlobImage(dir, hash)).toBeNull();
+		expect(await blobImage(dir, hash)).toBeNull();
 		await writeFile(join(dir, hash), "plain text");
-		expect(await readBlobImage(dir, hash)).toBeNull();
+		expect(await blobImage(dir, hash)).toBeNull();
 	});
 
 	it("rejects ids that are not a sha256 hex digest, so no path can escape the blob folder", async () => {
-		await expect(readBlobImage(dir, "../secrets")).rejects.toThrow("Not a blob id");
-		await expect(readBlobImage(dir, `${hash}.webp`)).rejects.toThrow("Not a blob id");
+		await expect(blobImage(dir, "../secrets")).rejects.toThrow("Not a blob id");
+		await expect(blobImage(dir, `${hash}.webp`)).rejects.toThrow("Not a blob id");
 	});
 });
 

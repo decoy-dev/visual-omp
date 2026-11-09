@@ -2,6 +2,9 @@
 
 Written 2026-11-04 against `main` at `8206da5` (0.7.6, untagged), from `docs/LIVE-PREVIEW.md` (whole file, including Owner decisions and the Phase 1 notes) and the Phase 1 code. Revised the same day after astra's review ("adopt with required changes"). Paths are relative to the repository root. `[INFERENCE]` marks a claim no source, probe or command confirmed. The original plan made no repository changes and ran no Electron, dev server or browser. Slice A1 was implemented on 2026-11-05 as described below.
 
+The findings and A1 evidence below describe that dated baseline. The 2026-11-09 local-media change streams saved images and PDFs through file-only grants, permits CORS for successful image responses used by explicit canvas actions, and checks PDF readiness through the existing preparation IPC. Renderer `connect-src` remains unchanged. Current behavior is described in `docs/LIVE-PREVIEW.md` and `docs/ARCHITECTURE.md`.
+
+
 ## Objective
 
 Extend the Phase 1 stage to video (playback with range requests, parsed render progress, key frames), DOCX, XLSX and PPTX, saved HTML pages that run their scripts with an optional per-page network permission, Attach this frame, and the opt-in `visual-proofs` omp skill, whose proof always waits for the person's answer (Owner decision 2). Phase 1's guarantees stay: no added model requests, narrow grants, no network by default, every adapter lazily loaded.

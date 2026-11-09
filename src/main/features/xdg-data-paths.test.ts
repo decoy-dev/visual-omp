@@ -28,7 +28,7 @@ vi.mock("node:fs", async importOriginal => {
 	return { ...actual, watch: vi.fn(actual.watch) };
 });
 vi.mock("../env", () => ({ userEnv: async () => fixture.env }));
-vi.mock("../ipc", () => ({ handle: (name: string, handler: (...args: unknown[]) => unknown) => fixture.handlers.set(name, handler), broadcast: fixture.broadcast, onBroadcast: vi.fn() }));
+vi.mock("../ipc", () => ({ handle: (name: string, handler: (...args: unknown[]) => unknown) => fixture.handlers.set(name, handler), handleWithEvent: (name: string, handler: (...args: unknown[]) => unknown) => fixture.handlers.set(name, (...args) => handler({ sender: { id: 44 } }, ...args)), broadcast: fixture.broadcast, onBroadcast: vi.fn() }));
 vi.mock("electron", () => ({ app: { on: vi.fn() }, BrowserWindow: {}, dialog: {}, shell: {}, nativeImage: {} }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ archivedSessions: [], extraProjects: [] }), finishSessionPinMigration: vi.fn() }));
 vi.mock("../omp/host", () => ({ getHost: vi.fn(), listHosts: () => [] }));
@@ -39,7 +39,8 @@ vi.mock("../omp/predict", () => ({ closePredictions: vi.fn(), predictFeedback: v
 vi.mock("../omp/dictation", () => ({ closeDictation: vi.fn(), startDictation: vi.fn(), stopDictation: vi.fn() }));
 vi.mock("../omp/native-bridge", () => ({ nativeBridge: vi.fn() }));
 vi.mock("../services/prompt-history", () => ({ readPromptHistory: fixture.promptHistory }));
-vi.mock("../services/panes", () => ({ readBlobImage: fixture.blob, readPaneFile: vi.fn(), readPdfFile: vi.fn(), previewablePath: vi.fn(), scanMadeFiles: vi.fn(), findPlanFile: vi.fn() }));
+vi.mock("../services/panes", () => ({ inspectPaneFile: vi.fn(), readPaneFile: vi.fn(), readPdfFile: vi.fn(), previewablePath: vi.fn(), scanMadeFiles: vi.fn(), findPlanFile: vi.fn() }));
+vi.mock("../services/preview-protocol", () => ({ grantBlobPreview: fixture.blob }));
 
 let root: string;
 beforeEach(async () => {
@@ -85,7 +86,7 @@ describe.skipIf(process.platform === "win32")("shared XDG root callers", () => {
 		await fixture.handlers.get("sessions:promptHistory")!("xdg-chat");
 		await fixture.handlers.get("panes:readBlob")!("image-hash");
 		expect(fixture.promptHistory).toHaveBeenCalledWith(join(root, "data", "omp", "history.db"), "xdg-chat");
-		expect(fixture.blob).toHaveBeenCalledWith(join(root, "data", "omp", "blobs"), "image-hash");
+		expect(fixture.blob).toHaveBeenCalledWith(join(root, "data", "omp", "blobs"), "image-hash", 44);
 	});
 	it("authorizes saved XDG output without a live host or follower", async () => {
 		const file = await saveChat();

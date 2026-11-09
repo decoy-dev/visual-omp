@@ -8,6 +8,7 @@ import { i18n } from "../i18n";
 import { dockKey, useApp } from "../state/app";
 import { toast } from "./toast";
 import { projectRelativePath, type ContextActionId, type ContextTarget } from "./contextTargets";
+import { grantFileSource } from "../features/panes/file-source";
 
 export interface ContextScope { projectPath: string | null; tabId: string | null }
 
@@ -41,7 +42,7 @@ export function openWithDefaultApp(path: string, t: (key: string) => string, tar
 /** Rasterize in Chromium, including SVG and formats nativeImage cannot decode. Main receives PNG data only. */
 async function imageData(source: string): Promise<string> {
 	const image = new Image();
-	if (/^https?:/i.test(source)) image.crossOrigin = "anonymous";
+	if (!source.startsWith("data:") && !source.startsWith("blob:")) image.crossOrigin = "anonymous";
 	image.src = source;
 	await image.decode();
 	if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 40_000_000) throw new Error(i18n.t("panes:context.imageTooLarge"));
@@ -71,20 +72,20 @@ export async function runContextAction(id: ContextActionId, target: ContextTarge
 		const path = target.path;
 		if (target.kind === "image" && (id === "copyImage" || id === "saveImage")) {
 			let source = target.source;
-			if (!source && path) {
-				const file = await window.vomp.invoke("panes:readFile", path);
-				if (file.kind !== "image") throw new Error(i18n.t("panes:outputs.unavailable"));
-				source = file.dataUrl;
-			}
-			const dataUrl = await imageData(source);
-			if (id === "copyImage") {
-				await window.vomp.invoke("app:copyImage", dataUrl);
-				toast({ tone: "ok", message: i18n.t("panes:context.imageCopied") });
-			} else {
-				const name = path?.split(/[\\/]/).at(-1)?.replace(/\.[^.]+$/, "") ?? "image";
-				const saved = await window.vomp.invoke("app:saveImage", { dataUrl, name: `${name}.png`, title: i18n.t("panes:context.saveImage") });
-				if (saved) toast({ tone: "ok", message: i18n.t("panes:context.imageSaved") });
-			}
+			const granted = !source && path ? await grantFileSource(path) : null;
+			try {
+				source ||= granted?.src ?? "";
+				if (!source) throw new Error(i18n.t("panes:outputs.unavailable"));
+				const dataUrl = await imageData(source);
+				if (id === "copyImage") {
+					await window.vomp.invoke("app:copyImage", dataUrl);
+					toast({ tone: "ok", message: i18n.t("panes:context.imageCopied") });
+				} else {
+					const name = path?.split(/[\\/]/).at(-1)?.replace(/\.[^.]+$/, "") ?? "image";
+					const saved = await window.vomp.invoke("app:saveImage", { dataUrl, name: `${name}.png`, title: i18n.t("panes:context.saveImage") });
+					if (saved) toast({ tone: "ok", message: i18n.t("panes:context.imageSaved") });
+				}
+			} finally { granted?.release(); }
 			return;
 		}
 		if (!path) return;

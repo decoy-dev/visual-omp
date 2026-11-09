@@ -2,16 +2,18 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { nativeImage } from "electron";
 import { userEnv } from "../env";
-import { handle } from "../ipc";
+import { handle, handleWithEvent } from "../ipc";
 import { agentDataDir } from "../omp/paths";
-import { findPlanFile, previewablePath, readBlobImage, readPaneFile, readPdfFile, scanMadeFiles } from "../services/panes";
+import { findPlanFile, inspectPaneFile, previewablePath, readPaneFile, readPdfFile, scanMadeFiles } from "../services/panes";
+import { grantBlobPreview } from "../services/preview-protocol";
 
 /** Longest side of an Outputs pane thumbnail, in pixels. */
 const THUMBNAIL_SIZE = 480;
 
 export function register(): void {
 	handle("panes:readFile", path => readPaneFile(path));
-	handle("panes:readBlob", async hash => readBlobImage(join(agentDataDir(await userEnv()), "blobs"), hash));
+	handle("panes:inspect", path => inspectPaneFile(path));
+	handleWithEvent("panes:readBlob", async (event, hash) => grantBlobPreview(join(agentDataDir(await userEnv()), "blobs"), hash, event.sender.id));
 	handle("panes:readPdf", path => readPdfFile(path));
 	handle("panes:thumbnail", async path => {
 		try {

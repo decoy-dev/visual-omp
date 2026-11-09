@@ -5,6 +5,7 @@ import type { LiveFrameProps } from "../types";
 interface GrantedFrame {
 	grant: PreviewGrant;
 	revision: number;
+	pdf?: PreviewGrant;
 	isolationTest?: true;
 	anchor?: string;
 	saved: boolean;
@@ -18,13 +19,14 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 	const sent = useRef({ token: "", at: -Infinity, saved: false });
 	const relatedKey = JSON.stringify(related);
 	const path = subject.path;
+	const fileOnly = ["image", "pdf", "video", "sequence"].includes(subject.format);
 	useEffect(() => {
 		let live = true;
 		let token: string | null = null;
 		setGrant(null);
 		setFrame(null);
 		setError(false);
-		if (path) void window.vomp.invoke("preview:grant", { path, root: projectPath, related: JSON.parse(relatedKey) as string[] }).then(value => {
+		if (path) void window.vomp.invoke("preview:grant", { path, root: projectPath, related: JSON.parse(relatedKey) as string[], ...(fileOnly ? { fileOnly: true } : {}) }).then(value => {
 			token = value.token;
 			if (live) {
 				sent.current = { token, at: -Infinity, saved: false };
@@ -35,7 +37,7 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 			live = false;
 			if (token) void window.vomp.invoke("preview:revoke", token).catch(() => {});
 		};
-	}, [path, projectPath, relatedKey]);
+	}, [path, projectPath, relatedKey, fileOnly]);
 	useEffect(() => {
 		if (!grant || sent.current.token !== grant.token) return;
 		let live = true;
@@ -44,6 +46,7 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 			try {
 				let isolationTest: true | undefined;
 				let anchor: string | undefined;
+				let pdf: PreviewGrant | undefined;
 				if (saved && !sent.current.saved) {
 					sent.current.saved = true;
 					await window.vomp.invoke("preview:saved", grant.token);
@@ -51,13 +54,18 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 					sent.current.at = Date.now();
 					await window.vomp.invoke("preview:live", grant.token, subject.revision, subject.text);
 				}
-				if (subject.format === "html") {
-					const result = await window.vomp.invoke("preview:prepare", grant.token, subject.revision);
+				if (subject.format === "html" || subject.format === "pdf") {
+					const result = subject.format === "pdf"
+						? await window.vomp.invoke("preview:prepare", grant.token, subject.revision, true)
+						: await window.vomp.invoke("preview:prepare", grant.token, subject.revision);
 					if (!result.ok) { if (live) setError(true); return; }
 					isolationTest = result.isolationTest;
 					anchor = result.anchor;
+					pdf = result.pdf;
+					if (subject.format === "pdf" && !pdf) { if (live) setError(true); return; }
 				}
-				if (live) { setFrame({ grant, revision: subject.revision, isolationTest, anchor, saved }); setError(false); }
+				if (live) { setFrame({ grant, revision: subject.revision, isolationTest, anchor, pdf, saved }); setError(false); }
+				else if (pdf) void window.vomp.invoke("preview:revoke", pdf.token).catch(() => {});
 			} catch { if (live) setError(true); }
 		};
 		const delay = saved || subject.text === null ? 0 : Math.max(0, 250 - (Date.now() - sent.current.at));

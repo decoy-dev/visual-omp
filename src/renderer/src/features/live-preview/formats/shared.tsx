@@ -9,9 +9,9 @@ export function SizeNote() {
 	return <p className="p-4 text-sm text-fg-muted" role="status">{t("live.elided")}</p>;
 }
 
-export function WaitingForSave() {
+export function WaitingForSave({ tooLarge = false }: { tooLarge?: boolean }) {
 	const { t } = useTranslation("panes");
-	return <p className="p-2 text-sm text-fg-muted" role="status">{t("live.waitingForSave")}</p>;
+	return <p className="p-2 text-sm text-fg-muted" role="status">{t(tooLarge ? "live.sourceTooLarge" : "live.waitingForSave")}</p>;
 }
 
 /** Report natural text height without making the scrolling viewport size its own contents. */
@@ -73,9 +73,10 @@ export function useFigurePalette() {
 }
 
 /** The file replaces an elided source once it has been saved. Failed reads leave the last complete text visible. */
-export function useSourceText(subject: LiveSubject): { text: string | null; error: boolean } {
+export function useSourceText(subject: LiveSubject): { text: string | null; error: boolean; tooLarge: boolean } {
 	const [file, setFile] = useState<{ path: string; text: string } | null>(null);
 	const [error, setError] = useState(false);
+	const [tooLarge, setTooLarge] = useState(false);
 	const path = subject.path;
 	const revision = subject.revision;
 	const fromFile = subject.kind === "file";
@@ -84,10 +85,10 @@ export function useSourceText(subject: LiveSubject): { text: string | null; erro
 		let live = true;
 		void window.vomp.invoke("panes:readFile", path).then(value => {
 			if (!live) return;
-			if (value.kind === "text") { setFile({ path, text: value.text }); setError(false); }
-			else setError(true);
-		}).catch(() => { if (live) setError(true); });
+			if (value.kind === "text") { setFile({ path, text: value.text }); setError(false); setTooLarge(false); }
+			else { setError(true); setTooLarge(value.kind === "tooLarge"); }
+		}).catch(() => { if (live) { setError(true); setTooLarge(false); } });
 		return () => { live = false; };
 	}, [fromFile, path, revision]);
-	return { text: fromFile ? file?.path === path ? file.text : null : subject.text, error };
+	return { text: fromFile ? file?.path === path ? file.text : null : subject.text, error, tooLarge };
 }

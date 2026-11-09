@@ -21,6 +21,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Unfinished native hook answers remain available when the same dialog is cancelled and reopened or shown in the omp screen.
 - While omp writes a handoff or a context summary, the chat now shows omp's progress with elapsed time and a Stop button, instead of looking idle until the command finishes.
 - Questions from omp 18.18.3 HTML forms show their fields and recorded answers, and can be answered through the chat's question cards, including free-text Other choices. Saved question-list calls from older omp remain readable.
+- Local videos and audio play in Files, and images and PDFs load without file-size caps. Media streams through read-only file grants; large text shows its first 2 MB with an option to open the rest in another app. Live PDF previews retain checked revisions across incomplete saves and restore the preceding document when a replacement iframe reports an error.
 
 ## [0.7.11] - 2026-11-06
 

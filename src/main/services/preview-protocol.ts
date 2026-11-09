@@ -1,22 +1,21 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import type { ReadStream } from "node:fs";
-import { open, realpath, stat } from "node:fs/promises";
+import { mkdtemp, open, realpath, rm, stat } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { app, protocol } from "electron";
 import { PREVIEW_SCHEME, type PreviewGrant, type PreviewGrantRequest, type PreviewBlockedNavigation, type PreviewPrepared, type PreviewPolicy } from "@shared/contracts/preview";
 import { handleWithEvent } from "../ipc";
-import { broadFolders, isBroadFolder } from "./panes";
+import { blobImage, broadFolders, isBroadFolder, svgImagePrefix } from "./panes";
 import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-isolation-test";
 import type { PreviewBinary } from "@shared/contracts/preview";
 import { OFFICE_LIMITS, validateOfficeZip } from "@shared/preview-office-zip";
 import { markHtmlChange } from "./preview-html-follow";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
-const IMAGE_LIMIT = 8 * 1024 * 1024;
-const PDF_LIMIT = 32 * 1024 * 1024;
 const VIDEO_RANGE_LIMIT = 8 * 1024 * 1024;
 const VIDEO_BUFFER_SIZE = 64 * 1024;
 // Four requests allow playback, metadata and overlapping seeks; sixteen bound all preview players together.
@@ -29,21 +28,29 @@ export function previewPolicy(_grant: PreviewPolicy): string {
 
 interface ResponseType { type: string; cap: number; cors: boolean }
 const text = (type: string): ResponseType => ({ type, cap: TEXT_LIMIT, cors: false });
-const image = (type: string): ResponseType => ({ type, cap: IMAGE_LIMIT, cors: false });
+const image = (type: string): ResponseType => ({ type, cap: Infinity, cors: true });
 const font = (type: string): ResponseType => ({ type, cap: TEXT_LIMIT, cors: true });
 const video = (type: string): ResponseType => ({ type, cap: Infinity, cors: false });
 const TYPES: Record<string, ResponseType> = {
 	".html": text("text/html; charset=utf-8"), ".htm": text("text/html; charset=utf-8"),
-	".css": text("text/css; charset=utf-8"), ".svg": text("image/svg+xml"),
+	".css": text("text/css; charset=utf-8"), ".svg": image("image/svg+xml"),
 	".txt": text("text/plain; charset=utf-8"), ".md": text("text/plain; charset=utf-8"), ".markdown": text("text/plain; charset=utf-8"),
 	".mmd": text("text/plain; charset=utf-8"), ".csv": text("text/csv; charset=utf-8"), ".tsv": text("text/tab-separated-values; charset=utf-8"),
 	".json": text("application/json"), ".xml": text("application/xml"),
 	".png": image("image/png"), ".jpg": image("image/jpeg"), ".jpeg": image("image/jpeg"), ".gif": image("image/gif"),
 	".webp": image("image/webp"), ".avif": image("image/avif"), ".bmp": image("image/bmp"), ".ico": image("image/x-icon"), ".apng": image("image/apng"),
-	".pdf": { type: "application/pdf", cap: PDF_LIMIT, cors: false },
+	".pdf": { type: "application/pdf", cap: Infinity, cors: false },
 	".mp4": video("video/mp4"), ".m4v": video("video/mp4"), ".webm": video("video/webm"), ".mov": video("video/quicktime"),
+	".mp3": video("audio/mpeg"), ".m4a": video("audio/mp4"), ".aac": video("audio/aac"),
+	".wav": video("audio/wav"), ".ogg": video("audio/ogg"), ".oga": video("audio/ogg"), ".opus": video("audio/ogg"), ".flac": video("audio/flac"),
 	".woff": font("font/woff"), ".woff2": font("font/woff2"), ".ttf": font("font/ttf"), ".otf": font("font/otf"), ".eot": text("application/vnd.ms-fontobject"),
 };
+
+interface PdfRequest {
+	revision: number;
+	promise: Promise<PreviewPrepared>;
+	resolve(value: PreviewPrepared): void;
+}
 
 interface GrantState {
 	owner: number | null;
@@ -60,6 +67,12 @@ interface GrantState {
 	streams: Set<ReadStream>;
 	videoRequests: number;
 	previousHtml?: string;
+	subjectType?: ResponseType;
+	pdfRevisions: Map<number, PreviewGrant>;
+	pdfPreparation?: { request: PdfRequest; abort: AbortController };
+	pdfPending?: PdfRequest;
+	parentToken?: string;
+	privateDirectory?: string;
 }
 interface DocumentSnapshot {
 	body: string | Uint8Array<ArrayBuffer>;
@@ -75,6 +88,7 @@ let epoch = 0;
 let registered = false;
 let videoRequests = 0;
 const revokeListeners = new Set<(token: string) => void>();
+const streamWaiters = new Set<() => void>();
 
 /** Office conversion cleanup follows the same token lifecycle as protocol streams. */
 export function onPreviewRevoke(listener: (token: string) => void): () => void {
@@ -141,6 +155,7 @@ export function registerPreviewScheme(): void {
 export async function grantPreview(request: PreviewGrantRequest, owner: number | null = null): Promise<PreviewGrant> {
 	if (!request || typeof request.path !== "string" || !isAbsolute(request.path)
 		|| (request.root !== null && (typeof request.root !== "string" || !isAbsolute(request.root)))
+		|| (request.fileOnly !== undefined && typeof request.fileOnly !== "boolean")
 		|| !Array.isArray(request.related) || !request.related.every(path => typeof path === "string" && isAbsolute(path))) {
 		throw new Error("Invalid preview grant.");
 	}
@@ -149,11 +164,11 @@ export async function grantPreview(request: PreviewGrantRequest, owner: number |
 	const folder = dirname(subject);
 	const broad = await broadFolders();
 	const candidate = request.root ? await prospectiveRealpath(resolve(request.root)) : null;
-	const root = candidate && inside(candidate, subject) && !isBroadFolder(candidate, broad) ? candidate
+	const root = request.fileOnly ? null : candidate && inside(candidate, subject) && !isBroadFolder(candidate, broad) ? candidate
 		: !isBroadFolder(folder, broad) ? folder : null;
 	const base = root ?? folder;
 	const files = new Map<string, string>();
-	if (!root) {
+	if (!root && !request.fileOnly) {
 		for (const path of request.related) {
 			const real = await prospectiveRealpath(resolve(path));
 			// Related files outside the subject folder have an absolute-path address, without a drive or leading slash.
@@ -166,8 +181,17 @@ export async function grantPreview(request: PreviewGrantRequest, owner: number |
 	const token = randomBytes(24).toString("hex");
 	const url = `${PREVIEW_SCHEME}://${token}/${documentPath}`;
 	if (generation !== epoch) throw new Error("The preview window reloaded.");
-	grants.set(token, { owner, subject, base, root, files, url, revision: -1, live: null, saved: false, policy: { scripts: false, network: false }, snapshots: new Map(), streams: new Set(), videoRequests: 0 });
+	grants.set(token, { owner, subject, base, root, files, url, revision: -1, live: null, saved: false, policy: { scripts: false, network: false }, snapshots: new Map(), streams: new Set(), videoRequests: 0, pdfRevisions: new Map() });
 	return { token, url, assetRoot: root !== null };
+}
+
+/** Extensionless omp blobs use main's signature check, never a renderer-supplied MIME type. */
+export async function grantBlobPreview(blobsDir: string, hash: string, owner: number | null = null): Promise<PreviewGrant | null> {
+	const blob = await blobImage(blobsDir, hash);
+	if (!blob) return null;
+	const grant = await grantPreview({ path: blob.path, root: null, related: [], fileOnly: true }, owner);
+	grants.get(grant.token)!.subjectType = image(blob.mime);
+	return grant;
 }
 
 export function setPreviewLive(token: string, revision: number, text: string, owner: number | null = null): void {
@@ -189,8 +213,20 @@ export function revokePreview(token: string, owner: number | null = null): void 
 	const grant = grants.get(token);
 	if (!grant || grant.owner !== owner) return;
 	grants.delete(token);
+	grant.pdfPreparation?.abort.abort();
+	grant.pdfPending?.resolve({ ok: false, reason: "revoked" });
+	grant.pdfPending = undefined;
+	for (const child of grant.pdfRevisions.values()) revokePreview(child.token, owner);
+	if (grant.parentToken) {
+		const parent = grants.get(grant.parentToken);
+		for (const [revision, child] of parent?.pdfRevisions ?? []) {
+			if (child.token === token) parent!.pdfRevisions.delete(revision);
+		}
+	}
+	for (const wake of streamWaiters) wake();
 	for (const stream of grant.streams) stream.destroy(new Error("The preview was revoked."));
 	for (const listener of revokeListeners) listener(token);
+	if (grant.privateDirectory) void rm(grant.privateDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }).catch(error => console.warn("Could not remove a PDF preview revision.", error));
 }
 export function revokeAllPreviews(): void {
 	epoch++;
@@ -223,8 +259,18 @@ function refused(status: number): Response { return new Response(null, { status,
 
 type OpenedPreview = { ok: true; file: FileHandle; size: number; readIdentity: IsolationReadIdentity } | { ok: false; status: number };
 
+async function pdfReady(file: FileHandle, size: number, complete: boolean): Promise<boolean> {
+	const head = Buffer.alloc(8);
+	await file.read(head, 0, head.length, 0);
+	if (!head.toString("latin1").startsWith("%PDF-")) return false;
+	if (!complete) return true;
+	const tail = Buffer.alloc(Math.min(size, 1024));
+	await file.read(tail, 0, tail.length, Math.max(0, size - tail.length));
+	return /%%EOF[\s\0]*$/.test(tail.toString("latin1"));
+}
+
 /** Both bounded documents and streamed video validate the opened inode against its current granted path. */
-async function openPreviewFile(token: string, grant: GrantState, path: string, type: ResponseType): Promise<OpenedPreview> {
+async function openPreviewFile(token: string, grant: GrantState, path: string, type: ResponseType, completePdf = false): Promise<OpenedPreview> {
 	let file: FileHandle | undefined;
 	try {
 		const real = await realpath(path);
@@ -239,6 +285,7 @@ async function openPreviewFile(token: string, grant: GrantState, path: string, t
 		if (!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino
 			|| (grant.root ? !inside(grant.root, checked) : checked !== path)) return { ok: false, status: 403 };
 		if (opened.size > type.cap) return { ok: false, status: 413 };
+		if (type.type === "application/pdf" && !await pdfReady(file, opened.size, completePdf)) return { ok: false, status: 409 };
 		if (grants.get(token) !== grant) return { ok: false, status: 404 };
 		const result: OpenedPreview = { ok: true, file, size: opened.size, readIdentity: { path: checked, dev: opened.dev, ino: opened.ino } };
 		file = undefined;
@@ -287,7 +334,18 @@ function videoRange(range: string, size: number): { start: number; end: number }
 
 async function streamPreviewVideo(request: Request, token: string, grant: GrantState, path: string, type: ResponseType): Promise<Response> {
 	request.signal.throwIfAborted();
-	if (grant.videoRequests >= VIDEO_REQUESTS_PER_GRANT || videoRequests >= VIDEO_REQUESTS_GLOBAL) return refused(429);
+	while (grant.videoRequests >= VIDEO_REQUESTS_PER_GRANT || videoRequests >= VIDEO_REQUESTS_GLOBAL) {
+		// Image grids wait without opening descriptors. Native players retain the existing overload response.
+		if (!type.type.startsWith("image/") && type.type !== "application/pdf") return refused(429);
+		const { promise, resolve } = Promise.withResolvers<void>();
+		const wake = () => { streamWaiters.delete(wake); request.signal.removeEventListener("abort", wake); resolve(); };
+		streamWaiters.add(wake);
+		request.signal.addEventListener("abort", wake, { once: true });
+		if (request.signal.aborted || grants.get(token) !== grant) wake();
+		await promise;
+		request.signal.throwIfAborted();
+		if (grants.get(token) !== grant) return refused(404);
+	}
 	// Reserve before any asynchronous path validation or open, including opens still pending on revocation.
 	grant.videoRequests++;
 	videoRequests++;
@@ -297,6 +355,7 @@ async function streamPreviewVideo(request: Request, token: string, grant: GrantS
 		released = true;
 		grant.videoRequests--;
 		videoRequests--;
+		for (const wake of streamWaiters) wake();
 	};
 	let file: FileHandle | undefined;
 	let streaming = false;
@@ -307,7 +366,9 @@ async function streamPreviewVideo(request: Request, token: string, grant: GrantS
 		const { size } = result;
 		request.signal.throwIfAborted();
 		if (grants.get(token) !== grant) return refused(404);
-		const range = request.headers.get("range");
+		const svg = type.type === "image/svg+xml";
+		// Namespace repair changes offsets. SVG responses ignore Range and stream a full representation.
+		const range = svg ? null : request.headers.get("range");
 		const extent = range === null ? { start: 0, end: size - 1 } : videoRange(range, size);
 		const responseHeaders = new Headers(headers(type, grant));
 		responseHeaders.set("Accept-Ranges", "bytes");
@@ -317,6 +378,7 @@ async function streamPreviewVideo(request: Request, token: string, grant: GrantS
 		}
 		responseHeaders.set("Content-Length", String(extent.end - extent.start + 1));
 		if (range !== null) responseHeaders.set("Content-Range", `bytes ${extent.start}-${extent.end}/${size}`);
+		if (svg) { responseHeaders.delete("Content-Length"); responseHeaders.set("Accept-Ranges", "none"); }
 		const init = { status: range === null ? 200 : 206, headers: responseHeaders };
 		if (request.method === "HEAD" || size === 0) return new Response(null, init);
 		// FileHandle owns the descriptor, so EOF, cancellation and destruction all close the same opened file.
@@ -326,6 +388,7 @@ async function streamPreviewVideo(request: Request, token: string, grant: GrantS
 			strategy: { highWaterMark: VIDEO_BUFFER_SIZE, size: chunk => chunk.byteLength },
 		}) as ReadableStream<Uint8Array>).getReader();
 		let received = 0;
+		let first = true;
 		const body = new ReadableStream<Uint8Array>({
 			start(controller) {
 				void source.closed.catch(error => controller.error(error));
@@ -339,7 +402,9 @@ async function streamPreviewVideo(request: Request, token: string, grant: GrantS
 						} else controller.close();
 					} else {
 						received += chunk.value.byteLength;
-						controller.enqueue(chunk.value);
+						// Repair only the first 64 KiB chunk, so a pathological XML prolog never accumulates in memory.
+						controller.enqueue(svg && first ? svgImagePrefix(Buffer.from(chunk.value)) : chunk.value);
+						first = false;
 					}
 				} catch (error) { controller.error(error); }
 			},
@@ -371,9 +436,9 @@ export async function handlePreviewRequest(request: Request): Promise<Response> 
 	if (request.method !== "GET" && request.method !== "HEAD") return refused(405);
 	const path = grant.root ? resolve(grant.base, ...address.segments) : grant.files.get(address.path);
 	if (!path || (grant.root && !inside(grant.root, path))) return refused(403);
-	const type = TYPES[extname(path).toLowerCase()];
+	const type = path === grant.subject && grant.subjectType ? grant.subjectType : TYPES[extname(path).toLowerCase()];
 	if (!type) return refused(415);
-	if (type.type.startsWith("video/")) return streamPreviewVideo(request, address.token, grant, path, type);
+	if (/^(video\/|audio\/|image\/|application\/pdf$)/.test(type.type)) return streamPreviewVideo(request, address.token, grant, path, type);
 	if (path === grant.subject && type.type.startsWith("text/html") && address.url.searchParams.has("rev")) {
 		const revision = address.url.searchParams.get("rev")!;
 		const snapshot = /^(0|[1-9]\d*)$/.test(revision) ? grant.snapshots.get(Number(revision)) : undefined;
@@ -384,11 +449,102 @@ export async function handlePreviewRequest(request: Request): Promise<Response> 
 	return result.ok ? new Response(request.method === "HEAD" ? null : result.snapshot.body, { headers: headers(result.snapshot.type, grant) }) : refused(result.status);
 }
 
+/** Queue only the newest request, and wait for aborted copy cleanup before opening its replacement. */
+function preparePdfRevision(token: string, grant: GrantState, revision: number, type: ResponseType): Promise<PreviewPrepared> {
+	const existing = grant.pdfRevisions.get(revision);
+	if (existing && grants.has(existing.token)) return Promise.resolve({ ok: true, policy: { ...grant.policy }, pdf: existing });
+	if (grant.pdfPreparation?.request.revision === revision && !grant.pdfPreparation.abort.signal.aborted) return grant.pdfPreparation.request.promise;
+	if (grant.pdfPending?.revision === revision) return grant.pdfPending.promise;
+	grant.pdfPending?.resolve({ ok: false, reason: "revoked" });
+	const { promise, resolve } = Promise.withResolvers<PreviewPrepared>();
+	grant.pdfPending = { revision, promise, resolve };
+	grant.pdfPreparation?.abort.abort();
+	void runPdfPreparations(token, grant, type);
+	return promise;
+}
+
+async function runPdfPreparations(token: string, grant: GrantState, type: ResponseType): Promise<void> {
+	if (grant.pdfPreparation) return;
+	while (grant.pdfPending) {
+		const request = grant.pdfPending;
+		grant.pdfPending = undefined;
+		const job = { request, abort: new AbortController() };
+		grant.pdfPreparation = job;
+		try {
+			request.resolve(await copyPdfRevision(token, grant, request.revision, type, job.abort));
+		} catch {
+			request.resolve({ ok: false, reason: job.abort.signal.aborted || grants.get(token) !== grant ? "revoked" : "missing" });
+		} finally {
+			grant.pdfPreparation = undefined;
+		}
+	}
+}
+
+/** Live PDFs need immutable disk revisions so a renderer rollback never rereads the file being overwritten. */
+async function copyPdfRevision(token: string, grant: GrantState, revision: number, type: ResponseType, abort: AbortController): Promise<PreviewPrepared> {
+	// The shown frame, its predecessor and one candidate may coexist. The renderer revokes obsolete children.
+	if (grant.pdfRevisions.size >= 3) return { ok: false, reason: "missing" };
+	let source: FileHandle | undefined, target: FileHandle | undefined, directory: string | undefined, retained = false;
+	const valid = () => !abort.signal.aborted && grants.get(token) === grant;
+	try {
+		const opened = await openPreviewFile(token, grant, grant.subject, type, true);
+		if (!opened.ok) return { ok: false, reason: opened.status === 403 ? "notFile" : "missing" };
+		source = opened.file;
+		if (!valid()) return { ok: false, reason: "revoked" };
+		const before = await source.stat();
+		if (before.size !== opened.size) return { ok: false, reason: "missing" };
+		directory = await mkdtemp(join(tmpdir(), "vomp-pdf-revision-"));
+		const path = join(directory, "revision.pdf");
+		target = await open(path, "wx+", 0o600);
+		const buffer = Buffer.allocUnsafe(VIDEO_BUFFER_SIZE);
+		for (let position = 0; position < opened.size;) {
+			if (!valid()) return { ok: false, reason: "revoked" };
+			const { bytesRead } = await source.read(buffer, 0, Math.min(buffer.length, opened.size - position), position);
+			if (!bytesRead) return { ok: false, reason: "missing" };
+			for (let written = 0; written < bytesRead;) {
+				if (!valid()) return { ok: false, reason: "revoked" };
+				const { bytesWritten } = await target.write(buffer, written, bytesRead - written, position + written);
+				if (!bytesWritten) return { ok: false, reason: "missing" };
+				written += bytesWritten;
+			}
+			position += bytesRead;
+		}
+		const after = await source.stat(), current = await stat(grant.subject);
+		if (!valid()) return { ok: false, reason: "revoked" };
+		if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs
+			|| current.dev !== before.dev || current.ino !== before.ino
+			|| await realpath(grant.subject) !== opened.readIdentity.path
+			|| (await target.stat()).size !== opened.size || !await pdfReady(target, opened.size, true)) return { ok: false, reason: "missing" };
+		await target.close(); target = undefined;
+		const child = await grantPreview({ path, root: null, related: [], fileOnly: true }, grant.owner);
+		if (!valid()) { revokePreview(child.token, grant.owner); return { ok: false, reason: "revoked" }; }
+		const childState = grants.get(child.token)!;
+		childState.privateDirectory = directory;
+		childState.parentToken = token;
+		grant.pdfRevisions.set(revision, child);
+		retained = true;
+		return { ok: true, policy: { ...grant.policy }, pdf: child };
+	} catch { return { ok: false, reason: valid() ? "missing" : "revoked" }; }
+	finally {
+		await source?.close();
+		await target?.close();
+		if (directory && !retained) await rm(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+	}
+}
+
 /** Keep the latest two exact document revisions, so validation and the iframe load use the same bytes. */
-export async function preparePreview(token: string, revision: number, owner: number | null = null): Promise<PreviewPrepared> {
+export async function preparePreview(token: string, revision: number, owner: number | null = null, completePdf = false): Promise<PreviewPrepared> {
 	const grant = grants.get(token);
 	if (!grant || grant.owner !== owner) return { ok: false, reason: "revoked" };
 	if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Invalid preview revision.");
+	const type = TYPES[extname(grant.subject).toLowerCase()];
+	if (type?.type === "application/pdf") {
+		if (completePdf) return preparePdfRevision(token, grant, revision, type);
+		const result = await openPreviewFile(token, grant, grant.subject, type, completePdf);
+		if (!result.ok) return { ok: false, reason: result.status === 403 ? "notFile" : "missing" };
+		await result.file.close();
+		return grants.get(token) === grant ? { ok: true, policy: { ...grant.policy } } : { ok: false, reason: "revoked" };
+	}
 	const isolationTest = isIsolationTestDocument(grant.subject, grant.saved);
 	const existing = grant.snapshots.get(revision);
 	if (existing?.isolationTest && (!isolationTest || !existing.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, existing.readIdentity))) {
@@ -396,7 +552,6 @@ export async function preparePreview(token: string, revision: number, owner: num
 		return { ok: false, reason: "notFile" };
 	}
 	if (existing && Boolean(existing.isolationTest) === isolationTest && existing.saved === grant.saved) return { ok: true, policy: { ...grant.policy }, anchor: existing.anchor, ...(existing.isolationTest ? { isolationTest: true } : {}) };
-	const type = TYPES[extname(grant.subject).toLowerCase()];
 	if (!type?.type.startsWith("text/html")) return { ok: false, reason: "notFile" };
 	const result = await readPreviewDocument(token, grant, grant.subject, type);
 	if (grants.get(token) !== grant) return { ok: false, reason: "revoked" };
@@ -454,7 +609,7 @@ export function registerPreviewProtocol(): void {
 	handleWithEvent("preview:grant", (event, request) => grantPreview(request, event.sender.id));
 	handleWithEvent("preview:live", (event, token, revision, text) => setPreviewLive(token, revision, text, event.sender.id));
 	handleWithEvent("preview:saved", (event, token) => savePreview(token, event.sender.id));
-	handleWithEvent("preview:prepare", (event, token, revision) => preparePreview(token, revision, event.sender.id));
+	handleWithEvent("preview:prepare", (event, token, revision, completePdf) => preparePreview(token, revision, event.sender.id, completePdf));
 	handleWithEvent("preview:readBinary", (event, token) => readPreviewBinary(token, event.sender.id));
 	handleWithEvent("preview:revoke", (event, token) => revokePreview(token, event.sender.id));
 	// Feature registration normally runs inside whenReady; this also keeps isolated registrations safe.

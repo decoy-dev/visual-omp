@@ -33,7 +33,12 @@ vi.mock("../../registry/lazy", async () => {
 });
 vi.mock("../projects/folders/homeDir", () => ({ useHomeDir: () => null }));
 vi.mock("./git-store", () => ({ useGit: () => ({ version: 0 }) }));
-vi.mock("./media", () => ({ ExpandPreview: () => null, PdfFrame: () => null, PreviewImage: () => null, ThumbnailFrame: () => null, Unavailable: () => null, ZoomImage: () => null }));
+vi.mock("./media", () => ({
+	ExpandPreview: () => null, PdfFrame: () => createElement("iframe", { title: "PDF" }),
+	MediaPlayer: ({ kind }: { kind: string }) => createElement(kind),
+	PreviewImage: () => null, ThumbnailFrame: () => null, Unavailable: () => null,
+	ZoomImage: ({ src, alt }: { src: string; alt: string }) => createElement("img", { src, alt }),
+}));
 vi.mock("./common", () => ({
 	PaneToolbar: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 	TabStrip: () => null, Section: () => null, SectionCount: () => null,
@@ -64,8 +69,9 @@ beforeEach(() => {
 	env.kind = "text";
 	env.livePreview = false;
 	env.invoke.mockReset().mockImplementation(async (channel: string) => {
-		if (channel === "panes:readFile") {
+		if (channel === "panes:inspect") {
 			if (env.kind === "folder") throw new Error("Not a file");
+			if (["image", "video", "audio", "pdf"].includes(env.kind)) return { kind: "media", media: env.kind, size: 120 * 1024 * 1024 };
 			return { kind: env.kind, size: 30, text: "<h1>Saved HTML source</h1>" };
 		}
 		if (channel === "preview:grant") return { token: "token", url: "vomp-preview://token/page.html", assetRoot: true };
@@ -118,5 +124,23 @@ describe("HTML Files viewer routing", () => {
 		await show("/project/page.txt");
 		expect(host.querySelector("iframe")).toBeNull();
 		expect(host.textContent).toContain("<h1>Saved HTML source</h1>");
+	});
+});
+
+describe("large local media routing", () => {
+	it.each([["movie.mp4", "video"], ["song.m4a", "audio"], ["poster.png", "image"], ["report.pdf", "pdf"]])("routes %s to its viewer without a whole-file read", async (name, kind) => {
+		env.kind = kind;
+		await show(`/project/${name}`);
+		expect(host.querySelector(kind === "image" ? "img" : kind === "pdf" ? "iframe" : kind)).not.toBeNull();
+		expect(env.invoke.mock.calls.some(call => call[0] === "panes:readFile" || call[0] === "panes:readPdf")).toBe(false);
+		if (kind === "image") expect(env.invoke).toHaveBeenCalledWith("preview:grant", { path: `/project/${name}`, root: null, related: [], fileOnly: true });
+	});
+	it("shows a bounded text prefix with an external-open action", async () => {
+		env.invoke.mockImplementation(async (channel: string) => channel === "panes:inspect" ? { kind: "text", text: "Start of large text", size: 50_000_000, truncated: true } : undefined);
+		await show("/project/large.txt");
+		expect(host.textContent).toContain("Start of large text");
+		expect(host.textContent).toContain("Showing the first 2 MB");
+		await act(async () => button(copy.outputs.openDefault).click());
+		expect(env.invoke).toHaveBeenCalledWith("app:openFile", "/project/large.txt", undefined);
 	});
 });

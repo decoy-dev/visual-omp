@@ -57,11 +57,11 @@ async function show() {
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	document.documentElement.dataset.motion = "reduced";
-	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke: vi.fn(async (channel: string) => channel === "panes:readPdf" ? new TextEncoder().encode("%PDF-1.4\n%%EOF\n") : null), on: () => () => {} } });
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke: vi.fn(async (channel: string) => channel === "preview:grant" ? { token: "pdf", url: "vomp-preview://pdf/report.pdf", assetRoot: false } : channel === "preview:prepare" ? { ok: true } : null), on: () => () => {} } });
 	fixture.outputs = [image, pdf];
 	host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => { root.unmount(); await vi.advanceTimersByTimeAsync(300); }); host.remove(); delete document.documentElement.dataset.motion; });
+afterEach(async () => { await act(async () => { root.unmount(); await vi.advanceTimersByTimeAsync(300); }); host.remove(); delete document.documentElement.dataset.motion; vi.unstubAllGlobals(); });
 afterAll(() => { if (fixture.animate) Object.defineProperty(Element.prototype, "animate", fixture.animate); vi.useRealTimers(); });
 it.each(["button", "Escape"])("focuses the saved viewer and returns to its image tile with %s", async action => {
 	await show();
@@ -88,7 +88,7 @@ it("returns focus from the expanded layer, then switches to a saved PDF and back
 	await until(() => document.activeElement === tile(image.path!));
 	await act(async () => tile(pdf.path!).click());
 	await until(() => Boolean(host.querySelector("iframe")) && document.activeElement === button(copy.outputs.back));
-	expect(host.querySelector("iframe")?.src).toContain("blob:");
+	expect(host.querySelector("iframe")?.src).toContain("vomp-preview://pdf/report.pdf");
 	await act(async () => button(copy.outputs.back).click());
 	await until(() => document.activeElement === tile(pdf.path!));
 });

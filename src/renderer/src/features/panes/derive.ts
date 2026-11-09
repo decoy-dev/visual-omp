@@ -618,7 +618,7 @@ export function devServerUrls(entries: readonly SessionEntry[], activeTools?: Re
 
 // ── outputs ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Image files the Files viewer and Outputs pane show from disk (main's `panes:readFile` image types). */
+/** Image paths the Files viewer and Outputs pane stream through scoped preview grants. */
 export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 export const PDF_EXT = /\.pdf$/i;
 /** Raster/PDF toolbar eligibility. Native thumbnails validate bytes; `app:openFile` confirms other regular files. */
