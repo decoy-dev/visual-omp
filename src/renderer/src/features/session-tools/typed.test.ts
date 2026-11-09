@@ -622,7 +622,8 @@ describe("TSP slash delivery", () => {
 		await sendSlashCommand(session, line);
 		await vi.advanceTimersByTimeAsync(650);
 		expect(commandResults(session)).toEqual([]);
-		expect(session.tspNotices.getSnapshot().filter(row => /Session compacted/.test(row.content))).toHaveLength(name === "handoff" ? 1 : 0);
+		// The handoff's "Session compacted 1 time" toast only restates the Handed off row.
+		expect(session.tspNotices.getSnapshot().filter(row => /Session compacted/.test(row.content))).toHaveLength(0);
 		expect(session.busy).toBe(false);
 	});
 

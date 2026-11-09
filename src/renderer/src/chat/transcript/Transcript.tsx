@@ -56,6 +56,7 @@ import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
 import { detailsRecord, isRecord } from "../../tool-render/util";
 import { ResultText } from "../../tool-render/parts";
 import { CommandResultRow } from "./CommandResultRow";
+import { CompactionRow } from "./CompactionRow";
 import { NoticeRow } from "./NoticeRow";
 import { ModelFallbackNotice } from "./ModelFallbackNotice";
 import { contentText, noticeIsStep, noticeVisible, parseNotice } from "./notices";
@@ -643,7 +644,7 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 	}
 }
 
-function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback }: RowProps): ReactNode {
+function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback, arrived }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
@@ -668,7 +669,7 @@ function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, m
 			return <NoticeRow entry={entry} mode={mode} />;
 		}
 		case "compaction":
-			return <Notice timestamp={entry.timestamp}>{t("compacted")}</Notice>;
+			return <CompactionRow entry={entry} arrived={arrived} />;
 		case "branch_summary":
 			return <Notice timestamp={entry.timestamp}>{t("branchSummary")}</Notice>;
 		case "model_change":

@@ -57,13 +57,26 @@
 	"redactedThinking": "Thinking (hidden by the model)",
 	"workingActivity": "Working… {{elapsed}} · {{activity}}",
 	"workingActivityUntimed": "Working · {{activity}}",
+	"ompActivity": "{{activity}} {{elapsed}}",
+	"stopOmpActivity": "Stop",
 	"waitingJobs": "Waiting for background jobs",
 	"stopWaiting": "Stop waiting",
 	"newActivity": "Show new activity",
 	"fileRow": "{{name}}, in {{folder}}",
 	"attachedImage": "Attached image {{number}}",
 	"showEarlier": "Show {{count}} earlier messages",
-	"compacted": "Context summarized",
+	"compaction": {
+		"handoff": {
+			"label": "Handed off",
+			"explain": "omp wrote this handoff and continues from it in place of the earlier messages, which stay above in this chat.",
+			"copy": "Copy handoff"
+		},
+		"summary": {
+			"label": "Context summarized",
+			"explain": "omp continues from this summary in place of the earlier messages, which stay above in this chat.",
+			"copy": "Copy summary"
+		}
+	},
 	"branchSummary": "Continued from another branch",
 	"modelChanged": "Switched to {{model}}",
 	"modelFallback": {

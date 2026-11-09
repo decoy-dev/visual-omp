@@ -181,6 +181,8 @@ export interface CompactionEntry extends EntryBase {
 	shortSummary?: string;
 	firstKeptEntryId: string;
 	tokensBefore: number;
+	/** Method that produced the entry, such as "handoff" for /handoff; absent on older sessions and extension compactions. */
+	method?: string;
 }
 
 export interface BranchSummaryEntry extends EntryBase {

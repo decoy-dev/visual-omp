@@ -1,12 +1,14 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
 import { BtwDrawer } from "../features/btw/BtwPane";
 import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
+import { type ShownActivity, useOmpActivity } from "../state/tsp/activity";
 import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
+import { useComposerDrafts } from "./composer/drafts";
 import { SessionHeader } from "./SessionHeader";
 import { useHelperFocus, closeHelper } from "../features/panes/helperFocus";
 import { lazyView, LoadFailed } from "../registry/lazy";
@@ -130,21 +132,29 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
  * step's own row shows: the newest running call, else the call streaming in, else writing a reply or thinking. The
  * time counts from the session controller's observed start, so switching chats or remounting keeps it; a turn
  * already under way when the chat joined shows no time. Status only: stopping is the composer's action slot. Mounted
- * only while working.
+ * only while working. Outside a model turn, omp's own progress for its work (`useOmpActivity`, such as /handoff
+ * writing its document) takes the row with omp's label and a Stop button, because the composer has no turn to stop.
  */
-function WorkingRow({ view, session }: { view: SessionView; session: SessionController }): ReactNode {
+function WorkingRow({ view, session, activity, stopFocus }: { view: SessionView; session: SessionController; activity: ShownActivity | null; stopFocus: RefObject<boolean> }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const now = useNow(1000);
-	const activity = t(chatActivityKey(view));
+	const activityName = t(chatActivityKey(view));
 	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);
 	const waiting = view.guest?.awaitingAsyncWork === true;
-	const label = waiting ? t("chat:waitingJobs") : time === null ? t("chat:workingActivityUntimed", { activity }) : t("chat:workingActivity", { elapsed: time, activity });
+	const own = !view.working && !waiting ? activity : null;
+	const label = own ? t("chat:ompActivity", { activity: own.label, elapsed: elapsed(now - own.since) })
+		: waiting ? t("chat:waitingJobs") : time === null ? t("chat:workingActivityUntimed", { activity: activityName }) : t("chat:workingActivity", { elapsed: time, activity: activityName });
 	return (
 		<div className="mx-auto flex min-h-9 w-full max-w-(--chat-max) items-center gap-2 px-6 pb-2">
 			<WorkingIndicator label={label} />
 			{waiting && !view.readOnly && view.mode === "live" && (
 				<Button size="sm" variant="ghost" className="ml-auto shrink-0" onClick={() => session.abort()}>
 					{t("chat:stopWaiting")}
+				</Button>
+			)}
+			{own && (
+				<Button data-omp-stop size="sm" variant="ghost" className="ml-auto shrink-0" onClick={own.stop} onFocus={() => { stopFocus.current = true; }} onBlur={event => { if (event.relatedTarget) stopFocus.current = false; }}>
+					{t("chat:stopOmpActivity")}
 				</Button>
 			)}
 		</div>
@@ -157,6 +167,18 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 	const slots = chatSlots.use();
 	const requested = useApp(state => !!state.btwDrawers[session.tabId]);
 	const helper = useHelperFocus(session.tabId);
+	const activity = useOmpActivity(session);
+	// Stop leaves with the run it stops; a keyboard user who had it focused returns to this chat's composer,
+	// unless focus already moved somewhere else.
+	const stopFocus = useRef(false);
+	const active = activity !== null;
+	useEffect(() => {
+		if (active || !stopFocus.current) return;
+		stopFocus.current = false;
+		// The row may still be fading out with Stop focused, or Stop may already be gone and focus on the body.
+		const current = document.activeElement;
+		if (current === null || current === document.body || current instanceof HTMLElement && current.dataset.ompStop !== undefined) useComposerDrafts.getState().focus(session.tabId);
+	}, [active, session]);
 	if (!view) return null;
 	const paused = !view.readOnly && view.host?.transport === "tsp" && (requested || view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw");
 	return (
@@ -180,8 +202,8 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 					.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
-				<Expand open={view.working || view.guest?.awaitingAsyncWork === true}>
-					<WorkingRow view={view} session={session} />
+				<Expand open={view.working || view.guest?.awaitingAsyncWork === true || activity !== null}>
+					<WorkingRow view={view} session={session} activity={activity} stopFocus={stopFocus} />
 				</Expand>
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">
 					<Composer session={session} />

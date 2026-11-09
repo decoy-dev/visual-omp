@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### New
 
 - Settings > About offers Roll back, and the successful update notice links to the version you used before updating. Both open Past versions with an eligible earlier release selected.
+- After /handoff, the chat shows a Handed off row that opens to the handoff document omp now continues from, with Copy. Summaries from compaction open the same way from their Context summarized row.
 
 ### Improved
 
@@ -17,6 +18,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Homebrew and Scoop rollback guidance now offers a verified installer download and explains how to switch to it while keeping app data and omp settings. Managed downloads require a published SHA-256 checksum and never run the installer automatically.
 - Saved-chat previews recover first prompts after large opening entries, within bounded transcript scan limits.
 - Unfinished native hook answers remain available when the same dialog is cancelled and reopened or shown in the omp screen.
+- While omp writes a handoff or a context summary, the chat now shows omp's progress with elapsed time and a Stop button, instead of looking idle until the command finishes.
 
 ## [0.7.11] - 2026-11-06
 

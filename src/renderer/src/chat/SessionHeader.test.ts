@@ -25,6 +25,7 @@ vi.mock("../state/app", () => ({
 	canReopenChat: () => false, closeAllChats: vi.fn(), closeChat: vi.fn(), controllerFor: vi.fn(), focusedTabId: () => "a",
 }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null, chatStatus: () => "saved" }));
+vi.mock("../state/tsp/activity", () => ({ useOmpActivity: () => null }));
 vi.mock("../shell/ChatStatusMark", () => ({ ChatStatusMark: () => null }));
 vi.mock("./branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("../features/palette/run", () => ({ runCommand: vi.fn() }));

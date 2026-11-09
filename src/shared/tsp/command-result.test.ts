@@ -76,4 +76,28 @@ describe("commandOutcome", () => {
 		expect(commandOutcome(snapshot(2, []), snapshot(3, [toast("Another guest joined")]), spec)).toBeNull();
 		expect(commandOutcomeSpec("/jobs")).toBeNull();
 	});
+	describe("a handoff's restating toast", () => {
+		const handoff = commandOutcomeSpec("/handoff")!;
+		const section: TspNode = { id: "handoff", k: "section", p: { role: "omp.compaction", head: [{ t: "Handed-off" }] }, c: [{ id: "summary", k: "md", p: { key: "summary", text: "# Handoff" } }] };
+		const settled = (sequence: number, nodes: TspNode[]) => { const value = snapshot(sequence, nodes); value.surfaces[0]!.settled = ["handoff"]; return value; };
+		const compacted = { ...toast("Session compacted 2 times"), id: "compacted" };
+		it("is delivered with the settled handoff while other toasts stay for notices", () => {
+			const other = { ...toast("Another guest joined"), id: "other" };
+			expect(commandOutcome(snapshot(2, []), settled(3, [section, compacted, other]), handoff)).toEqual({
+				status: "success", lines: [], nodes: [{ sf: "s:1", id: "handoff", text: "Handed-off\n# Handoff" }, { sf: "s:1", id: "compacted", text: "Session compacted 2 times" }],
+			});
+		});
+		it("is never consumed by a cancellation or a failure, even beside a settled section", () => {
+			for (const [message, status] of [["Handoff cancelled", "cancelled"], ["Handoff failed: provider refused", "error"]] as const) {
+				const outcome = commandOutcome(snapshot(2, []), settled(3, [section, toast(message), compacted]), handoff);
+				expect(outcome).toMatchObject({ status, lines: [message] });
+				expect(outcome?.nodes.map(node => node.id)).toEqual(["toast"]);
+			}
+		});
+		it("stays a notice when it arrives after the outcome", () => {
+			const done = settled(3, [section]);
+			expect(commandOutcome(snapshot(2, []), done, handoff)?.nodes.map(node => node.id)).toEqual(["handoff"]);
+			expect(commandOutcome(done, settled(4, [section, compacted]), handoff)).toBeNull();
+		});
+	});
 });

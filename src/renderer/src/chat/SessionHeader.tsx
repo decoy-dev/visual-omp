@@ -7,6 +7,7 @@ import { ChatStatusMark } from "../shell/ChatStatusMark";
 import { chatStatus, chatTitle, type ChatStatus } from "../shell/hooks";
 import { currentDock, dockKey, useApp, useDockVisible } from "../state/app";
 import { liveEntries, type SessionController, type SessionView } from "../state/session";
+import { useOmpActivity } from "../state/tsp/activity";
 import { useVisualSelection } from "../state/visualSnapshot";
 import { shallow } from "zustand/shallow";
 import {
@@ -176,6 +177,7 @@ function WorkChip({ session }: { session: SessionController }): ReactNode {
 export const SessionHeader = memo(function SessionHeader({ session, fallbackTitle }: { session: SessionController; fallbackTitle: string | null }): ReactNode {
 	const { t } = useTranslation(["chat", "shell"]);
 	const view = useVisualSelection(session.subscribe, session.getSnapshot, headerSelection, shallow);
+	const activity = useOmpActivity(session);
 	const commands = useCommands();
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const split = useApp(state => state.splitTabId !== null);
@@ -200,7 +202,8 @@ export const SessionHeader = memo(function SessionHeader({ session, fallbackTitl
 					</h1>
 				</PresenceSwap>
 				<p role="status" className="truncate text-sm text-fg-muted">
-					{t(`chat:header.state.${state}`)}
+					{/* omp's own work outside a model turn, such as /handoff, would otherwise read as ready. */}
+					{state === "ready" && activity ? activity.label : t(`chat:header.state.${state}`)}
 				</p>
 			</div>
 			<div className="flex min-w-0 shrink-0 items-center gap-0.5">

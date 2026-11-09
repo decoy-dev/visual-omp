@@ -8,6 +8,8 @@ export interface CommandOutcomeSpec {
 	cancelled?: RegExp;
 	/** A settled summary section with this completed heading is replicated by collab. */
 	compaction?: RegExp;
+	/** Status toasts that only restate a successful outcome; they are delivered with it, so no separate notice repeats them. */
+	restates?: RegExp;
 	quietMs?: number;
 	elapsedMs?: number;
 }
@@ -58,11 +60,13 @@ export function commandOutcome(before: TspHostSnapshot, after: TspHostSnapshot, 
 	const cancelled = candidates.filter(({ node, text }) => node.k !== "section" && spec.cancelled && matches(spec.cancelled, text));
 	const success = candidates.filter(({ node, text, completed }) => completed || node.p?.role === TSP_ROLES.toastStatus && spec.success && matches(spec.success, text));
 	const selected = (errors.length ? errors : cancelled.length ? cancelled : success).slice(0, 1);
+	const restated = !errors.length && !cancelled.length && selected.length && spec.restates
+		? candidates.filter(({ node, text }) => node.p?.role === TSP_ROLES.toastStatus && matches(spec.restates!, text)) : [];
 	if (selected.length) return {
 		status: errors.length ? "error" : cancelled.length ? "cancelled" : "success",
 		// Collab draws completed summaries. Their text never becomes a second command row.
 		lines: selected.filter(({ completed }) => !completed).flatMap(item => item.text.split("\n")),
-		nodes: selected.map(({ node, sf, text }) => ({ sf, id: node.id, text })),
+		nodes: [...selected, ...restated].map(({ node, sf, text }) => ({ sf, id: node.id, text })),
 	};
 	return spec.quietMs !== undefined && (spec.elapsedMs ?? 0) >= spec.quietMs && after.availability.available
 		? { status: "success", lines: [], nodes: [] } : null;
@@ -75,7 +79,7 @@ export function commandOutcomeSpec(line: string): CommandOutcomeSpec | null {
 		case "/rename": return { success: /^Session renamed to .+\.$/, errors: [/^Rename failed:\s*\S/i] };
 		case "/export": return { success: /^Session exported to:\s+\S/, errors: [/^Failed to export session:\s*\S/i] };
 		case "/compact": return { errors: [/^Compaction failed:\s*\S/i], cancelled: /^Compaction cancelled\.?$/i, compaction: /^(?:Soft|Snap|Remote|Server)-compacted\b/i };
-		case "/handoff": return { errors: [/^Handoff failed:\s*\S/i], cancelled: /^Handoff cancelled\.?$/i, compaction: /^Handed-off\b/i };
+		case "/handoff": return { errors: [/^Handoff failed:\s*\S/i], cancelled: /^Handoff cancelled\.?$/i, compaction: /^Handed-off\b/i, restates: /^Session compacted \d+ times?$/ };
 		case "/cleanse": return { success: /^Cleanse (?:complete|completed)\.?$/i, errors: [/^Cleanse failed:\s*\S/i], cancelled: /^Cleanse cancelled\.?$/i };
 		case "/jobs": {
 			const target = /^\/jobs\s+kill\s+(\S+)\s*$/i.exec(line.trim())?.[1];

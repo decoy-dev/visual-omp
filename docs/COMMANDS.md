@@ -24,9 +24,14 @@ continue with that message. Open omp menus and screen-mode settings retain their
 and close-screen instructions.
 In TSP chats, rename, export, compact, handoff, cleanse feedback and jobs-kill results use
 new or changed semantic feedback after submission. The result keeps omp's literal text and
-printed export path. Completed compaction and handoff content stays in its collab transcript row.
+printed export path. Completed compaction and handoff content stays in its collab transcript row,
+which says "Handed off" or "Context summarized" and opens to the document omp continues from, with Copy.
+omp does not save a /handoff document as a separate file; it replaces the earlier context in place, and
+the messages before it stay in the chat. While omp writes a handoff or summary, the working row and session
+header show omp's own label ("Generating handoff…", "Compacting context…") with elapsed time and Stop.
 Feedback delivered to a result row or native presentation is omitted from the separate notice
-projection. Undisplayed output returns to notices with its arrival anchor. A quiet jobs-kill
+projection, including the "Session compacted" toast that only restates a completed handoff.
+Undisplayed output returns to notices with its arrival anchor. A quiet jobs-kill
 waits 1.5 seconds before releasing the queue. Other commands retain their semantic editor watch
 and notices, while classic chats retain painted-screen result parsing.
 
