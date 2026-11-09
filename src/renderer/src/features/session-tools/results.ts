@@ -245,6 +245,8 @@ export interface CommandResultRecord {
 	lines: string[];
 	tone: ResultTone;
 	title?: string;
+	/** Only reports whose body consists of omp markdown opt in; earlier rows stay plain text. */
+	markdown?: boolean;
 	locations?: OutputLocation[];
 	/** Exact visible semantic fingerprint accepted into this row. */
 	provenance?: { hostId: string; epoch: number; generation: number; surfaceId: string; nodeId: string; text: string }[];

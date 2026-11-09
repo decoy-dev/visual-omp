@@ -1,13 +1,14 @@
 /**
  * What omp printed for a typed slash command (DESIGN §3.5 "Command results"): a tool-style row with the
- * command, and omp's lines in a monospace well below it, cut to a few lines with a control to show
- * all. Warnings and errors tone the row's icon. Ephemeral: dismissable and never saved.
+ * command and a bounded output well. Plain output keeps its lines; omp Markdown reports reuse the
+ * chat renderer and copy their raw source. Warnings and errors tone the row's icon. Rows are ephemeral.
  */
 import { Copy, FolderOpen, TerminalWindow, Warning, X, XCircle } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CommandPanelOwnership } from "../../features/session-tools/command-panels";
 import type { CommandResultRecord } from "../../features/session-tools/results";
+import { Markdown } from "../../transcript/Markdown";
 import { Button, cn, IconButton, toast } from "../../ui";
 import { TranscriptTime } from "./TranscriptTime";
 
@@ -59,6 +60,19 @@ function CommandResultLocation({ location }: { location: ResultLocation }): Reac
 export function CommandResultRow({ result, onDismiss }: { result: CommandResultRecord; onDismiss: () => void }): ReactNode {
 	const { t } = useTranslation("session");
 	const [open, setOpen] = useState(false);
+	const [overflows, setOverflows] = useState(false);
+	const markdownBody = useRef<HTMLDivElement>(null);
+	useLayoutEffect(() => {
+		if (!result.markdown) { setOverflows(false); return; }
+		const body = markdownBody.current;
+		if (!body || open) return;
+		const measure = () => setOverflows(body.scrollHeight > body.clientHeight + 1);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(body);
+		if (body.firstElementChild) observer.observe(body.firstElementChild);
+		return () => observer.disconnect();
+	}, [result.markdown, result.lines, open]);
 	const long = result.lines.length > COLLAPSED_LINES;
 	const shown = open || !long ? result.lines : result.lines.slice(0, COLLAPSED_LINES);
 	const ToneIcon = TONE_ICON[result.tone];
@@ -75,6 +89,15 @@ export function CommandResultRow({ result, onDismiss }: { result: CommandResultR
 				<ToneIcon className={cn("size-4 shrink-0", TONE_CLASS[result.tone])} aria-hidden />
 				<span className="selectable min-w-0 flex-1 truncate font-mono text-sm text-fg-muted">{result.command}</span>
 				<TranscriptTime timestamp={result.createdAt} />
+				{result.markdown && <IconButton
+					label={t("commandResult.copy")}
+					icon={<Copy />}
+					size="sm"
+					onClick={() => void navigator.clipboard.writeText(result.lines.join("\n")).then(
+						() => toast({ tone: "ok", message: t("commandResult.copied") }),
+						() => toast({ tone: "err", message: t("commandResult.copyFailed") }),
+					)}
+				/>}
 				<IconButton
 					label={t("commandResult.dismiss")}
 					icon={<X />}
@@ -85,17 +108,24 @@ export function CommandResultRow({ result, onDismiss }: { result: CommandResultR
 			</div>
 			<div className="pb-1 pl-6.5">
 				{result.title && <h3 className="selectable mb-2 text-sm font-medium text-fg [overflow-wrap:anywhere]">{result.title}</h3>}
-				<pre className="selectable max-h-96 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre text-fg-muted">
-					{shown.join("\n")}
-				</pre>
-				{long && (
+				{result.markdown ? (
+					<div ref={markdownBody} className={cn("selectable min-w-0 rounded-md bg-inset px-3 py-2 text-sm [overflow-wrap:anywhere]", !open && "max-h-96 overflow-auto")}>
+						<Markdown text={result.lines.join("\n")} />
+					</div>
+				) : (
+					<pre className="selectable max-h-96 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre text-fg-muted">
+						{shown.join("\n")}
+					</pre>
+				)}
+				{(long || overflows || open) && (
 					<button
 						type="button"
 						aria-expanded={open}
 						onClick={() => setOpen(value => !value)}
 						className="mt-1 rounded-sm text-sm font-medium text-fg-muted outline-none transition-colors duration-(--dur-fast) hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
-						{open ? t("commandResult.less") : t("commandResult.more", { count: result.lines.length })}
+						{result.markdown ? t(open ? "commandResult.lessReport" : "commandResult.moreReport")
+							: open ? t("commandResult.less") : t("commandResult.more", { count: result.lines.length })}
 					</button>
 				)}
 				{locations.length > 0 && (

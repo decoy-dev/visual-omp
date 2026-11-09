@@ -42,6 +42,13 @@ it("records a report once, claims only after visible presentation, then closes t
 	await act(async () => root.render(null)); expect(presentationClaims.getSnapshot()).toHaveLength(0);
 	await render(result); expect(fake.invoke).toHaveBeenCalledTimes(1);
 });
+it("carries recorded report Markdown into the retained Result", () => {
+	const frames = commandPanelFrames("tools"); const { session } = chat(); fake.snapshot = frames[0]!;
+	stops.push(startCommandPanels(session, "/tools", frames[0]!, null, "room"));
+	for (const frame of frames.slice(1)) publish(frame);
+	expect(commandResults(session)).toMatchObject([{ command: "/tools", markdown: true }]);
+	expect(commandResults(session)[0]!.lines[0]).toBe("| Tool | Description |");
+});
 it.each(["epoch", "generation", "room", "disposed", "sent"])("does not attach delayed panel feedback after %s invalidation", kind => {
 	const frames = commandPanelFrames("advisor-status"); const owner = chat(); fake.snapshot = frames[0]!;
 	stops.push(startCommandPanels(owner.session, "/advisor status", frames[0]!, null, "room"));

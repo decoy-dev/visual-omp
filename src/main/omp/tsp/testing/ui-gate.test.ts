@@ -345,6 +345,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			const panel = settledCommandPanel(node);
 			expect(!!report || !!panel, name).toBe(true);
 			const row = { id: name, command: panel?.command ?? `/${name.replace("-full", " full").replace("-", " ")}`, title: report?.title, lines: report?.lines ?? panel!.lines, tone: panel?.status === "error" ? "err" : panel?.status === "warning" || panel?.status === "cancelled" ? "warn" : "info", anchor: null, room: "gate", createdAt: Date.UTC(2026, 10, 9, 16),
+				markdown: report?.markdown,
 				...(panel?.path ? { locations: [{ kind: "path", value: panel.path }] } : {}),
 				panel: { hostId: "gate", epoch: snapshot.epoch, generation: 1, surfaceId: surface.open.id, nodeId: node.id, text: JSON.stringify(node), ...(report ? { close: report.close } : {}) } };
 			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.update(${JSON.stringify(snapshot)}); window.gate.showCommandResults(${JSON.stringify([row])});`);
@@ -355,9 +356,23 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 				await page.until("window.gate.calls.length === 1");
 				expect(await page.evaluate("window.gate.calls[0].args[2].act")).toBe("close");
 			}
+			if (name === "tools" || name === "changelog") {
+				expect(report?.markdown).toBe(true);
+				await page.until("!!document.querySelector('section[aria-label=\"Command feedback\"] .tr-md')");
+				if (name === "tools") expect(await page.evaluate("document.querySelector('section[aria-label=\"Command feedback\"] .tr-md table th')?.textContent")).toBe("Tool");
+				else expect(await page.evaluate("!!document.querySelector('section[aria-label=\"Command feedback\"] .tr-md h2') && !!document.querySelector('section[aria-label=\"Command feedback\"] .tr-md h3')")).toBe(true);
+				expect(await page.evaluate("document.querySelector('section[aria-label=\"Command feedback\"] .tr-md').parentElement.getBoundingClientRect().height <= 384")).toBe(true);
+			}
 			expect(await page.evaluate("document.body.scrollWidth <= innerWidth")).toBe(true);
 			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 			await writeFile(join(shots, `panel-${name}-${theme}.png`), Buffer.from(capture.data, "base64"));
+			if (name === "tools" || name === "changelog") {
+				await page.evaluate("window.reportCopied = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.reportCopied = text; } } });");
+				await page.clickElement("document.querySelector('button[aria-label=\"Copy result\"]')");
+				expect(await page.evaluate("window.reportCopied")).toBe(row.lines.join("\n"));
+				await page.clickElement("[...document.querySelectorAll('section[aria-label=\"Command feedback\"] button')].find(button => button.textContent === 'Show full report')");
+				expect(await page.evaluate("document.querySelector('section[aria-label=\"Command feedback\"] .tr-md').parentElement.classList.contains('max-h-96')")).toBe(false);
+			}
 		}
 		for (const name of ["cleanse", "omfg-error-panel"]) {
 			const snapshot = structuredClone(commandPanelFrames(name).find(frame => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "spinner" && node.id.includes(name === "cleanse" ? "head" : "j.0"))))!);

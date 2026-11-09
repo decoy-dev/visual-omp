@@ -41,6 +41,7 @@ export function startCommandPanels(session: SessionController, line: string, bas
 				const lines = report?.lines ?? panel!.lines;
 				addCommandResult(session, {
 					command: line, lines, title: report?.title, tone: panel?.status === "error" ? "err" : panel?.status === "warning" || panel?.status === "cancelled" ? "warn" : "info", anchor, room,
+					markdown: report?.markdown,
 					...(panel?.path ? { locations: [{ kind: "path" as const, value: panel.path }] } : {}),
 					panel: { hostId: baseline.hostId, epoch: baseline.epoch, generation: baseline.generation, surfaceId: surface.open.id, nodeId: node.id, text, ...(report ? { close: report.close } : {}) },
 				});

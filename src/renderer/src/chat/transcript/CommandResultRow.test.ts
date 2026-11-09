@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ReactI18next from "react-i18next";
 import type { CommandResultRecord } from "../../features/session-tools/results";
 import session from "../../i18n/en/session.json";
 import type * as UiModule from "../../ui";
@@ -9,7 +10,8 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import { CommandResultRow } from "./CommandResultRow";
 
 const fake = vi.hoisted(() => ({ invoke: vi.fn(), copy: vi.fn(), toast: vi.fn(), dismiss: vi.fn(), panel: vi.fn() }));
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async importOriginal => ({
+	...await importOriginal<typeof ReactI18next>(),
 	useTranslation: () => ({ t: (key: string, values: Record<string, string | number> = {}) => {
 		const text = session.commandResult[key.split(".")[1] as keyof typeof session.commandResult];
 		return text.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values[name] ?? ""));
@@ -66,6 +68,49 @@ describe("command result locations", () => {
 		expect(button("Show fewer lines")?.getAttribute("aria-expanded")).toBe("true");
 		await act(async () => button("Dismiss result")!.click());
 		expect(fake.dismiss).toHaveBeenCalledOnce();
+	});
+
+	it("renders report Markdown with the shared renderer and copies its complete raw source", async () => {
+		const raw = ["## Checker report", "", "| Tool | Result |", "| --- | --- |", "| `read` | Ready |", "", "```ts", "const ready = true;", "```", "", "### Details", "", "A complete report.", "", "The final line."].join("\n");
+		const lines = raw.split("\n");
+		await paint({ ...base, markdown: true, lines });
+		expect(container.querySelector(".tr-md h2")?.textContent).toBe("Checker report");
+		expect(container.querySelector(".tr-md table th")?.textContent).toBe("Tool");
+		expect(container.querySelector(".tr-md pre code")?.textContent).toContain("const ready = true;");
+		const content = container.querySelector(".tr-md")!.parentElement!;
+		expect(content.classList.contains("max-h-96")).toBe(true);
+		expect(container.querySelector(".tr-md")?.textContent).toContain("The final line.");
+		await act(async () => button("Copy result")!.click());
+		expect(fake.copy).toHaveBeenCalledExactlyOnceWith(raw);
+		expect(fake.toast).toHaveBeenLastCalledWith({ tone: "ok", message: session.commandResult.copied });
+		await act(async () => button("Show full report")!.click());
+		expect(content.classList.contains("max-h-96")).toBe(false);
+		await act(async () => button("Show less")!.click());
+		expect(content.classList.contains("max-h-96")).toBe(true);
+	});
+
+	it.each([undefined, false])("keeps an earlier or text-only Result plain when its Markdown flag is %s", async markdown => {
+		const lines = ["## Literal output", "| still | plain |"];
+		await paint({ ...base, lines, ...(markdown === undefined ? {} : { markdown }) });
+		expect(container.querySelector(".tr-md")).toBeNull();
+		expect(container.querySelector("pre")?.textContent).toBe(lines.join("\n"));
+		expect(button("Copy result")).toBeUndefined();
+	});
+
+	it("offers expansion for wrapped Markdown with fewer than twelve source lines", async () => {
+		let resize: (() => void) | undefined;
+		vi.stubGlobal("ResizeObserver", class {
+			constructor(callback: () => void) { resize = callback; }
+			observe() {}
+			disconnect() {}
+		});
+		await paint({ ...base, markdown: true, lines: ["A long report paragraph. ".repeat(200)] });
+		const content = container.querySelector(".tr-md")!.parentElement!;
+		Object.defineProperties(content, { clientHeight: { configurable: true, value: 384 }, scrollHeight: { configurable: true, value: 900 } });
+		await act(async () => resize!());
+		expect(button("Show full report")).toBeDefined();
+		await act(async () => button("Show full report")!.click());
+		expect(content.classList.contains("max-h-96")).toBe(false);
 	});
 
 	it("keeps a full URL selectable and copies it without opening or revealing it", async () => {

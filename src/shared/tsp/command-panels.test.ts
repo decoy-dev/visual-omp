@@ -23,6 +23,18 @@ describe("read-only command reports", () => {
 		expect(openOverlay([surface], false, new Map([[surface.open.id, new Set([node.id])]]))).toBeNull();
 		expect(openOverlay([surface], false, new Map())).not.toBeNull();
 	});
+	it.each(["tools", "changelog"])("preserves the recorded %s Markdown body and its format", name => {
+		const node = nodes(name).find(item => item.p?.role === TSP_ROLES.report)!;
+		const markdown = [...walkNodes(node)].find(item => item.k === "md")!;
+		expect(commandReport(node)).toMatchObject({ markdown: true, lines: markdown.k === "md" ? markdown.p!.text!.split("\n") : [] });
+	});
+	it("keeps text-only and mixed reports in plain text", () => {
+		const node = recordedReport();
+		expect(commandReport(node)?.markdown).toBe(false);
+		const body = [...walkNodes(node)].find(item => item.p?.role === TSP_ROLES.reportBody)!;
+		body.c = [...body.c!, { id: "additional-markdown", k: "md", p: { text: "## A separate Markdown section" } }];
+		expect(commandReport(node)).toMatchObject({ markdown: false, lines: ["Advisor is disabled.", "## A separate Markdown section"] });
+	});
 	it.each(["action", "body", "stream", "outside"])("leaves an unsupported %s report to the omp screen", kind => {
 		const report = recordedReport();
 		if (kind === "action") report.c = [...report.c!, { id: "new-action", k: "button", p: { text: "Delete", actions: { click: "delete" } } }];

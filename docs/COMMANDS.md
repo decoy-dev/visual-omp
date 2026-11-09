@@ -48,6 +48,9 @@ Read-only reports from `/tools`, `/changelog`, `/jobs full`, `/advisor status`, 
 SSH help/list and MCP listings retain omp's title and body in Result rows. The app closes the
 report through its declared Close action only after its native Result owns the exact report.
 Unsupported report content and additional actions stay in the omp screen.
+Reports consisting of omp Markdown use the chat's Markdown renderer, including tables, headings
+and code blocks. Long reports start within a bounded reading area and can expand. Copy result
+copies the complete original Markdown. Text-only reports and earlier Result rows remain plain text.
 Unclaimed semantic dock panels also open that screen, including the active `/omfg` and `/cleanse`
 boards. Their questions keep their existing cards. Settled outcomes remain in Result rows after
 the boards close: cleanse distinguishes Clean, Diagnostics remain, No runnable checker, Cancelled
