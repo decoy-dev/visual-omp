@@ -1,6 +1,6 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 export async function configureTour(env, manifest) {
   const configPath = join(env.PI_CODING_AGENT_DIR, "config.yml");
@@ -89,6 +89,19 @@ export async function appendRecordedTools(file, entries, recordings) {
   }
   append(assistant([{ type: "text", text: "The recorded tool-card examples are ready. No language server or web provider was contacted." }], "stop"));
   await appendFile(file, added.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+/**
+ * Makes a saved chat larger than the app's large-chat threshold with one extension-state entry, which omp keeps out
+ * of the model's context (`type: "custom"`), so resuming it or writing its handoff stays cheap for the fixture model.
+ */
+export async function padSession(root, file, entries, bytes) {
+  if (!bytes) return;
+  const path = relative(await realpath(root), await realpath(file));
+  if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) throw new Error("A padded tour session is outside its scratch root.");
+  const parentId = entries.findLast(entry => entry.id)?.id ?? null;
+  const entry = { type: "custom", id: randomUUID().slice(0, 8), parentId, timestamp: new Date().toISOString(), customType: "vomp-tour-padding", data: "x".repeat(bytes) };
+  await appendFile(file, JSON.stringify(entry) + "\n");
 }
 
 export function validateRecordedTools(entries, recordings) {

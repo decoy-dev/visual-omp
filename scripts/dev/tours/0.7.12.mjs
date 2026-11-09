@@ -60,5 +60,26 @@ export default {
         "fixture notes\nomp 18.18.3 asks questions as one HTML form. Questions cannot stay open across preparation, so send them here.\n\n1. Send fixture form. omp asks four release questions: a radio group, a checkbox group, a text field and a list. The chat's question card should ask them one at a time, with the preselected answers chosen, and the omp screen should not open for the same form.\n2. Answer each question. For Release channel, choose Other and type a custom channel to check the free-text Other answer. Send the answers once.\n3. The ask tool row in the transcript should show each question with the answer you gave, and none should say the form was invalid.\n4. Send fixture colors. The hex colors in the question and options show swatches.\n5. Older chats saved before omp 18.18.3 still show their questions and answers in the earlier list format.",
       ],
     },
+    {
+      id: "large-media", title: "05 Large local files in Files", pane: "files",
+      files: ["Large video.mp4", "Large image.png", "Large document.pdf", "Large notes.txt"],
+      prompts: [
+        "fixture bigmedia\nThis chat's folder now holds four local files larger than the Files viewer used to accept. Files shows their sizes as 57.2 MB, 22.0 MB, 104.0 MB and 3.1 MB.\n\n1. In the Files pane, open Large video.mp4. It should play, and you should be able to seek to the end; it previously said the file was too big to preview.\n2. Open Large image.png. It should show a teal and pink checkerboard.\n3. Open Large document.pdf. It should open to one page titled Large PDF preview.\n4. Open Large notes.txt. The viewer shows its first 2 MB with a note that the rest is not shown, and an Open in another app action.\n5. Close each view; reopening should load again without delay messages or errors.",
+      ],
+    },
+    {
+      id: "slash-feedback", title: "06 Slash command results stay in the chat", pane: "files",
+      prompts: [
+        "fixture notes\nCheck that slash commands report back in this chat. Before this release several of them printed only inside omp's own screen or opened it unexpectedly.\n\n1. Type /tools. A command result row should show omp's tool report with its title, its table formatted, and the omp screen should not open.\n2. Repeat with /changelog, /jobs full and /advisor status. Each should become its own result row. Expand the changelog with Show all, then hover over a result row and dismiss it.\n3. Type /stats. The result should keep the local dashboard address, with Copy.\n4. Type /clear. The result should say what omp reset, in this chat.\n5. Type /ssh list. The result row should show omp's host list or its empty message.\n6. Type /cleanse. This folder has no checker, so omp asks what to detect and fix, and that question opens in the omp screen. Choose Cancel: the screen closes and the chat keeps a No runnable checker result row.",
+      ],
+    },
+    {
+      id: "large-chat", title: "07 Large chat: start over with a handoff", pane: "files",
+      // Just over the app's 32 MiB large-chat threshold, as extension state omp keeps out of the model's context.
+      padBytes: 33 * 1024 * 1024,
+      prompts: [
+        "fixture notes\nThis saved chat is padded past 32 MB, so sending a message here asks whether to resume it.\n\n1. Type a message such as Continue with the release checks and send it. The Resume this large chat? dialog opens with Bring a handoff and my message to the new chat checked.\n2. Choose Start new chat. A new chat opens in the same folder at once, with a row reading Writing a handoff from this chat's title, a running time and Cancel. The fixture model takes about eight seconds.\n3. When it finishes, the new chat sends one message: a mention of the handoff file followed by your message. The handoff is saved in the old chat's session folder, and omp reads it from the mention.\n4. Return here, send another message, choose Start new chat again and Cancel while the handoff is written. Your message stays as the new chat's draft, and the row above the composer offers Send without handoff and Try again.\n5. Repeat once with the checkbox cleared: the new chat opens empty and your message stays unsent here, as before this release.",
+      ],
+    },
   ],
 };

@@ -164,6 +164,37 @@ export const RELEASE_FORM = [
   "</form>",
 ].join("\n");
 
+/**
+ * Local files over the Files viewer's former caps: a 24-second 20 Mbit/s video (about 60 MB), a PNG padded past 20 MB
+ * with a valid private chunk (a small raster, so decoding stays cheap), a PDF with a 104 MiB unused stream and a
+ * 3.1 MiB text file past the viewer's 2 MB text limit.
+ */
+export function bigMediaCommand() {
+  const video = "ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=1280x720:rate=30 -t 24 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -b:v 20M -minrate 20M -maxrate 20M -bufsize 2M -x264-params nal-hrd=cbr:force-cfr=1 -movflags +faststart 'Large video.mp4'";
+  const files = [
+    "import struct, zlib",
+    "def chunk(kind, data):",
+    "    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)",
+    "w, h = 640, 360",
+    "rows = b''.join(b'\\x00' + bytes((25 if ((x // 40) + (y // 40)) % 2 else 235, 127, 134)[c] for x in range(w) for c in range(3)) for y in range(h))",
+    "png = b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'vpAD', b'A' * (22 * 1024 * 1024)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')",
+    "open('Large image.png', 'wb').write(png)",
+    "text = b'BT /F1 26 Tf 48 730 Td (Large PDF preview) Tj 0 -40 Td /F1 15 Tf (This valid document is larger than 100 MB.) Tj ET'",
+    "objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>', b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', b'<< /Length %d >>\\nstream\\n' % len(text) + text + b'\\nendstream']",
+    "pdf = open('Large document.pdf', 'wb'); pdf.write(b'%PDF-1.7\\n'); offsets = []",
+    "for i, body in enumerate(objects):",
+    "    offsets.append(pdf.tell()); pdf.write(b'%d 0 obj\\n' % (i + 1) + body + b'\\nendobj\\n')",
+    "offsets.append(pdf.tell()); size = 104 * 1024 * 1024; pdf.write(b'6 0 obj\\n<< /Length %d >>\\nstream\\n' % size)",
+    "for _ in range(104): pdf.write(b'A' * (1024 * 1024))",
+    "pdf.write(b'\\nendstream\\nendobj\\n'); xref = pdf.tell()",
+    "pdf.write(b'xref\\n0 %d\\n0000000000 65535 f \\n' % (len(offsets) + 1) + b''.join(b'%010d 00000 n \\n' % o for o in offsets))",
+    "pdf.write(b'trailer\\n<< /Size %d /Root 1 0 R >>\\nstartxref\\n%d\\n%%%%EOF\\n' % (len(offsets) + 1, xref)); pdf.close()",
+    "open('Large notes.txt', 'w').write(''.join(f'Line {i:06d} of the large text sample.\\n' for i in range(86000)))",
+    "print('Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt.')",
+  ].join("\n");
+  return `${video} && python3 - <<'PY'\n${files}\nPY`;
+}
+
 function mentionsCommand() {
   return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
 }
@@ -198,7 +229,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -279,7 +310,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      const calls = fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },

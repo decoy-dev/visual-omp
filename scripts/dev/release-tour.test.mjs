@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, symlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,7 @@ import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
 import next from "./tours/0.7.12.mjs";
 import previous from "./tours/0.7.8.mjs";
-import { configureTour, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
@@ -253,6 +253,36 @@ test("recorded tools preserve omp result shapes and form paired saved messages",
   assert.match(saved.find(entry => entry.message?.toolName === "lsp").message.content[0].text, /12: const total/);
   saved.find(entry => entry.message?.toolName === "lsp").message.details = {};
   assert.throws(() => validateRecordedTools(saved, recordings), /Incomplete recorded/);
+});
+
+test("large-chat padding stays inside the scratch root and outside the model's context", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-padding-"));
+  const outside = await mkdtemp(join(tmpdir(), "vomp-tour-outside-"));
+  t.after(() => Promise.all([rm(root, { recursive: true, force: true }), rm(outside, { recursive: true, force: true })]));
+  const file = join(root, "chat.jsonl");
+  const entries = [{ type: "session", id: "session" }, { type: "message", id: "last", parentId: null, message: { role: "user", content: [{ type: "text", text: "fixture notes" }] } }];
+  const original = entries.map(entry => JSON.stringify(entry)).join("\n") + "\n";
+  await writeFile(file, original);
+  await padSession(root, file, entries, undefined);
+  assert.equal(await readFile(file, "utf8"), original);
+  const bytes = next.chats.find(chat => chat.id === "large-chat").padBytes;
+  assert.ok(bytes > 32 * 1024 * 1024);
+  await padSession(root, file, entries, bytes);
+  const saved = (await readFile(file, "utf8")).trimEnd().split("\n").map(line => JSON.parse(line));
+  assert.deepEqual(saved.slice(0, 2), entries);
+  assert.equal(saved.length, 3);
+  assert.equal(saved[2].type, "custom");
+  assert.equal(saved[2].parentId, "last");
+  assert.equal(saved[2].message, undefined);
+  assert.ok((await stat(file)).size > bytes);
+  const stranger = join(outside, "chat.jsonl");
+  await writeFile(stranger, original);
+  await assert.rejects(padSession(root, stranger, entries, 1), /outside its scratch root/);
+  if (process.platform !== "win32") {
+    await symlink(stranger, join(root, "linked.jsonl"));
+    await assert.rejects(padSession(root, join(root, "linked.jsonl"), entries, 1), /outside its scratch root/);
+  }
+  assert.equal(await readFile(stranger, "utf8"), original);
 });
 
 test("generated session validation parses JSONL and rejects failed turns", async t => {

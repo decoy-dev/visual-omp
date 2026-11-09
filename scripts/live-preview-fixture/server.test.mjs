@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COLOR_FORM, RELEASE_FORM, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
+import { COLOR_FORM, RELEASE_FORM, bigMediaCommand, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
 
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -193,6 +193,23 @@ test("bash trace fixture runs each output shape once and finishes after their re
     { role: "user", content: "fixture bash-trace" },
     { role: "assistant", tool_calls: calls.map((call, index) => ({ id: `trace-${index}`, function: { name: call.name, arguments: JSON.stringify(call.args) } })) },
     { role: "tool", content: "Trace fixture output." },
+  ]);
+  assert.deepEqual(followUp, []);
+});
+
+test("bigmedia writes four large local files with one bounded command and finishes after its result", async () => {
+  const calls = await callsFor("fixture bigmedia");
+  assert.equal(calls.length, 1);
+  const [call] = calls;
+  assert.equal(call.name, "bash");
+  assert.equal(call.args.timeout, 180);
+  assert.equal(call.args.command, bigMediaCommand());
+  for (const name of ["'Large video.mp4'", "open('Large image.png', 'wb')", "open('Large document.pdf', 'wb')", "open('Large notes.txt', 'w')"]) assert.ok(call.args.command.includes(name), name);
+  assert.match(call.args.command, /^ffmpeg .*-c:v libx264 .*&& python3 - <<'PY'\n[\s\S]*\nPY$/);
+  const followUp = await callsFor("", [
+    { role: "user", content: "fixture bigmedia" },
+    { role: "assistant", tool_calls: [{ id: "bigmedia-0", function: { name: call.name, arguments: JSON.stringify(call.args) } }] },
+    { role: "tool", content: "Created Large video.mp4, Large image.png and Large document.pdf." },
   ]);
   assert.deepEqual(followUp, []);
 });

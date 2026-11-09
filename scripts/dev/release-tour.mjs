@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { fixtureEnvironment, requireFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
-import { configureTour, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const defaultRelease = "0.7.12";
@@ -151,6 +151,7 @@ export async function prepareTour({ root, binary, manifest, signal }) {
     const generated = await generateChat({ root, env, binary, chat, signal });
     await appendRecordedTools(generated.sessionFile, await readTourSession(generated.sessionFile), chat.recordedTools);
     validateRecordedTools(await readTourSession(generated.sessionFile), chat.recordedTools);
+    await padSession(root, generated.sessionFile, await readTourSession(generated.sessionFile), chat.padBytes);
     if (chat.recordedTools) generated.tools.push(...chat.recordedTools.map(tool => tool.name));
     chats.push(generated);
     console.log(`Prepared ${chat.title}`);
