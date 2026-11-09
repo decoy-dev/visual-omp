@@ -182,6 +182,9 @@ describe("large-chat handoff recovery", () => {
 		await act(async () => { result.reject(new Error(error)); await flush(); });
 		assertDraft();
 		expect(element.textContent).toContain(error);
+		expect(entry()?.phase).toBe("failed");
+		expect(element.querySelector('[role="status"]')?.textContent).toBe("The handoff could not be completed.");
+		expect(element.querySelector(".text-warn")).not.toBeNull();
 		expect([...element.querySelectorAll("button")].map(button => button.textContent)).toEqual(["Send without handoff", "Try again"]);
 		expect(send).not.toHaveBeenCalled();
 		expect(release).not.toHaveBeenCalled();
@@ -197,8 +200,13 @@ describe("large-chat handoff recovery", () => {
 		expect(send).not.toHaveBeenCalled();
 		await act(async () => { cancellation.resolve(); await flush(); });
 		assertDraft();
-		expect(entry()?.phase).toBe("failed");
-		expect(element.textContent).toContain("cancelled");
+		expect(entry()?.phase).toBe("cancelled");
+		expect(entry()?.error).toBeUndefined();
+		expect(element.querySelector('[role="status"]')?.textContent).toBe("The handoff was cancelled.");
+		expect(element.querySelector("p")?.textContent).toBe("Your message is still a draft.");
+		expect(element.textContent).not.toContain("could not be completed");
+		expect(element.querySelector(".text-warn")).toBeNull();
+		expect(element.querySelector("svg.text-fg-muted")).not.toBeNull();
 		expect(element.textContent).toContain("Send without handoff");
 		expect(element.textContent).toContain("Try again");
 		expect(invoke.mock.calls.filter(([channel]) => channel === "sessions:cancelHandoff")).toHaveLength(1);
@@ -211,15 +219,20 @@ describe("large-chat handoff recovery", () => {
 		await cancelLargeHandoff("destination"); await renderRow();
 		assertDraft();
 		expect(element.textContent).toContain("Cancellation was refused");
+		expect(entry()?.phase).toBe("failed");
+		expect(element.querySelector('[role="status"]')?.textContent).toBe("The handoff could not be completed.");
+		expect(element.querySelector(".text-warn")).not.toBeNull();
 		expect(element.textContent).toContain("Send without handoff");
 		expect(element.textContent).toContain("Try again");
 		result.resolve({ file }); await flush();
 		expect(send).not.toHaveBeenCalled();
 	});
 
-	it("Send without handoff explicitly sends only the retained message, once", async () => {
+	it.each(["failed", "cancelled"] as const)("Send without handoff sends only the retained message once after %s", async phase => {
 		await startLargeHandoff(request());
-		result.reject(new Error("Timed out")); await flush(); await renderRow();
+		if (phase === "cancelled") await cancelLargeHandoff("destination");
+		else { result.reject(new Error("Timed out")); await flush(); }
+		await renderRow();
 		const sending = Promise.withResolvers<{ kind: "submitted" }>(); send.mockReturnValue(sending.promise);
 		await click("Send without handoff");
 		await sendWithoutHandoff("destination");

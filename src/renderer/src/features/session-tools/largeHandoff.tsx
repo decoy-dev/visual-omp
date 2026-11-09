@@ -1,4 +1,4 @@
-import { WarningCircle } from "@phosphor-icons/react";
+import { Info, WarningCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -19,7 +19,7 @@ export interface LargeHandoff {
 	projectPath: string;
 	title: string;
 	message: ResumeMessage;
-	phase: "writing" | "stopping" | "sending" | "failed";
+	phase: "writing" | "stopping" | "sending" | "failed" | "cancelled";
 	started: number;
 	error?: string;
 }
@@ -148,7 +148,7 @@ export async function cancelLargeHandoff(tabId: string): Promise<void> {
 	const id = operation.id;
 	try {
 		await window.vomp.invoke("sessions:cancelHandoff", id);
-		if (operations.get(tabId) === operation && operation.id === id) update({ ...entry, phase: "failed", error: i18n.t("session:largeResume.handoffCancelled") });
+		if (operations.get(tabId) === operation && operation.id === id) update({ ...entry, phase: "cancelled", error: undefined });
 	} catch (error) {
 		if (operations.get(tabId) === operation && operation.id === id) update({ ...entry, phase: "failed", error: error instanceof Error ? error.message : String(error) });
 	}
@@ -157,7 +157,7 @@ export async function cancelLargeHandoff(tabId: string): Promise<void> {
 export async function retryLargeHandoff(tabId: string): Promise<void> {
 	const operation = operations.get(tabId);
 	const entry = useLargeHandoffs.getState().pending[tabId];
-	if (!operation || entry?.phase !== "failed") return;
+	if (!operation || (entry?.phase !== "failed" && entry?.phase !== "cancelled")) return;
 	const id = operation.id;
 	operation.cancelled = true;
 	update({ ...entry, phase: "stopping", error: undefined });
@@ -173,7 +173,7 @@ export async function retryLargeHandoff(tabId: string): Promise<void> {
 export async function sendWithoutHandoff(tabId: string): Promise<void> {
 	const operation = operations.get(tabId);
 	const entry = useLargeHandoffs.getState().pending[tabId];
-	if (!operation || entry?.phase !== "failed") return;
+	if (!operation || (entry?.phase !== "failed" && entry?.phase !== "cancelled")) return;
 	try { await sendPending(entry, operation); }
 	catch (error) {
 		if (operations.get(tabId) === operation) update({ ...entry, phase: "failed", error: error instanceof Error ? error.message : String(error) });
@@ -186,15 +186,17 @@ export function LargeHandoffRow({ session }: ChatSlotProps): ReactNode {
 	const now = useNow(1_000);
 	if (!entry) return null;
 	const failed = entry.phase === "failed";
+	const cancelled = entry.phase === "cancelled";
+	const recoverable = failed || cancelled;
 	return <div className="mx-auto w-full max-w-(--chat-max) px-6 pb-3">
 		<div className="flex flex-wrap items-center gap-2 text-md">
-			{failed ? <WarningCircle className="size-4 shrink-0 text-warn" aria-hidden /> : <Spinner size={14} />}
-			<span role="status" className="min-w-0 flex-1 break-words">{t(failed ? "largeResume.handoffFailed" : entry.phase === "stopping" ? "largeResume.stoppingHandoff" : entry.phase === "sending" ? "largeResume.sendingHandoff" : "largeResume.writingHandoff", { title: entry.title })}</span>
-			{!failed && <span aria-hidden className="text-sm tabular-nums text-fg-muted">{elapsed(now - entry.started)}</span>}
+			{failed ? <WarningCircle className="size-4 shrink-0 text-warn" aria-hidden /> : cancelled ? <Info className="size-4 shrink-0 text-fg-muted" aria-hidden /> : <Spinner size={14} />}
+			<span role="status" className="min-w-0 flex-1 break-words">{t(failed ? "largeResume.handoffFailed" : cancelled ? "largeResume.handoffCancelled" : entry.phase === "stopping" ? "largeResume.stoppingHandoff" : entry.phase === "sending" ? "largeResume.sendingHandoff" : "largeResume.writingHandoff", { title: entry.title })}</span>
+			{!recoverable && <span aria-hidden className="text-sm tabular-nums text-fg-muted">{elapsed(now - entry.started)}</span>}
 			{entry.phase === "writing" && <Button size="sm" variant="ghost" onClick={() => void cancelLargeHandoff(entry.tabId)}>{t("common.cancel")}</Button>}
 		</div>
-		{failed && <>
-			<p className="mt-2 whitespace-pre-wrap break-words text-sm text-fg-muted">{entry.error}</p>
+		{recoverable && <>
+			<p className="mt-2 whitespace-pre-wrap break-words text-sm text-fg-muted">{cancelled ? t("largeResume.handoffDraftKept") : entry.error}</p>
 			<div className="mt-2 flex flex-wrap gap-2">
 				<Button size="sm" variant="secondary" onClick={() => void sendWithoutHandoff(entry.tabId)}>{t("largeResume.sendWithout")}</Button>
 				<Button size="sm" variant="ghost" onClick={() => void retryLargeHandoff(entry.tabId)}>{t("largeResume.tryAgain")}</Button>
