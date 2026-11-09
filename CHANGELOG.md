@@ -4,27 +4,46 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### New
+## [0.7.12] - 2026-11-09
+
+visual-omp 0.7.12 shows what slash commands and handoffs are doing, supports the question forms in omp 18.18.3 and later and opens large local files. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **Handoffs show their progress and result.** /handoff shows omp's progress with elapsed time and Stop, then a Handed off row that shows the handoff document with Copy.
+- **New:** Settings > About offers Roll back to an eligible earlier release. After a successful update, the notice offers the version you used before updating when it remains eligible.
+- **New:** Starting a new chat from a large chat can bring a handoff and your unsent message.
+- **Improved:** Running helpers appear in one compact row above the composer, with their time and Stop.
+- **Fixed:** **Slash commands answer in the chat.** Results, reports and outcomes from commands such as /tools, /move and /stats stay readable in the chat.
+- **Fixed:** Question forms from omp 18.18.3 and later, including the tabbed forms in 18.18.4, can be answered in the chat. Forms the chat cannot show offer View question in omp screen without opening it automatically.
+- **Fixed:** Local videos, large images and large PDFs open in Files without size limits.
+
+### Detailed changes
+
+#### New
 
 - Settings > About offers Roll back, and the successful update notice links to the version you used before updating. Both open Past versions with an eligible earlier release selected.
 - After /handoff, the chat shows a Handed off row that opens to the handoff document omp now continues from, with Copy. Summaries from compaction open the same way from their Context summarized row.
 - Starting a new chat from the large-chat warning can bring an omp handoff and send your pending message with its attachments. The option is on by default. If you cancel the handoff or omp cannot finish writing it, the message stays as a draft in the new chat.
 
-### Improved
+#### Improved
 
 - Running helpers appear in one compact row above the composer, with their duration and Stop controls. A brief teal cue marks activity updates; overflow and See all tasks open the chat's Tasks panel.
 
-### Fixed
+#### Fixed
 
 - An open helper conversation now follows the same helper after omp restores its interrupted work. Earlier queued messages remain failed and available to copy without being sent again.
 - Homebrew and Scoop rollback guidance now offers a verified installer download and explains how to switch to it while keeping app data and omp settings. Managed downloads require a published SHA-256 checksum and never run the installer automatically.
 - Saved-chat previews recover first prompts after large opening entries, within bounded transcript scan limits.
 - Unfinished native hook answers remain available when the same dialog is cancelled and reopened or shown in the omp screen.
 - While omp writes a handoff or a context summary, the chat now shows omp's progress with elapsed time and a Stop button, instead of looking idle until the command finishes.
-- Questions from omp 18.18.3 HTML forms show their fields and recorded answers, and can be answered through the chat's question cards, including free-text Other choices. Saved question-list calls from older omp remain readable.
+- Questions from omp 18.18.3 and later HTML forms show their fields and recorded answers, and can be answered through the chat's question cards, including free-text Other choices. With omp 18.18.4 and later they stay in the chat through tabs, Review and Hide. A form the chat cannot show offers View question in omp screen instead of opening it automatically. Saved question-list calls from older omp remain readable.
 - Local videos and audio play in Files, and images and PDFs load without file-size caps. Media streams through read-only file grants; large text shows its first 2 MB with an option to open the rest in another app. Live PDF previews retain checked revisions across incomplete saves and restore the preceding document when a replacement iframe reports an error.
 - Folder and worktree moves, context resets, SSH and MCP command feedback, extension errors and stats dashboard URLs now remain readable in the chat. Result locations offer Copy and existing local paths offer Show in folder.
-- Read-only slash-command reports retain omp's title and body in the chat. Live omfg and cleanse boards open in the omp screen, and their final outcomes remain available afterward, including omfg's saved rule path.
+- Read-only slash-command reports keep omp's title and body in the chat, with markdown such as tables and headings formatted. Live omfg and cleanse boards open in the omp screen, and their final outcomes remain available afterward, including omfg's saved rule path.
+- Model options refresh their capabilities and prices after omp is updated.
+- Short code in table columns, such as tool names, stays whole instead of breaking between letters.
+- File names formatted as inline code in replies, including names with spaces listed under a folder named in the same reply, open in the side panel viewer when exactly one existing file matches.
 
 ## [0.7.11] - 2026-11-06
 
