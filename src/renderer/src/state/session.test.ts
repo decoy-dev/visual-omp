@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@oh-my-pi/pi-wire";
+import type { AssistantMessage, MessageEntry, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { HostStartOptions, HostState } from "@shared/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver } from "../chat/composer/send";
@@ -159,11 +159,15 @@ const ids = (entries: readonly SessionEntry[] | null) => entries?.map(entry => e
 
 
 describe("Continue editor action", () => {
+	const assistant = (timestamp: number, stopReason: AssistantMessage["stopReason"]): AssistantMessage => ({
+		role: "assistant", content: [], model: "fixture", timestamp, stopReason,
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+	});
 	const ready = (working = true) => {
 		const session = new SessionController({ tabId: "continue", projectPath: "/p", sessionFile: null });
 		session.attach(host({ link: "L1", transport: "tsp", tspAvailability: { available: true, reason: null } }));
 		const guest = fakes.guests[0]!;
-		const aborted = { ...a1, message: { role: "assistant", content: [], stopReason: "aborted" } } as SessionEntry;
+		const aborted: MessageEntry = { type: "message", id: "a1", parentId: "u1", timestamp: "", message: assistant(0, "aborted") };
 		guest.emit("live", [u1, aborted], working);
 		respond = channel => channel === "native:snapshot" ? Promise.resolve({ modes: null, theme: null, ompVersion: "18.18.6", asyncJobsGeneration: 1 }) : undefined;
 		invoked = [];
@@ -231,9 +235,9 @@ describe("Continue editor action", () => {
 	});
 	it.each([false, true])("acknowledges a newer assistant request while working stays true (during submit=%s)", async duringSubmit => {
 		const { session, guest } = ready(true);
-		const original = { ...a1, message: { role: "assistant", content: [], timestamp: 100, stopReason: "aborted" } } as SessionEntry;
-		const resumed = { ...original, id: "resumed", message: { ...original.message, timestamp: 200, stopReason: "stop" } } as SessionEntry;
-		guest.emit("live", [u1], true, { stream: { role: "assistant", content: [], timestamp: 100 } as GuestSnapshot["stream"] });
+		const original = { type: "message", id: "a1", parentId: "u1", timestamp: "", message: assistant(100, "aborted") } satisfies MessageEntry;
+		const resumed = { ...original, id: "resumed", message: { ...original.message, timestamp: 200, stopReason: "stop" } } satisfies MessageEntry;
+		guest.emit("live", [u1], true, { stream: assistant(100, "aborted") });
 		await session.send("Next message");
 		const submitted = Promise.withResolvers<unknown>();
 		respond = channel => channel === "native:snapshot"
@@ -242,14 +246,14 @@ describe("Continue editor action", () => {
 		const operation = session.continueTurn();
 		await vi.waitFor(() => expect(invoked.some(([, , text]) => text === ".")).toBe(true));
 		// A late saved copy of the interrupted assistant is not a resumed request.
-		guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 100 } as GuestSnapshot["stream"] });
-		if (duringSubmit) guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 200 } as GuestSnapshot["stream"] });
+		guest.emit("live", [u1, original], true, { stream: assistant(100, "aborted") });
+		if (duringSubmit) guest.emit("live", [u1, original], true, { stream: assistant(200, "stop") });
 		submitted.resolve(null);
 		await operation;
 		expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(1);
 		if (!duringSubmit) {
 			expect(session.canContinue).toBe(false);
-			guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 200 } as GuestSnapshot["stream"] });
+			guest.emit("live", [u1, original], true, { stream: assistant(200, "stop") });
 		}
 		expect(session.getSnapshot().queue).toHaveLength(1);
 		respond = null;
