@@ -948,16 +948,15 @@ The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
 
-Other semantic overlays, dock panels and screen surfaces must retain the same unpresented
-identity for 300 ms before automatically opening the sheet. Identity includes host, room
-generation, protocol epoch and actual candidate surface/node ids; permanent dock slots,
-selection, progress, labels and repaint sequences do not define a new candidate.
+Semantic overlays, dock panels and screen surfaces do not open the omp screen on their
+own. Opening requires a current explicit screen request, such as Cmd+J, a View action or
+a typed command requesting a native screen. Rate-limit errors, task output and leftover
+pickers never create that intent.
 Supported hook dialogs are claimed while a mounted visible native `OmpDialogCard` presents them,
 with the same public props and presentation as classic. Matched hooks use the visible collab
-question card's exact request ownership. Automatic opening also excludes hooks whose arbitration
-status is matched, ambiguous, unavailable, settling or answering, even without a mounted native
-consumer. Only an authoritative unmatched hook can trigger an automatic sheet. Explicit View actions
-and the palette still open the hook with its arbitration restrictions. Disabled options remain inert under
+question card's exact request ownership. Unmatched or unsupported dialogs also require an
+explicit screen request. View actions and the palette open the hook with its arbitration
+restrictions. Disabled options remain inert under
 pointer and double-click input, and keyboard navigation skips them. Other uncertain arbitration
 states remain display-only in the native card. A local answer sends one guarded transaction:
 item-id activation, full-range UTF-16 edit followed by submit, or declared cancel/close with Escape
@@ -981,17 +980,16 @@ hook card reveals the generic hook, but Escape closes the sheet without cancelli
 When no native consumer is available, the generic guarded cancellation path remains unchanged.
 Availability is scoped to the same exact target, releases on hidden ancestors or unmount, and
 grants no input authority.
-Automatic sheet opening uses native-consumer availability as well as active presentation claims.
-That availability remains stable while a sheet covers a hook or plan card, so automatic opening
-cannot release the very ownership that decides whether to open it. The watcher re-reads current
-registrations at the passive-effect decision, after sibling layout effects register consumers.
-Dock rows and ANSI fallbacks still open the generic sheet; ordinary HUD status does not trigger automatic opening.
+Requested sheet opening uses native-consumer availability as well as active presentation
+claims. Availability remains stable while a sheet covers a hook or plan card. The watcher
+re-reads registrations after sibling layout effects register consumers. Dock rows and
+ANSI fallbacks remain available when the user opens the sheet, but never open it themselves.
 `state/tsp/screen-activity.ts` records exact-scope app-drive leases and explicit screen-request
 intent. Model selection, thinking cycles, internal navigation, advisor configuration and native
 app operations hold leases before their first write and release on completion, failure or scope
 invalidation, including while IPC or advisor finalization is still pending. Nested leases
-suppress new automatic openings until the last releases. A persistent
-leftover starts a fresh settle after release. Long command watches do not hold drive leases;
+postpone requested openings until the last releases. Releasing a drive lease does not
+request a screen for any leftover content. Long command watches do not hold drive leases;
 generic command writers release after submission, and model selection releases its picker lease
 before prolonged background-compaction observation.
 Explicit View actions and Cmd+J remain immediate. Typed native commands, Plan Review Save's
@@ -1002,12 +1000,10 @@ consumes that request after the same current frame has rendered and sibling layo
 registered. An overlapping drive postpones it; a changed scope, candidate or visibility cancels
 it and releases its subscriptions. This preserves explicit startup handoffs without enabling
 unattended startup opening. No animation-frame timing assumption opens a sheet directly.
-`features/palette/auto-screen.ts` tracks semantic continuity independently of visual rendering,
-including a disappearance hidden by visual batching. The watcher observes current documents,
-consumer availability, pane/window visibility and lease changes, then re-reads them at the final
-opening decision. Hidden windows cannot accumulate an automatic opening before their native
-consumers render again. Native departure closes only an automatic sheet immediately; manual
-sheets retain their existing ownership.
+`features/palette/auto-screen.ts` identifies candidates for exact explicit handoffs.
+The watcher rechecks host scope, consumer availability, visibility and request intent
+before opening. There is no automatic opening timer. Native departure closes a
+command-opened sheet immediately; manually opened sheets retain their ownership.
 Other overlays and focused raw fallbacks keep their guarded Escape handling.
 With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
 Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
@@ -1052,7 +1048,7 @@ settlement guard.
 Claims decide which native form content is duplicated in a manually opened omp screen.
 Ask forms never open that screen automatically. Unsupported or uncertain forms remain
 visible in the chat with an explicit View question in omp screen action. Other native
-dialogs retain their existing automatic-opening rules. omp supplies no common form request
+dialogs follow the same explicit-opening policy. omp supplies no common form request
 id across the two channels, so matching still uses content and established node identity.
 
 The form presenter is keyed by its tool call and host generation rather than each guest

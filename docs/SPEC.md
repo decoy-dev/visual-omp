@@ -80,14 +80,12 @@ be able to use it, and it exposes the features that set omp apart from other cod
   open. The app answers that resync request with a fresh join, retaining the displayed transcript
   until the replacement snapshot finishes and retiring old question answers immediately.
   Automatic resync attempts are limited to three within five minutes, matching omp's guest policy.
-- Full-screen menus and other omp content without a native app presentation open in the
-  **omp screen**, a semantic sheet, after the same unpresented state persists for 300 ms.
-  Internal app-driven omp interactions keep it closed while they operate, including model
-  switching and transcript rewinds. A persistent leftover is reconsidered when that operation
-  ends. Progress updates do not restart the settle. Explicit View actions and Cmd+J remain
-  immediate, as do requested native command screens and deliberate native path/board handoffs.
-  Native departure closes only an automatically opened sheet, without a closing delay.
-  A hidden window or pane does not open a sheet. Classic chats retain the painted terminal sheet.
+- Full-screen menus and other omp content without a native app presentation remain available
+  in the **omp screen**, a semantic sheet. It opens only on explicit request: View actions,
+  Cmd+J, requested native commands and deliberate native path/board handoffs. Errors,
+  task output and leftover app-driven pickers do not open it. Native departure closes only
+  a command-opened sheet, without a closing delay. A hidden window or pane does not open
+  a sheet. Classic chats follow the same opening policy with their painted terminal sheet.
   Settings > Advanced offers **Classic omp terminal**, off by default, to make new chats use
   omp's terminal screen if a chat does not work with the omp screen. Main reads the app preference
   `classicPresentation` when each host launches; open chats keep their view until omp restarts in them.

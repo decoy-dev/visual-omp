@@ -113,7 +113,11 @@ it.each(["hook-input", "hook-confirm", "hook-editor", "extension-rows", "plan-re
 	for (let update = 0; update < 3; update++) await act(async () => publish(documents));
 	expect(runtimeErrors).toEqual([]);
 	if (name === "extension-rows") {
-		await act(async () => { await vi.waitFor(() => expect(useApp.getState().terminalTabId).toBe(tabId)); });
+		expect(useApp.getState().terminalTabId).toBeNull();
+		expect(opened).toEqual([]);
+		let release = () => {};
+		await act(async () => { release = screenActivity.hold(snapshot, "request"); });
+		await act(async () => { release(); });
 		expect(useApp.getState().terminalTabId).toBe(tabId); expect(opened).toEqual([tabId]); expect(presentationClaims.getSnapshot()).toHaveLength(0);
 	} else {
 		expect(element.querySelector(`section[aria-label="${name.startsWith("plan-") ? "Plan ready for review" : "Question from omp"}"]`)).not.toBeNull();

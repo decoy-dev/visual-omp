@@ -4,14 +4,22 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### New
+
+- Main chats offer Continue in the chat menu to resume interrupted work, or to interrupt and continue a running reply. It requires omp 18.18.2 or later.
+
 ### Improved
 
 - Grep steps highlight the parts of a search pattern, leave out a redundant "1 file" when one file was searched, and show an empty search as a single "0 matches" line.
+- After Rewind to here, Undo returns the chat to its previous position and restores the draft the rewind replaced. Undo remains available until you send a message or the chat changes.
+- The omp screen and classic terminal appear without a slide animation.
 
 ### Fixed
 
 - The notice for a model change in the current chat only shows its keyboard shortcut with the app's key symbols, so it no longer appears as an empty box.
 - Chats no longer update a hidden handoff timer every second while no handoff is in progress.
+- Helper cards above the message box keep a readable width in narrow chats. Helpers that do not fit are available through the control that opens Tasks.
+- The omp screen and classic terminal open only when requested. Rate-limit errors, task output and leftover native menus no longer open them over the chat.
 
 ## [0.7.15] - 2026-11-10
 

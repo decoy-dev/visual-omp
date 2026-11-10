@@ -1,7 +1,6 @@
 /**
- * Shows persistent omp UI that has no app presentation. Internal app drivers suppress
- * automatic openings; explicit screen requests remain immediate. Only automatic sheets
- * close when their native content disappears.
+ * Opens requested omp UI after its native content arrives. Unrequested output never
+ * opens a sheet. Command-opened sheets close when their native content disappears.
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
@@ -11,7 +10,7 @@ import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../../state/tsp/useTsp";
 import { currentPresentationConsumers, currentTabPresentationVisible, subscribePresentationConsumers, usePresentationAvailability, usePresentationClaims, useTabPresentationVisible } from "../../state/tsp/presentation-claims";
 import { screenActivity, useScreenActivity } from "../../state/tsp/screen-activity";
-import { SCREEN_SETTLE_MS, ScreenSettle, screenCandidateKey } from "./auto-screen";
+import { screenCandidateKey } from "./auto-screen";
 
 function closeAutomaticSheet(tabId: string): void {
 	if (autoOpened.tabId !== tabId) return;
@@ -41,17 +40,15 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const activityScope = scope ?? (!tsp && view?.host ? { hostId: view.host.hostId, generation: view.host.generation, epoch: null } : null);
 	const driveVersion = useScreenActivity(activityScope, "drive");
 	const requestVersion = useScreenActivity(activityScope, "request");
-	const settle = useRef<ScreenSettle | null>(null);
-	settle.current ??= new ScreenSettle();
-	const currentKey = useRef<(automatic?: boolean) => string | null>(() => null);
-	currentKey.current = (automatic = false) => {
+	const currentKey = useRef<() => string | null>(() => null);
+	currentKey.current = () => {
 		const current = controller?.getSnapshot();
 		const latest = store.getSnapshot();
 		const app = useApp.getState();
 		if (!scope || !current || (current.mode !== "live" && !(current.mode === "starting" && (screenActivity.has(scope, "request") || autoOpened.tabId === tabId))) || current.readOnly || current.host?.hostId !== scope.hostId || current.host.generation !== scope.generation
 			|| !latest || latest.lifecycle !== "live" || latest.closing || latest.hostId !== scope.hostId || latest.generation !== scope.generation || latest.epoch !== scope.epoch
 			|| app.view !== "chat" || app.activeTabId !== tabId && app.splitTabId !== tabId || !currentTabPresentationVisible(tabId)) return null;
-		return screenCandidateKey(latest, currentPresentationConsumers(scope.hostId, scope.epoch), automatic);
+		return screenCandidateKey(latest, currentPresentationConsumers(scope.hostId, scope.epoch));
 	};
 	const asking = Boolean(view?.guest?.uiRequest || view?.guest && [...view.guest.activeTools.values()].some(tool => tool.toolName === "ask"));
 	const overlays = tui?.overlays ?? 0;
@@ -68,19 +65,17 @@ function TabWatch({ tabId }: { tabId: string }) {
 		if (!tsp) return;
 		const observe = () => {
 			const key = currentKey.current();
-			settle.current!.observe(scope && screenActivity.has(scope, "drive") ? null : currentKey.current(true), Date.now());
 			if (key === null) closeAutomaticSheet(tabId);
 		};
 		const off = [store.subscribe(observe), ...(controller ? [controller.subscribe(observe)] : []), screenActivity.subscribe(observe), subscribePresentationConsumers(observe), useApp.subscribe(observe)];
 		observe();
-		return () => { for (const stop of off) stop(); settle.current!.observe(null, Date.now()); };
+		return () => { for (const stop of off) stop(); };
 	}, [tsp, store, controller, hostId, view?.host?.generation, snapshot?.epoch, tabId]);
 
 	useEffect(() => {
 		const onScreen = currentTabPresentationVisible(tabId);
 		if (tsp) {
 			let cancelled = false;
-			let timer: number | undefined;
 			const attempt = () => {
 				const latest = store.getSnapshot();
 				// Opening waits for this exact native frame's layout claims, including queued handoffs.
@@ -93,16 +88,12 @@ function TabWatch({ tabId }: { tabId: string }) {
 				if (key !== semanticKey || screenActivity.has(scope, "drive")) return;
 				const explicit = screenActivity.allowsRequest(scope, scope.revision, key);
 				screenActivity.consumeRequests(scope, scope.revision);
-				if (useApp.getState().terminalTabId) return;
-				const automaticKey = explicit ? key : currentKey.current(true);
-				if (automaticKey === null) { settle.current!.observe(null, Date.now()); return; }
-				const remaining = explicit ? 0 : settle.current!.remaining(automaticKey, Date.now());
-				if (remaining > 0) { timer = window.setTimeout(attempt, remaining); return; }
+				if (!explicit || useApp.getState().terminalTabId) return;
 				autoOpened.tabId = tabId;
 				useApp.getState().openTerminal(tabId);
 			};
 			attempt();
-			return () => { cancelled = true; clearTimeout(timer); };
+			return () => { cancelled = true; };
 		}
 		if (!needsSheet || !hostId || !onScreen) {
 			if (autoOpened.tabId === tabId) {
@@ -111,25 +102,20 @@ function TabWatch({ tabId }: { tabId: string }) {
 			}
 			return;
 		}
-		if (activityScope && screenActivity.has(activityScope, "drive")) return;
+		if (!activityScope || !screenActivity.has(activityScope, "request") || screenActivity.has(activityScope, "drive")) return;
 		if (useApp.getState().terminalTabId) return;
 		let cancelled = false;
-		const timer = window.setTimeout(() => {
-			void window.vomp
-				.invoke("host:screen", hostId)
-				.then(lines => {
-					if (cancelled || useApp.getState().terminalTabId || activityScope && screenActivity.has(activityScope, "drive") || isNativeOverlay(lines)) return;
-					// An in-place dialog only counts when we recognise it; focus moves for other reasons too.
-					if (overlays === 0 && screenName(lines) === null) return;
-					autoOpened.tabId = tabId;
-					useApp.getState().openTerminal(tabId);
-				})
-				.catch(() => undefined);
-		}, SCREEN_SETTLE_MS);
-		return () => {
-			cancelled = true;
-			clearTimeout(timer);
-		};
+		void window.vomp
+			.invoke("host:screen", hostId)
+			.then(lines => {
+				if (cancelled || !currentTabPresentationVisible(tabId) || useApp.getState().terminalTabId || !screenActivity.has(activityScope, "request") || screenActivity.has(activityScope, "drive") || isNativeOverlay(lines)) return;
+				// An in-place dialog only counts when we recognise it; focus moves for other reasons too.
+				if (overlays === 0 && screenName(lines) === null) return;
+				autoOpened.tabId = tabId;
+				useApp.getState().openTerminal(tabId);
+			})
+			.catch(() => undefined);
+		return () => { cancelled = true; };
 	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticKey, live, visible, driveVersion, requestVersion, snapshot?.revision]);
 
 	return null;

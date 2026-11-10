@@ -419,34 +419,55 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
 			if (mode === "driven") await page.evaluate(`window.gate.update(${JSON.stringify(closed)})`);
 			releaseAt = await page.evaluate<number>("(() => { const at=performance.now(); window.gate.endScreenActivity(); return at; })()");
-			if (mode === "driven") await delay(400);
-			else {
-				await delay(200);
-				expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
-				await page.until("!!document.querySelector('.tsp-screen')");
-			}
+			await delay(400);
 		} else if (mode === "persistent") {
-			// Continuous unrelated publications must not postpone the original 300 ms deadline.
+			// Repainting unsolicited content must never become a request to open it.
 			for (let repaint = 0; repaint < 4; repaint++) {
 				await delay(100);
 				for (const surface of shown.surfaces) surface.sequence++;
 				await page.evaluate(`window.gate.update(${JSON.stringify(shown)})`);
 			}
-			expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null).length")).toBe(1);
-			await page.until("!!document.querySelector('.tsp-screen')");
+			expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
 		} else await page.until("!!document.querySelector('.tsp-screen')");
 		const openings = await page.evaluate<{ at: number; terminalTabId: string }[]>("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)");
-		if (mode === "transient" || mode === "driven") expect(openings).toEqual([]);
+		if (mode !== "requested") expect(openings).toEqual([]);
 		else {
 			expect(openings).toHaveLength(1);
-			if (mode === "requested") expect(openings[0]!.at - shownAt).toBeLessThan(250);
-			else expect(openings[0]!.at - (releaseAt ?? shownAt)).toBeGreaterThanOrEqual(290);
+			expect(openings[0]!.at - shownAt).toBeLessThan(250);
 		}
 		await page.evaluate(`window.gate.endScreenActivity(); window.gate.update(${JSON.stringify(closed)})`);
 		await page.until("!document.querySelector('.tsp-screen')");
 		const events = await page.evaluate("window.gate.formPresentationEvents");
 		expect(await page.evaluate("window.gate.calls")).toEqual([]);
 		await writeFile(join(shots, `model-picker-${placement}-${mode}.json`), JSON.stringify({ recording: mode === "persistent" || mode === "requested" ? "model-picker" : "model-switch", placement, mode, shownAt, releaseAt, events, seam: "Production OverlayWatcher, exact-scope interaction registry and semantic sheet; recorded picker frames, with dock placement matching the owner's live layout." }, null, 2));
+	}, 30_000);
+
+	it("keeps rate-limit errors and task output out of the omp screen until explicitly requested", async () => {
+		const snapshot: TspHostSnapshot = {
+			hostId: "gate", generation: 1, epoch: 1, revision: 1, negotiated: true,
+			lifecycle: "live", documentGeneration: 1, failure: null,
+			availability: { available: true, reason: null },
+			surfaces: [{
+				open: { id: "s:1", mode: "screen" }, documentGeneration: 1,
+				sequence: 1, closed: false, suspended: false, settled: [], focus: null,
+				document: { id: "s:1", k: "col", c: [{ id: "main", k: "col", c: [
+					{ id: "error", k: "text", p: { text: "429 rate_limit_error: Please try again later." } },
+					{ id: "tasks", k: "text", p: { text: "8 of 13 tasks complete" } },
+				] }] },
+			}],
+		};
+		await page.evaluate(`window.gate.showAutomatic(${JSON.stringify(snapshot)})`);
+		await delay(1000);
+		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
+		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+		const closedCapture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+		await writeFile(join(shots, "unsolicited-error-screen-closed.png"), Buffer.from(closedCapture.data, "base64"));
+		await page.evaluate("window.gate.beginScreenActivity('request')");
+		await page.until("!!document.querySelector('.tsp-screen')");
+		expect(await page.evaluate("document.querySelector('.tsp-screen').textContent")).toContain("429 rate_limit_error");
+		const requestedCapture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+		await writeFile(join(shots, "requested-error-screen-open.png"), Buffer.from(requestedCapture.data, "base64"));
+		await page.evaluate("window.gate.endScreenActivity()");
 	}, 30_000);
 
 	it.each(["full", "reduced", "system"] as const)("shows requested omp content at rest on its first frame with %s motion", async motion => {

@@ -3,7 +3,7 @@ import type { TspNode } from "@shared/tsp";
 import type { TspSurfaceSnapshot } from "@shared/tsp-host";
 import { unclaimedDockPanels } from "@shared/tsp/dock-panels";
 import { TSP_ROLES } from "@shared/tsp/roles";
-import { ScreenSettle, unpresentedScreenKey } from "./auto-screen";
+import { unpresentedScreenKey } from "./auto-screen";
 
 function dock(node: TspNode): TspSurfaceSnapshot {
 	return { open: { id: "s:1", mode: "inline", role: TSP_ROLES.session }, sequence: 1, closed: false, suspended: false, settled: [], focus: null,
@@ -11,19 +11,7 @@ function dock(node: TspNode): TspSurfaceSnapshot {
 }
 const picker: TspNode = { id: "models", k: "picker", p: { title: "Models", items: [{ id: "a", label: "First" }, { id: "b", label: "Second" }], selected: "a" } };
 
-describe("automatic screen continuity", () => {
-	it("settles the same candidate without restarting on observations", () => {
-		const settle = new ScreenSettle();
-		settle.observe("picker", 100);
-		expect(settle.remaining("picker", 299)).toBe(101);
-		settle.observe("picker", 399); expect(settle.remaining("picker", 400)).toBe(0);
-	});
-	it("restarts for a replacement and a disappearance skipped by visual batching", () => {
-		const settle = new ScreenSettle(); settle.observe("first", 0);
-		expect(settle.remaining("second", 200)).toBe(300);
-		settle.observe(null, 250); settle.observe("second", 270);
-		expect(settle.remaining("second", 500)).toBe(70);
-	});
+describe("requested screen identity", () => {
 	it("identifies the actual dock picker instead of its permanent slot", () => {
 		const surface = dock(structuredClone(picker));
 		expect(unclaimedDockPanels([surface], new Map()).map(target => target.node.id)).toEqual(["models"]);
