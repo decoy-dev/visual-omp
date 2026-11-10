@@ -449,6 +449,56 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await writeFile(join(shots, `model-picker-${placement}-${mode}.json`), JSON.stringify({ recording: mode === "persistent" || mode === "requested" ? "model-picker" : "model-switch", placement, mode, shownAt, releaseAt, events, seam: "Production OverlayWatcher, exact-scope interaction registry and semantic sheet; recorded picker frames, with dock placement matching the owner's live layout." }, null, 2));
 	}, 30_000);
 
+	it.each(["full", "reduced", "system"] as const)("shows requested omp content at rest on its first frame with %s motion", async motion => {
+		const documents = new FixtureDocuments();
+		const frames: TspHostSnapshot[] = [];
+		for (const message of loadFixtureRecording("model-picker").messages) {
+			documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			if (message.verb === "f") frames.push(fixtureSnapshot(documents));
+		}
+		const hasPicker = (frame: TspHostSnapshot) => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "picker" && node.p?.noun === "models"));
+		const index = frames.findIndex(hasPicker);
+		expect(index).toBeGreaterThan(0);
+		const shown = frames[index]!;
+		const closed = frames.slice(index + 1).find(frame => !hasPicker(frame))!;
+		await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+		try {
+			await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; ${motion === "system" ? "delete document.documentElement.dataset.motion;" : ""} window.gate.showAutomatic(${JSON.stringify(frames[index - 1])})`);
+			await page.evaluate("window.gate.beginScreenActivity('request')");
+			const first = await page.evaluate<{ animation: string; opacity: string; translate: string; top: number; bottom: number; viewport: number }>(`(() => {
+				const { promise, resolve } = Promise.withResolvers();
+				const sample = () => {
+					const content = document.querySelector('.tsp-screen');
+					if (!content) { requestAnimationFrame(sample); return; }
+					const style = getComputedStyle(content.closest('.vo-sheet'));
+					const rect = content.getBoundingClientRect();
+					resolve({ animation: style.animationName, opacity: style.opacity, translate: style.translate, top: rect.top, bottom: rect.bottom, viewport: innerHeight });
+				};
+				requestAnimationFrame(sample);
+				window.gate.update(${JSON.stringify(shown)});
+				return promise;
+			})()`);
+			expect(first.animation).toBe("none");
+			expect(first.opacity).toBe("1");
+			expect(first.translate).toBe("none");
+			expect(first.top).toBeGreaterThanOrEqual(0);
+			expect(first.bottom).toBeLessThanOrEqual(first.viewport);
+			const otherSheet = await page.evaluate<string>(`(() => {
+				const sheet = document.querySelector('.vo-sheet');
+				sheet.classList.remove('omp-screen-sheet');
+				const animation = getComputedStyle(sheet).animationName;
+				sheet.classList.add('omp-screen-sheet');
+				return animation;
+			})()`);
+			expect(otherSheet).toContain(motion === "full" ? "vo-slide-in-bottom" : "vo-fade-in");
+			await writeFile(join(shots, `requested-screen-first-frame-${motion}.json`), JSON.stringify({ first, otherSheet }, null, 2));
+		} finally {
+			await page.evaluate(`window.gate.endScreenActivity(); window.gate.update(${JSON.stringify(closed)})`);
+			await page.until("!document.querySelector('.tsp-screen')");
+			await page.send("Emulation.setEmulatedMedia", { features: [] });
+		}
+	}, 30_000);
+
 	it.each(feedbackCases.flatMap(([name, command, expected]) => (["light", "dark"] as const).map(theme => ({ name, command, expected, theme }))))("renders command Result $name in $theme without an omp screen", async ({ name, command, expected, theme }) => {
 		const rows = feedbackResults(name, command);
 		expect(rows.some(row => row.lines.join("\n").includes(expected) || row.locations?.some(location => location.value === expected))).toBe(true);

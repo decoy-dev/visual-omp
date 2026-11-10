@@ -435,3 +435,8 @@
 		}
 	}
 }
+
+/* Requested omp content must be readable on its first frame, including under reduced motion. */
+:root .vo-sheet.omp-screen-sheet[data-state="open"] {
+	animation: none !important;
+}

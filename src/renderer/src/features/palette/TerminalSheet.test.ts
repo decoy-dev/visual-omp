@@ -31,7 +31,8 @@ vi.mock("../../registry/lazy", async () => {
 vi.mock("../../ui", () => ({
 	cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 	Sheet: ({ children }: PropsWithChildren) => children,
-	SheetContent: ({ children, title, description, onEscapeKeyDown, onKeyDownCapture }: PropsWithChildren<{ title: ReactNode; description: ReactNode; onEscapeKeyDown: (event: unknown) => void; onKeyDownCapture: (event: ReactKeyboardEvent) => void }>) => createElement("div", {
+	SheetContent: ({ children, title, description, className, onEscapeKeyDown, onKeyDownCapture }: PropsWithChildren<{ title: ReactNode; description: ReactNode; className?: string; onEscapeKeyDown: (event: unknown) => void; onKeyDownCapture: (event: ReactKeyboardEvent) => void }>) => createElement("div", {
+		className,
 		onKeyDownCapture,
 		onKeyDown: (event: ReactKeyboardEvent) => { if (event.key === "Escape") onEscapeKeyDown(event); },
 	}, createElement("h2", null, title), createElement("p", null, description), children),
@@ -70,6 +71,12 @@ beforeEach(() => {
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); await vi.runAllTicks(); element.remove(); vi.useRealTimers(); });
+
+it.each([{ transport: "TSP", tsp: true }, { transport: "classic", tsp: false }])("marks the $transport presentation for immediate sheet entry", async ({ tsp }) => {
+	fake.view = hostView(tsp);
+	await render();
+	expect(element.querySelector(".omp-screen-sheet")).not.toBeNull();
+});
 
 it("shows the omp screen without mounting xterm, polling painted titles or resizing the classic terminal", async () => {
 	await render();

@@ -179,6 +179,7 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 		>
 			<SheetContent
 				side="bottom"
+				className="omp-screen-sheet"
 				height={expanded ? "calc(100vh - var(--titlebar-h) - 16px)" : "80vh"}
 				title={
 					<span className="flex items-center gap-2">

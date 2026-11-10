@@ -828,6 +828,8 @@ The title bar's Search commands field and ⌘K (Ctrl+K) open a centered 640px pa
 
 The omp sheet opens at the bottom at 80% of the window height and can expand to fill the window. TSP chats show the semantic omp screen, the default for app-hosted chats on macOS, Linux and Windows. Settings > Advanced offers "Classic omp terminal", off by default, for new chats that need omp's terminal screen. Main reads the choice at host launch; open chats keep their view until omp restarts in them. Developer overrides `VOMP_TSP=1` and `VOMP_TSP=0` force TSP and classic respectively on every platform. Windows TSP hosts use node-pty's bundled ConPTY; classic hosts use the system ConPTY. Classic adapters remain while the setting exists; any later removal is the owner's decision.
 
+The omp screen and classic terminal sheet appear at rest on their first rendered frame, in full and reduced motion. They skip the shared sheet entrance slide and fade so requested native content is readable immediately after rendering. Automatic TSP openings retain their 300 ms continuity check; explicit requests bypass that check. Other sheets keep their existing entrance motion.
+
 Classic chats mirror omp's painted terminal in the same frame:
 
 - **Title**: "omp terminal" or "omp terminal: {screen}", with the description "This is omp's terminal screen. Click or type to use it."
