@@ -18,7 +18,8 @@ import { plain } from "../../../state/tsp/labels";
 import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "./context";
 import { Live } from "./Live";
-import { KeyCombinations, Table } from "./Table";
+import { Table } from "./Table";
+import { KeyCombinations } from "../../../ui/KeyCombinations";
 
 const FieldTree = lazy(() => import("../../../tool-render/structured").then(module => ({ default: module.FieldTree })));
 export const KIND_GROUPS = {

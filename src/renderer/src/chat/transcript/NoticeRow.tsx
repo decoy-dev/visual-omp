@@ -22,6 +22,7 @@ import { fmtDuration } from "../../collab/lib/format";
 import { commandSummary } from "../../features/panes/derive";
 import { Markdown } from "../../transcript/Markdown";
 import { cn, Expand, StatusBadge, type StatusBadgeTone } from "../../ui";
+import { KeyCombinations } from "../../ui/KeyCombinations";
 import {
 	type AdvisorSeverity,
 	contentText,
@@ -306,12 +307,20 @@ export interface NoticeRowProps {
 	mode: TranscriptMode;
 }
 
+/** omp's model toast contains terminal key glyphs; show the app's model-picker shortcut instead. */
+function ModelNoticeText({ text }: { text: string }): ReactNode {
+	const notice = /^(Session-only model: [^\n]+\. Use )([^\n]+)( or \/model for roles\.)$/u.exec(text);
+	if (!notice) return text;
+	const keys = window.vomp.platform === "darwin" ? "super+shift+m" : "ctrl+shift+m";
+	return <>{notice[1]}<KeyCombinations value={[{ t: keys, s: "key" }]} />{notice[3]}</>;
+}
+
 export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	if (entry.customType === "tsp-notice") return (
 		<div role="note" className="-mx-2 flex min-w-0 items-start gap-2.5 px-2 py-1 text-sm text-fg-muted">
 			<Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-			<p className="selectable min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{contentText(entry.content)}</p>
+			<p className="selectable min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]"><ModelNoticeText text={contentText(entry.content)} /></p>
 			<TranscriptTime timestamp={entry.timestamp} className="ml-auto" />
 		</div>
 	);

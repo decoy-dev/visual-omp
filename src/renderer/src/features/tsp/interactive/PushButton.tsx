@@ -5,9 +5,9 @@ import { useTranslation } from "react-i18next";
 import { Button, IconButton, type ButtonVariant } from "../../../ui/Button";
 import { Spinner } from "../../../ui/Spinner";
 import { cn } from "../../../ui/cn";
-import { KeyCombinations } from "../nodes/Table";
+import { KeyCombinations } from "../../../ui/KeyCombinations";
 import type { NodeContext } from "../nodes/context";
-import { shortcutKeyName } from "../shortcuts";
+import { shortcutKeyName } from "../../../ui/shortcuts";
 
 const variants: Record<NonNullable<TspButtonProps["variant"]>, ButtonVariant> = {
 	default: "secondary", primary: "primary", quiet: "ghost", danger: "danger",

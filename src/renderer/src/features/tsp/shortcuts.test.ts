@@ -2,8 +2,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { KeyCombinations, Table } from "./nodes/Table";
-import { shortcutKeyLabel, shortcutKeyName, shortcutRuns } from "./shortcuts";
+import { Table } from "./nodes/Table";
+import { KeyCombinations } from "../../ui/KeyCombinations";
+import { shortcutKeyLabel, shortcutKeyName, shortcutRuns } from "../../ui/shortcuts";
 
 beforeEach(() => vi.stubGlobal("window", { vomp: { platform: "darwin" } }));
 afterEach(() => vi.unstubAllGlobals());

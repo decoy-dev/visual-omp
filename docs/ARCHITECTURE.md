@@ -1149,8 +1149,12 @@ At the Phase 2 checkpoint, local hook answering and recorded workflow replay wer
 live ordering, sharing, packaged and manual acceptance were still open. That historical record
 does not establish completion of the later FLIP release checks.
 TSP-only warning/error rows and status toasts are projected by each chat's controller-owned
-subscription into existing transcript notice rows with literal, whitespace-preserving text. After
-the current room's collab snapshot is synchronized, new notices use its displayed branch and leaf
+subscription into existing transcript notice rows with literal, whitespace-preserving text. The
+session-only model status replaces omp's terminal shortcut with the app's shared `ui/KeyCombinations`
+keycaps: Command+Shift+M on macOS and Ctrl+Shift+M on Windows and Linux. The recorded omp 18.15.0
+model-switch toast contains the private-use Nerd Font character U+F0635, which has no glyph in
+bundled Geist or Geist Mono. Other notice text and projection identity remain unchanged.
+After the current room's collab snapshot is synchronized, new notices use its displayed branch and leaf
 for the anchor and user-prompt turn. Notices received during snapshot download wait for that
 attribution. Reused toast nodes update their existing row without moving an assigned anchor.
 Displayed custom messages are matched through their parent ancestry; collab notice events use
