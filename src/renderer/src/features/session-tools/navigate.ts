@@ -12,8 +12,9 @@ import type { SessionController } from "../../state/session";
 import { screenActivity } from "../../state/tsp/screen-activity";
 import { OmpBusyError, press, readScreen, readyEditor, waitForScreen } from "./drive";
 import { parseStatusLine } from "./screen";
-import { parseSessionTree, rowProbe, type SelectorMode, selectorRows, type SessionTree } from "./tree";
+import { parseSessionTree, rowProbe, type SelectorMode, selectorRows, type SessionTree, type TreeEntry } from "./tree";
 import { navigateSemantic } from "./navigateTsp";
+import { cancelRewindUndo, offerRewindUndo, rewindCheckpoint } from "./rewindUndo";
 
 export class NavigationError extends Error {}
 
@@ -37,12 +38,15 @@ function rowMatches(lines: readonly string[], probe: string): boolean {
 }
 
 /** Move the `/tree` cursor onto `probe`: jump by the computed index, then scan when the guess missed. */
-async function focusRow(session: SessionController, index: number, total: number, probe: string): Promise<boolean> {
+async function focusRow(session: SessionController, index: number, total: number, probe: string, assertCurrent: () => void): Promise<boolean> {
+	assertCurrent();
 	await press(session, index > 0 ? `home ${Array.from({ length: index }, () => "down").join(" ")}` : "home");
 	if (await waitForScreen(session, lines => rowMatches(lines, probe), 800)) return true;
+	assertCurrent();
 	await press(session, "home");
 	for (let step = 0; step <= total + 4; step++) {
 		if (rowMatches(await readScreen(session), probe)) return true;
+		assertCurrent();
 		await press(session, "down");
 	}
 	return false;
@@ -64,7 +68,28 @@ export async function navigateTo(session: SessionController, entryId: string): P
 	const tree = await loadTree(session);
 	const entry = tree.entries.get(entryId);
 	if (!entry) throw new NavigationError(i18n.t("session:navigate.missing"));
-	if (session.getSnapshot().host?.transport === "tsp") return navigateSemantic(session, entry);
+	cancelRewindUndo(session);
+	const checkpoint = rewindCheckpoint(session);
+	try {
+		const result = await navigateEntry(session, tree, entry);
+		const leaf = tree.leafId && tree.entries.get(tree.leafId);
+		const nextLeaf = entry.userTurn ? entry.parentId : entry.id;
+		const restorable = leaf && !leaf.userTurn && (session.getSnapshot().host?.transport === "tsp" || rowProbe(leaf) !== null);
+		if (restorable && nextLeaf !== tree.leafId && checkpoint.current()) {
+			offerRewindUndo(session, checkpoint, result.draft !== null, async (assertCurrent, confirmLeaf) => {
+				assertCurrent();
+				await readyEditor(session);
+				assertCurrent();
+				await navigateEntry(session, tree, leaf, assertCurrent, confirmLeaf);
+			});
+		} else checkpoint.dispose();
+		return result;
+	} catch (error) { checkpoint.dispose(); throw error; }
+}
+
+async function navigateEntry(session: SessionController, tree: SessionTree, entry: TreeEntry, assertCurrent = () => {}, confirmLeaf: (leaf: string | null) => void = () => {}): Promise<NavigateResult> {
+	assertCurrent();
+	if (session.getSnapshot().host?.transport === "tsp") return navigateSemantic(session, entry, assertCurrent, confirmLeaf);
 	const probe = rowProbe(entry);
 	if (!probe) throw new NavigationError(i18n.t("session:navigate.unsupported"));
 	const mode: SelectorMode = entry.userTurn ? "user" : "all";
@@ -79,34 +104,41 @@ export async function navigateTo(session: SessionController, entryId: string): P
 		if (!current || current.hostId !== hostId || current.generation !== generation || current.phase === "exited") releaseDrive();
 	});
 	try {
-		await session.command("/tree");
+		await session.command("/tree", assertCurrent);
 		if (!(await waitForScreen(session, lines => lines.some(line => line.includes(TREE_TITLE)), 4000))) {
 			throw new OmpBusyError();
 		}
+		assertCurrent();
 		await press(session, mode === "user" ? "M-u" : "M-a");
 		const found = await focusRow(
 			session,
-			Math.max(0, rows.findIndex(row => row.id === entryId)),
+			Math.max(0, rows.findIndex(row => row.id === entry.id)),
 			rows.length,
 			probe,
+			assertCurrent,
 		);
 		if (!found) {
+			assertCurrent();
 			await press(session, "escape");
 			throw new NavigationError(i18n.t("session:navigate.notFound"));
 		}
+		assertCurrent();
 		await press(session, "enter");
 		const outcome = (lines: readonly string[]) =>
 			lines.some(line => /Navigated to selected point|Already at this point|Summarize branch\?/.test(line));
 		let lines = await waitForScreen(session, outcome, 8000);
 		if (lines?.some(line => line.includes("Summarize branch?"))) {
 			// First option is "No summary": the conversation moves without an extra model call.
+			assertCurrent();
 			await press(session, "enter");
 			lines = await waitForScreen(session, candidate => /Navigated to selected point|Already at this point/.test(candidate.join("\n")), 8000);
 		}
 		if (!lines) throw new NavigationError(i18n.t("session:navigate.unconfirmed"));
+		assertCurrent();
 		// omp moved the leaf in-process without a collab frame; show the new branch until the next entry.
 		// (Rewinding the very first message leaves no leaf to show; the transcript corrects on the next entry.)
 		const leaf = entry.userTurn ? entry.parentId : entry.id;
+		confirmLeaf(leaf);
 		if (leaf) session.setDisplayLeaf(leaf);
 
 		let draft: string | null = null;
@@ -114,6 +146,7 @@ export async function navigateTo(session: SessionController, entryId: string): P
 			// omp put the message back into its own editor; the app's composer owns drafts, so clear omp's
 			// (one Ctrl+C clears the editor; never press it twice, two within 500 ms quit omp).
 			await waitForScreen(session, screen => parseStatusLine(screen) !== null, 3000);
+			assertCurrent();
 			await press(session, "C-c");
 			draft = entry.text;
 			useComposerDrafts.getState().setDraft(session.tabId, draft);

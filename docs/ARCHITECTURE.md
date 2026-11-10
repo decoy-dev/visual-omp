@@ -105,6 +105,16 @@ entry is dropped. The Files pane's viewer tabs, expanded folders and tree width 
 `features/panes/files-store.ts` (not persisted, dropped with the chat, and a request from a chat that has closed
 writes nothing).
 
+Rewind Undo retains the preceding leaf and composer text in `session-tools/rewindUndo.ts`.
+It reuses the same `/tree` navigation and screen-activity drive lease in classic and TSP hosts.
+This follows omp 18.18.6's `SelectorController.#undoRewind`, which calls `navigateTree` without
+a branch summary and restores the displaced draft. The existing path also works on omp 18.15.
+The toast's dismissal callback releases its controller subscriptions. Sent-input events, new
+entries, work starting, another displayed branch, session identity changes and host generation
+or TSP epoch changes invalidate it. A preceding user-request leaf is ineligible because omp
+navigates to that entry's parent rather than restoring that exact leaf.
+Classic hosts also omit Undo for a preceding entry without a supported painted-row probe.
+
 Live visual previews use `features/live-preview/`, whose tracker loads through `lazyView` and subscribes to every open chat's controller while `livePreview` is enabled. Snapshot callbacks coalesce work at 100 ms; `subjects.ts` derives the current turn's subjects from collab and watcher changes. A small per-tab store keeps selection and final frames independently of Outputs visibility. Format adapters load dynamically, and the stage limits updates to each adapter's `maxFps`. The Outputs badge reads the same store. `livePreviewOpenOutputs` defaults off and opens only the originating chat's panel.
 
 The live stage measures the pane budget after its chrome, while adapters report intrinsic content height and any required minimum. Compact previews end after their content, returning space to saved output sections in the outer scroll; viewport adapters retain the available height. Video reserves a width-limited 8rem player minimum and lets the outer pane scroll when its picture, tiles and controls cannot fit. Selecting a saved image or PDF replaces the stage with a full-height viewer. The sequence adapter reuses `fs:list` for its declared folder, keeps at most twelve matching regular files in numeric order and streams visible thumbnails through file-only grants. Its large frame retains the revision-safe image adapter, while the available height determines how many thumbnail rows fit.

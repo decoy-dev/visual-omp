@@ -18,6 +18,8 @@ export interface ToastOptions {
 	secondaryAction?: ToastAction;
 	/** Keep until dismissed. warn/err toasts are always sticky. */
 	sticky?: boolean;
+	/** Release action ownership when dismissed, expired or displaced by another toast. */
+	onDismiss?: () => void;
 }
 
 export interface ToastRecord {
@@ -27,6 +29,7 @@ export interface ToastRecord {
 	description?: string;
 	action?: ToastAction;
 	secondaryAction?: ToastAction;
+	onDismiss?: () => void;
 	/** Auto-dismiss delay, or null when the toast stays until dismissed. */
 	durationMs: number | null;
 }
@@ -40,12 +43,14 @@ let nextId = 1;
 const listeners = new Set<() => void>();
 
 function commit(next: readonly ToastRecord[]): void {
+	const previous = toasts;
 	toasts = next;
+	for (const item of previous) if (!next.some(current => current.id === item.id)) item.onDismiss?.();
 	for (const listener of listeners) listener();
 }
 
 /** Shows a toast and returns its id. info/ok auto-dismiss after 5s unless `sticky`; warn/err stay until dismissed. */
-export function toast({ tone = "info", message, description, action, secondaryAction, sticky = false }: ToastOptions): string {
+export function toast({ tone = "info", message, description, action, secondaryAction, sticky = false, onDismiss }: ToastOptions): string {
 	const id = `toast-${nextId++}`;
 	const autoDismiss = !sticky && (tone === "info" || tone === "ok");
 	const record: ToastRecord = {
@@ -55,6 +60,7 @@ export function toast({ tone = "info", message, description, action, secondaryAc
 		description,
 		action,
 		secondaryAction,
+		onDismiss,
 		durationMs: autoDismiss ? TOAST_DURATION_MS : null,
 	};
 	commit([...toasts, record].slice(-MAX_TOASTS));

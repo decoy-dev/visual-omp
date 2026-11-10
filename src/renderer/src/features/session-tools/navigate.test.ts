@@ -4,8 +4,8 @@ import { screenActivity } from "../../state/tsp/screen-activity";
 import { press, readyEditor, waitForScreen } from "./drive";
 import { loadTree, navigateTo } from "./navigate";
 vi.mock("../../state/app", () => ({ controllerFor: vi.fn(), useApp: {} }));
-const drafts = vi.hoisted(() => ({ setDraft: vi.fn(), focus: vi.fn() }));
-vi.mock("../../chat/composer/drafts", () => ({ useComposerDrafts: { getState: () => drafts } }));
+const drafts = vi.hoisted(() => ({ drafts: {}, previews: {}, setDraft: vi.fn(), focus: vi.fn() }));
+vi.mock("../../chat/composer/drafts", () => ({ useComposerDrafts: { getState: () => drafts }, composerText: () => "" }));
 vi.mock("./drive", () => ({ OmpBusyError: class extends Error {}, press: vi.fn(), readScreen: vi.fn(), readyEditor: vi.fn(), sleep: vi.fn(), waitForScreen: vi.fn() }));
 const invoke = vi.fn();
 beforeEach(() => {
@@ -51,6 +51,7 @@ describe("classic navigation drive ownership", () => {
 		tabId: "chat", sessionFile: "/project/original.jsonl",
 		getSnapshot: () => ({ host, working: false, displayLeaf: null }),
 		subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+		onEvent: () => () => {},
 		command, setDisplayLeaf,
 	} as unknown as SessionController;
 
@@ -80,7 +81,7 @@ describe("classic navigation drive ownership", () => {
 			return screen;
 		});
 		await expect(navigateTo(session, "shared")).resolves.toEqual({ draft: "shared" });
-		expect(command).toHaveBeenCalledExactlyOnceWith("/tree");
+		expect(command).toHaveBeenCalledExactlyOnceWith("/tree", expect.any(Function));
 		expect(vi.mocked(press).mock.calls.map(([, keys]) => keys)).toEqual(["M-u", "home", "enter", "C-c"]);
 		expect(setDraft).toHaveBeenCalledExactlyOnceWith("chat", "shared");
 		expect(focus).toHaveBeenCalledExactlyOnceWith("chat");

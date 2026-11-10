@@ -210,6 +210,10 @@
     }
   },
   "navigate": {
+    "rewound": "Rewound to the selected point.",
+    "undo": "Undo",
+    "undone": "Rewind undone.",
+    "undoExpired": "This rewind can no longer be undone. Open the session tree to choose a branch.",
     "noFile": "This chat has no saved session file yet.",
     "busy": "Wait for the current response to finish, then move to another point.",
     "missing": "That message is no longer in this chat.",

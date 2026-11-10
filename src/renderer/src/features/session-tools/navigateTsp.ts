@@ -33,7 +33,7 @@ async function send(watch: TspEditorWatch, event: TspRendererEvent): Promise<voi
 }
 
 /** Go here consumes omp's entry keys and transfers only the text its editor restores. */
-export async function navigateSemantic(session: SessionController, entry: TreeEntry): Promise<{ draft: string | null }> {
+export async function navigateSemantic(session: SessionController, entry: TreeEntry, assertCurrent = () => {}, confirmLeaf: (leaf: string | null) => void = () => {}): Promise<{ draft: string | null }> {
 	const watch = new TspEditorWatch(session);
 	let releaseDrive = () => {};
 	const offDrive = watch.subscribe(() => {
@@ -43,7 +43,7 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 		await watch.ready();
 		const before = current(watch);
 		releaseDrive = screenActivity.hold(before, "drive");
-		await session.command("/tree");
+		await session.command("/tree", assertCurrent);
 		await waitFor(watch, () => !!treeSelector(current(watch).surfaces), "omp did not open its session tree selector.");
 		let target = treeSelector(current(watch).surfaces)!;
 		if (target.node.k === "picker" && !target.node.p?.items?.some(item => item.id === entry.id && !item.disabled)) assertTreeEntry(target.node, entry.id);
@@ -57,6 +57,7 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 				if (!next || next.surface.open.id !== surfaceId || next.node.id !== selectorId) throw new Error("omp's session tree selector changed while changing its filter. Open the tree again.");
 				return next;
 			};
+			assertCurrent();
 			await send(watch, { ev: "action", sf: surfaceId, id: selectorId, act: TSP_ACTIONS.tab, value: "all" });
 			await waitFor(watch, () => {
 				const node = filteredTarget().node;
@@ -66,6 +67,7 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 		}
 		assertTreeEntry(target.node, entry.id);
 		const snapshot = current(watch);
+		assertCurrent();
 		await window.vomp.invoke("host:tsp-tree-activate", snapshot.hostId, snapshot.generation, snapshot.epoch, target.surface.open.id, target.node.id, entry.id);
 		const outcome = () => commandOutcome(before, current(watch), { success: new RegExp(`^(?:${TSP_TREE.navigated}|${TSP_TREE.already})\\.?$`) });
 		await waitFor(watch, () => !!outcome() || !!hookDialogTarget(current(watch).surfaces), "omp did not confirm session tree navigation.");
@@ -80,6 +82,7 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 				return match?.status === "unmatched" || match?.status === "matched" || nodeHasLeft(current(watch).surfaces, question.surface.open.id, question.node.id);
 			}, "The branch question is unavailable or ambiguous. Answer it using the chat's question controls.");
 			const latest = current(watch);
+			assertCurrent();
 			if (!nodeHasLeft(latest.surfaces, question.surface.open.id, question.node.id)) {
 				const match = latest.questionMatches?.find(match => match.surfaceId === question.surface.open.id && match.nodeId === question.node.id);
 				if (match?.status === "matched" && match.reqId !== undefined) session.answer(match.reqId, option.label);
@@ -87,13 +90,15 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 			}
 		}
 		await waitFor(watch, () => !!outcome() && watch.available, "omp did not restore its editor after tree navigation.");
+		assertCurrent();
 		const already = outcome()!.lines.some(line => line.startsWith(TSP_TREE.already));
 		const leaf = entry.userTurn ? entry.parentId : entry.id;
-		if (!already && leaf) session.setDisplayLeaf(leaf);
+		if (!already && leaf) { confirmLeaf(leaf); session.setDisplayLeaf(leaf); }
 		const restored = current(watch);
 		const editor = restored.composer;
 		if (already || !editor?.text) return { draft: null };
 		if (!editor.surfaceId || !editor.editorId) throw new Error("omp's restored editor is unavailable. Its text was left unchanged.");
+		assertCurrent();
 		await window.vomp.invoke("host:take-editor-restore", restored.hostId, restored.generation, restored.epoch, editor.surfaceId, editor.editorId, editor.text);
 		useComposerDrafts.getState().focus(session.tabId);
 		return { draft: editor.text };

@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { clearToasts, toast, updateToast, useToasts, type ToastRecord } from "./toast";
+import { clearToasts, dismissToast, toast, updateToast, useToasts, type ToastRecord } from "./toast";
 let root: Root;
 let element: HTMLDivElement;
 let latest: readonly ToastRecord[] = [];
@@ -31,4 +31,19 @@ it("does not recreate a dismissed notification", async () => {
  const previous = latest;
  await act(async () => updateToast("missing", { description: "Do not reopen" }));
  expect(latest).toBe(previous); expect(latest).toHaveLength(0);
+});
+it("releases action ownership once on dismissal, replacement and clearing", async () => {
+ const dismissed = vi.fn(); const displaced = vi.fn(); const cleared = vi.fn();
+ let id = "";
+ await act(async () => { id = toast({ message: "Dismiss", onDismiss: dismissed }); });
+ await act(async () => { dismissToast(id); dismissToast(id); });
+ expect(dismissed).toHaveBeenCalledOnce();
+ await act(async () => {
+  toast({ message: "Oldest", onDismiss: displaced });
+  toast({ message: "Retained", onDismiss: cleared });
+  toast({ message: "Third" }); toast({ message: "Fourth" });
+ });
+ expect(displaced).toHaveBeenCalledOnce(); expect(cleared).not.toHaveBeenCalled();
+ await act(async () => { clearToasts(); clearToasts(); });
+ expect(displaced).toHaveBeenCalledOnce(); expect(cleared).toHaveBeenCalledOnce();
 });

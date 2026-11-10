@@ -111,6 +111,7 @@ class Replay {
 		getSnapshot: () => ({ mode: "live", working: false, readOnly: this.readOnly, displayLeaf: null,
 			host: { hostId: "host", generation: this.generation, sessionId: "session", phase: "live", transport: "tsp" } }),
 		subscribe: (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); },
+		onEvent: () => () => {},
 		command: async (text: string) => { const target = composer(this.docs.snapshot().surfaces)!; this.consume({ ev: "send", sf: target.surface.open.id, id: target.node.id, text }); },
 		setDisplayLeaf: this.setLeaf, answer: this.answer,
 	} as unknown as SessionController;
@@ -253,7 +254,7 @@ describe("TSP tree navigation", () => {
 			);
 			await vi.advanceTimersByTimeAsync(10);
 			expect(screenActivity.has(scope, "drive")).toBe(true);
-			if (stage === "command") expect(replay.session.command).toHaveBeenCalledWith("/tree");
+			if (stage === "command") expect(replay.session.command).toHaveBeenCalledWith("/tree", expect.any(Function));
 			else expect(bridge.invoke.mock.calls.some(([channel]) => channel === (stage === "activation" ? "host:tsp-tree-activate" : "host:take-editor-restore"))).toBe(true);
 			if (change === "generation") replay.generation++;
 			else if (change === "epoch") replay.epoch++;
