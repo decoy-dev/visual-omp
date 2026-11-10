@@ -244,6 +244,14 @@ Each SessionHost:
    upstream sends are not covered. Before this, an unread backlog grew to about 800 MB in main, the
    chat showed state 45 minutes old, and main stalled long enough for omp to drop its relay
    connection.
+   **Host-directed resync from omp 18.18.7** uses the existing protocol 3 error frame with
+   `resync: true`; relay close codes and snapshot chunk grammar are unchanged. The guest sends
+   `hello` on that same socket, clears question authority and in-flight transcript reads, and
+   retains published transcript entries until the complete snapshot replaces them. Refused
+   welcomes and stalled post-join snapshots retry within omp's three-rejoins-per-five-minutes
+   policy; exhaustion ends the connection with the host error or local timeout reason.
+   Ordinary errors from older hosts keep their existing behavior. Questions that become unavailable use the existing
+   `ui-request-end` frame, which retires the card and prevents late responses.
 5. **Ordinary TSP input uses semantic editor state and actions.** The host sends `send` events
    where supported and uses guarded paste and key paths for attachments and other editor input.
    Shell/Python prefixes, follow-up queueing and pass-through slash commands remain omp-owned.

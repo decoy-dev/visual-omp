@@ -6,7 +6,7 @@ import { workInFlight } from "../../state/chatWork";
 import type { SessionView } from "../../state/session";
 
 /** The socket the client creates; frames from omp's host are fed through `onFrame`. */
-const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void; onClose: (reason: string, reconnect: boolean) => void }, sent: [] as unknown[] }));
+const socket = vi.hoisted(() => ({ current: null as null | { onOpen: () => void; onFrame: (frame: unknown) => void; onClose: (reason: string, reconnect: boolean) => void }, sent: [] as unknown[] }));
 vi.mock("./socket", () => ({
 	CollabSocket: class {
 		onOpen = () => undefined;
@@ -540,6 +540,120 @@ describe("pending question authority", () => {
 		feed({ t: "ui-request", request: { reqId: 3, kind: "editor", title: "New room" } });
 		feed({ t: "ui-request-end", reqId: 3 });
 		expect(client.getSnapshot().uiRequest).toBeNull();
+	});
+});
+
+describe("18.18.7 guest backlog resync", () => {
+	const resync = { t: "error", message: "the host discarded your backlog; rejoin to resync", resync: true };
+	const entry = { type: "custom_message", id: "kept", parentId: null, timestamp: "", customType: "test", content: "Retained transcript", display: true };
+	const hellos = () => socket.sent.filter(frame => typeof frame === "object" && frame !== null && "t" in frame && frame.t === "hello").length;
+
+	it("rejoins on the existing socket, retains the transcript and revokes old question answers", async () => {
+		feed({ t: "entry", entry });
+		const entries = client.getSnapshot().entries;
+		feed({ t: "ui-request", request: { reqId: 7, kind: "editor", title: "Answer" } });
+		const connection = client.getSnapshot().uiConnection!;
+		const transcript = client.fetchTranscript("helper", 0);
+		feed(resync);
+		expect(client.getSnapshot()).toMatchObject({ phase: "reconnecting", uiRequest: null, pendingUiRequests: [], endedReason: null, notices: [] });
+		expect(client.getSnapshot().entries).toBe(entries);
+		expect(client.getSnapshot().uiConnection).toBeGreaterThan(connection);
+		expect(hellos()).toBe(1);
+		await expect(transcript).resolves.toBeNull();
+		client.sendUiResponse(7, "stale");
+		expect(socket.sent).not.toContainEqual({ t: "ui-response", reqId: 7, value: "stale" });
+		feed(resync);
+		expect(hellos()).toBe(1);
+		feed({ ...welcome, entryCount: 1 });
+		expect(client.getSnapshot().entries).toBe(entries);
+		feed({ t: "snapshot-chunk", entries: [entry], final: true });
+		feed({ t: "ui-request", request: { reqId: 8, kind: "editor", title: "Current answer" } });
+		expect(client.getSnapshot().phase).toBe("live");
+		expect(client.getSnapshot().entries).toEqual([entry]);
+		client.sendUiResponse(8, "current");
+		expect(socket.sent).toContainEqual({ t: "ui-response", reqId: 8, value: "current" });
+	});
+
+	it("stops after three automatic rejoins within five minutes", () => {
+		for (let i = 1; i <= 3; i++) {
+			feed(resync);
+			expect(hellos()).toBe(i);
+			feed(welcome);
+		}
+		feed(resync);
+		expect(hellos()).toBe(3);
+		expect(client.getSnapshot()).toMatchObject({ phase: "ended", endedReason: resync.message, uiRequest: null });
+	});
+
+	it("renews the rejoin budget after five minutes", async () => {
+		vi.useFakeTimers();
+		for (let i = 0; i < 3; i++) { feed(resync); feed(welcome); }
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+		feed(resync);
+		expect(hellos()).toBe(4);
+		expect(client.getSnapshot().phase).toBe("reconnecting");
+	});
+
+	it("retries a refused rejoin welcome without flooding hello", async () => {
+		vi.useFakeTimers();
+		feed(resync);
+		feed(resync);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(hellos()).toBe(2);
+		expect(client.getSnapshot().phase).toBe("reconnecting");
+		feed(welcome);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(hellos()).toBe(2);
+	});
+
+	it("retries a stalled reconnect snapshot and discards its partial entries", async () => {
+		vi.useFakeTimers();
+		feed({ t: "entry", entry });
+		feed(resync);
+		feed({ ...welcome, entryCount: 3 });
+		feed({ t: "snapshot-chunk", entries: [entry], final: false });
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(hellos()).toBe(2);
+		expect(client.getSnapshot().entries).toEqual([entry]);
+		expect(client.getSnapshot().loading).toBeNull();
+	});
+
+	it("bounds a missing welcome after an older host reconnect without requiring resync support", async () => {
+		vi.useFakeTimers();
+		socket.current!.onClose("connection lost", true);
+		socket.current!.onOpen();
+		expect(hellos()).toBe(1);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(hellos()).toBe(2);
+		feed(welcome);
+		expect(client.getSnapshot().phase).toBe("live");
+	});
+
+	it("keeps older host errors as notices without sending hello", () => {
+		feed({ t: "error", message: "The command was refused." });
+		expect(hellos()).toBe(0);
+		expect(client.getSnapshot().phase).toBe("live");
+		expect(client.getSnapshot().notices.at(-1)).toMatchObject({ level: "error", message: "The command was refused." });
+	});
+
+	it("dismisses an unavailable question through the unchanged ui-request-end grammar", () => {
+		feed({ t: "ui-request", request: { reqId: 7, kind: "editor", title: "No recipient can answer" } });
+		feed({ t: "ui-request-end", reqId: 7 });
+		client.sendUiResponse(7, "late");
+		expect(client.getSnapshot()).toMatchObject({ uiRequest: null, pendingUiRequests: [] });
+		expect(socket.sent).toEqual([]);
+	});
+
+	it("joins a snapshot larger than the host send budget without publishing partial transcripts", () => {
+		const text = "x".repeat(512 * 1024);
+		feed({ ...welcome, entryCount: 40 });
+		for (let index = 0; index < 40; index++) {
+			feed({ t: "snapshot-chunk", entries: [{ ...entry, id: `large-${index}`, content: text }], final: index === 39 });
+			if (index < 39) expect(client.getSnapshot().entries).toEqual([]);
+		}
+		expect(client.getSnapshot().entries).toHaveLength(40);
+		expect(client.getSnapshot().loading).toBeNull();
+		expect(client.getSnapshot().phase).toBe("live");
 	});
 });
 

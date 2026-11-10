@@ -76,6 +76,10 @@ be able to use it, and it exposes the features that set omp apart from other cod
   current state, including any open question, instead of working through the backlog. If omp
   replaces its room after a lost connection, the chat joins the replacement and keeps trying while
   omp runs.
+  omp 18.18.7 can also discard one guest's host-side backlog while keeping its relay connection
+  open. The app answers that resync request with a fresh join, retaining the displayed transcript
+  until the replacement snapshot finishes and retiring old question answers immediately.
+  Automatic resync attempts are limited to three within five minutes, matching omp's guest policy.
 - Full-screen menus and other omp content without a native app presentation open in the
   **omp screen**, a semantic sheet, after the same unpresented state persists for 300 ms.
   Internal app-driven omp interactions keep it closed while they operate, including model

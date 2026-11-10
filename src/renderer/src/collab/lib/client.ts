@@ -31,6 +31,7 @@ import type {
 	SubagentLifecyclePayload,
 	SubagentProgressPayload,
 } from "@oh-my-pi/pi-wire";
+import { takeAutoRejoin } from "@oh-my-pi/pi-wire";
 import { importRoomKey } from "./codec";
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
@@ -152,6 +153,8 @@ export class GuestClient {
 	#noticeSeq = 0;
 	#everConnected = false;
 	#welcomed = false;
+	#autoRejoins: number[] = [];
+	#hasSnapshot = false;
 	#welcomeTimer: Timer | null = null;
 	#snapshotProgressTimer: Timer | null = null;
 
@@ -277,6 +280,7 @@ export class GuestClient {
 	}
 
 	sendUiResponse(reqId: number, value?: CollabUiResponseValue): void {
+		if (this.#phase !== "live" || !this.#pendingUiRequests.has(reqId)) return;
 		this.#socket.send({ t: "ui-response", reqId, value });
 		if (this.#uiRequest?.reqId === reqId) {
 			this.#showNextUiRequest();
@@ -356,9 +360,42 @@ export class GuestClient {
 
 	#handleOpen(): void {
 		this.#socket.send({ t: "hello", proto: COLLAB_PROTO, name: this.#name, writeToken: this.#writeToken });
+		if (this.#welcomed) this.#armRejoinTimer();
 		this.#phase = this.#everConnected ? "reconnecting" : "waiting";
 		this.#everConnected = true;
 		this.#commit();
+	}
+
+	/** The relay stays connected when the host discards only this guest's backlog. */
+	#rejoin(message: string): void {
+		if (!takeAutoRejoin(this.#autoRejoins)) {
+			this.#end(message);
+			return;
+		}
+		if (this.#idleCandidate) this.#recordCompletion(this.#idleCandidate.origin, 2);
+		this.#clearIdle();
+		this.#clearSnapshotProgressTimer();
+		this.#pendingSnapshot = null;
+		this.#clearUiRequests();
+		for (const [, pending] of this.#pendingTranscripts) {
+			clearTimeout(pending.timer);
+			pending.resolve(null);
+		}
+		this.#pendingTranscripts.clear();
+		this.#phase = "reconnecting";
+		this.#socket.send({ t: "hello", proto: COLLAB_PROTO, name: this.#name, writeToken: this.#writeToken });
+		this.#armRejoinTimer();
+		this.#commit();
+	}
+
+	/** A refused welcome has no socket close; retry within the same bounded policy. */
+	#armRejoinTimer(): void {
+		this.#clearWelcomeTimer();
+		this.#welcomeTimer = setTimeout(() => {
+			this.#welcomeTimer = null;
+			if (this.#phase === "live" || this.#phase === "ended") return;
+			this.#rejoin("timed out waiting for the host's welcome");
+		}, WELCOME_TIMEOUT_MS);
 	}
 
 	#handleClose(reason: string, willReconnect: boolean): void {
@@ -367,6 +404,7 @@ export class GuestClient {
 		this.#clearSnapshotProgressTimer();
 		if (this.#phase === "ended") return;
 		if (willReconnect) {
+			if (this.#welcomed) this.#clearWelcomeTimer();
 			this.#phase = "reconnecting";
 			this.#invalidateQuestionAuthority();
 			// The next welcome restarts the snapshot; drop the partial one.
@@ -407,7 +445,8 @@ export class GuestClient {
 		this.#clearSnapshotProgressTimer();
 		this.#snapshotProgressTimer = setTimeout(() => {
 			this.#snapshotProgressTimer = null;
-			this.#end("timed out waiting for the host's session snapshot");
+			if (this.#hasSnapshot) this.#rejoin("timed out waiting for the host's session snapshot");
+			else this.#end("timed out waiting for the host's session snapshot");
 		}, SNAPSHOT_PROGRESS_TIMEOUT_MS);
 	}
 
@@ -475,6 +514,7 @@ export class GuestClient {
 				if (frame.entryCount === 0) {
 					this.#clearSnapshotProgressTimer();
 					this.#phase = "live";
+					this.#hasSnapshot = true;
 				} else {
 					this.#armSnapshotProgressTimer();
 				}
@@ -504,6 +544,7 @@ export class GuestClient {
 				this.#pendingSnapshot = null;
 				this.#clearSnapshotProgressTimer();
 				this.#phase = "live";
+				this.#hasSnapshot = true;
 				this.#seedResumedTools();
 				this.#scheduleIdle();
 				break;
@@ -585,6 +626,11 @@ export class GuestClient {
 				this.#end(frame.reason);
 				return; // #end already committed
 			case "error":
+				if (frame.resync) {
+					if (this.#phase === "ended" || this.#welcomeTimer !== null) return;
+					this.#rejoin(frame.message);
+					return;
+				}
 				if (!this.#welcomed) {
 					// Pre-welcome errors are the host's targeted reply to our
 					// hello (e.g. protocol mismatch): no welcome will follow.
