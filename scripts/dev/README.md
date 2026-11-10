@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.12.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.13.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The 0.7.12 tour needs omp 18.18.3 or later, because its question chat expects omp's HTML-form questions; older omp receives the earlier single question. The 0.7.12 tour also requires ffmpeg with libx264 for its large-video sample. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The 0.7.13 and 0.7.12 tours need omp 18.18.3 or later, because their question chats expect omp's HTML-form questions; older omp receives the earlier single question. Both tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
 
 ### What the command prepares
 
@@ -23,6 +23,17 @@ The command creates a new temporary root and starts the loopback fixture provide
 - `app-profile/preferences.json`, which skips first-run setup in this disposable profile, enables live previews and disables crash reporting.
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
+
+### The 0.7.13 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Switching models keeps the omp screen closed | Choose Second fixture, Live preview fixture and Thinking fixture from the composer's model menu, change Thinking to High, send two short messages and choose Rewind to here on the last one. The omp screen stays closed throughout. Typing /extensions opens it immediately. |
+| 02 Helper conversations are clearly marked | Send `fixture helpers` and open TourWorker1's conversation from its Tasks row. Check the teal band names the helper and parent chat, the small Back button's tooltip names the parent chat, the message box says Message helper TourWorker1 and the header says Parent chat: followed by the chat title. Back returns to the chat. |
+| 03 File rows and command results | The prepared `fixture bigmedia` reply shows project-relative `Large Media Files/...` file rows that open the side-panel viewer. /stats shows the dashboard address with Copy URL and no duplicate Open dashboard line. After Restart omp, Settings > Models & roles should show no unavailable-model warning while the model list loads; repeat if loading finishes too quickly to inspect. |
+| 04 Finishing a form question | Send `fixture form` and answer all four questions. The last answer should close the card without a jump, and the ask row should retain the answers. This check depends on the in-progress form-close fix. |
+
+The extra models use the same local provider and zero-cost configuration as `fixture/preview`. Helpers and questions cannot stay interactive across preparation, so their numbered checks ask the owner to start them in the app. Preparation establishes the saved chats and file samples; it does not establish interaction timing or rendering acceptance.
 
 ### The 0.7.12 tour
 
@@ -40,7 +51,7 @@ The rollback samples come from the manifest's `updateFixture`. `{{fixtureHealth}
 
 ### The 0.7.11 patch tour
 
-The default tour opens one chat for each change:
+This earlier tour opens one chat for each change:
 
 | Chat | Checks |
 | --- | --- |

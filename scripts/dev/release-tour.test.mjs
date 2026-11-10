@@ -10,13 +10,14 @@ import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
 import next from "./tours/0.7.12.mjs";
+import latest from "./tours/0.7.13.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.12");
+  assert.equal(parseArguments([]).release, "0.7.13");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
@@ -71,6 +72,36 @@ test("0.7.12 large-media tour checks spaced reply links and files in one spaced 
   assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
 });
 
+test("0.7.13 prepares four focused chats with local model choices and explicit interaction checks", () => {
+  assert.equal(latest.version, parseArguments([]).release);
+  assert.deepEqual(latest.chats.map(chat => chat.id), ["model-switching", "helper-conversations", "files-and-commands", "form-finish"]);
+  assert.deepEqual(latest.models.map(({ id, name, reasoning }) => ({ id, name, reasoning })), [
+    { id: "second", name: "Second fixture", reasoning: false },
+    { id: "thinker", name: "Thinking fixture", reasoning: true },
+  ]);
+  assert.deepEqual(latest.models[1].thinking, { mode: "effort", efforts: ["low", "medium", "high", "max"], defaultLevel: "medium", requiresEffort: false });
+  const [models, helpers, files, form] = latest.chats;
+  for (const [index, chat] of latest.chats.entries()) {
+    assert.ok(chat.title.startsWith(`${String(index + 1).padStart(2, "0")} `));
+    for (const prompt of chat.prompts) {
+      assert.match(prompt, /^fixture (notes|bigmedia)\n/);
+      assert.match(prompt, /\n1\. .*\n2\. /s);
+      assert.ok(!/[\u2013\u2014]/.test(prompt));
+    }
+  }
+  assert.match(models.prompts[0], /Second fixture, then Live preview fixture, then Thinking fixture.*brief flashes.*Thinking.*High.*First rewind check.*Second rewind check.*Rewind to here.*\/extensions.*immediately.*Close the screen/s);
+  assert.equal(helpers.pane, "tasks");
+  assert.match(helpers.prompts[0], /cannot keep helpers running.*fixture helpers.*Open TourWorker1's conversation.*teal band.*small Back button.*Back to 02 Helper conversations are clearly marked.*Message helper TourWorker1.*Parent chat: 02 Helper conversations are clearly marked.*Choose Back/s);
+  const previousMedia = next.chats.find(chat => chat.id === "large-media");
+  assert.deepEqual(files.files, previousMedia.files);
+  assert.equal(files.expectedReply, previousMedia.expectedReply);
+  assert.match(files.prompts[0], /^fixture bigmedia\n.*Large Media Files\/Large notes\.txt.*No row should show the full scratch path.*Click one file row.*\/stats.*Copy URL.*no duplicate Open dashboard.*Restart omp.*Settings > Models & roles.*While the model list loads.*isn't available.*does not establish this timing/s);
+  assert.match(form.prompts[0], /depends on the in-progress form-close fix.*omp 18\.18\.3.*cannot keep a question open.*fixture form.*Release channel.*Platforms to check.*Release note headline.*Review depth.*last answer.*close without jumping.*all four answers/s);
+  const layout = tourLayout(latest.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
+  assert.equal(layout.tabs.length, 4);
+  assert.equal(layout.docks["tour-helper-conversations"].pane, "tasks");
+});
+
 test("0.7.11 update feed preserves a labeled unpublished sample body for This update", async t => {
   const root = await mkdtemp(join(tmpdir(), "vomp-tour-release-notes-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -88,7 +119,7 @@ test("0.7.11 update feed preserves a labeled unpublished sample body for This up
 test("0.7.12 rollback samples download the provider's health body with its digest and no omp update offer", async t => {
   const root = await mkdtemp(join(tmpdir(), "vomp-tour-rollback-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  assert.equal(next.version, parseArguments([]).release);
+  assert.equal(next.version, "0.7.12");
   await assert.rejects(prepareUpdateFixture(root, "omp/18.18.3", next.updateFixture), /needs the local provider/);
   const server = await startFixture({ root, port: 0, durationMs: 0 });
   t.after(() => server.close());
