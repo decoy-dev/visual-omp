@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { ModelInfo } from "@shared/contracts/config";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import type { TspNode } from "@shared/tsp";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { composer, openOverlay, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES } from "@shared/tsp/roles";
@@ -167,6 +168,28 @@ function delayedModelPicker(delay: number | null, closeDelay: number | null = 20
 	return replay;
 }
 
+/** Model confirmation beats picker removal; main rejects the now-stale close target. */
+function refusedPickerClose(departureMs: number | null): Replay {
+	const replay = new Replay("model-switch");
+	const advance = replay.advance.bind(replay);
+	const consume = replay.consume.bind(replay);
+	replay.beforeEvent = event => {
+		if (event.ev === "activate") replay.advance = () => {
+			if (replay.autoConfirm) replay.model = small;
+			replay.publish();
+		};
+	};
+	replay.consume = event => {
+		if (event.ev !== "action" || event.act !== "close") { consume(event); return; }
+		replay.events.push(event);
+		const depart = () => { replay.index = 2; advance(); };
+		if (departureMs === 0) depart();
+		else if (departureMs !== null) setTimeout(depart, departureMs);
+		throw new Error("omp screen: The target node is no longer available.");
+	};
+	return replay;
+}
+
 describe("TSP composer model controls", () => {
 	it("replays the exact session picker activation and waits for collab identity", async () => {
 		const replay = new Replay("model-switch"); replay.confirmDelay = 1500;
@@ -238,6 +261,74 @@ describe("TSP composer model controls", () => {
 		expect(replay.model).toBe(small);
 		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toEqual([{ ev: "action", sf: "s:1", id: "j", act: "close" }]);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each([0, 120])("accepts an exact owned-picker departure published %s ms after a refused close", async departureMs => {
+		const replay = refusedPickerClose(departureMs);
+		await expect(settle(switchModel(replay.session, small), 1000)).resolves.toBe(true);
+		expect(replay.model).toBe(small);
+		expect(replay.events).toEqual([
+			{ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" },
+			{ ev: "activate", sf: "s:1", id: "j", item: small.selector },
+			{ ev: "action", sf: "s:1", id: "j", act: "close" },
+		]);
+		expect(bridge.toast).not.toHaveBeenCalled();
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it("preserves a refused close error when the owned picker never departs", async () => {
+		const replay = refusedPickerClose(null);
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(2499);
+		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await vi.advanceTimersByTimeAsync(2);
+		await expect(switching).resolves.toBe(false);
+		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toHaveLength(1);
+		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "omp screen: The target node is no longer available." });
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it("does not infer model confirmation from a departed picker after a refused close", async () => {
+		const replay = refusedPickerClose(0); replay.autoConfirm = false;
+		await expect(settle(switchModel(replay.session, small))).resolves.toBe(false);
+		expect(replay.model).toBe(large);
+		expect(bridge.toast).toHaveBeenCalledWith({ tone: "warn", message: expect.stringContaining("Open the omp screen") });
+	});
+
+	it("leaves a same-scope replacement model picker untouched after the owned node departs", async () => {
+		const replay = refusedPickerClose(0);
+		let replacement: TspNode | undefined;
+		replay.mutate = snapshot => {
+			const nodes = [...walkNodes(snapshot.surfaces[0]!.document)];
+			const original = nodes.find(node => node.id === "j");
+			if (original) { replacement = { ...structuredClone(original), id: "user-models" }; return; }
+			if (!replacement) return;
+			const layer = nodes.find(node => node.id === "layer")!;
+			layer.c = [...(layer.c ?? []), replacement];
+			snapshot.availability = { available: false, reason: "Close omp's menu first." };
+		};
+		await expect(settle(switchModel(replay.session, small), 1000)).resolves.toBe(true);
+		expect(replay.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.id === "user-models"))).toBe(true);
+		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toEqual([{ ev: "action", sf: "s:1", id: "j", act: "close" }]);
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	it.each(["generation", "epoch", "readOnly"] as const)("never accepts a %s change as proof of the refused close", async change => {
+		const replay = refusedPickerClose(120);
+		const scope = replay.snapshot();
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(10);
+		if (change === "generation") replay.generation++;
+		else if (change === "epoch") replay.mutate = snapshot => { snapshot.epoch++; };
+		else replay.readOnly = true;
+		replay.publish();
+		await expect(switching).resolves.toBe(false);
+		await vi.advanceTimersByTimeAsync(200);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toHaveLength(1);
 		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
 	});
 
@@ -649,8 +740,8 @@ describe("TSP composer model controls", () => {
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "warn", message: expect.stringContaining("Open the omp screen") });
 	});
 
-	it("selects an exact model version through the provider tree and completes the recorded switch", async () => {
-		const replay = new Replay("model-switch");
+	it.each(["none", "departed", "readOnly"] as const)("completes the model menu appropriately after a close race: %s", async closeRace => {
+		const replay = closeRace === "none" ? new Replay("model-switch") : refusedPickerClose(closeRace === "readOnly" ? 120 : 30);
 		const element = document.createElement("div"); document.body.append(element);
 		const root = createRoot(element); const done = vi.fn();
 		try {
@@ -661,9 +752,16 @@ describe("TSP composer model controls", () => {
 				input.dispatchEvent(new Event("input", { bubbles: true }));
 			});
 			const row = [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.getAttribute("aria-label")?.startsWith("Fixture small"))!;
-			await act(async () => { row.querySelector<HTMLElement>("[data-model-row]")!.click(); await vi.advanceTimersByTimeAsync(100); });
-			expect(replay.events.map(event => event.ev)).toEqual(["action", "activate"]);
-			expect(done).toHaveBeenCalledOnce();
+			await act(async () => {
+				row.querySelector<HTMLElement>("[data-model-row]")!.click();
+				await vi.advanceTimersByTimeAsync(closeRace === "readOnly" ? 10 : 100);
+				if (closeRace === "readOnly") {
+					replay.readOnly = true; replay.publish();
+					await vi.advanceTimersByTimeAsync(200);
+				}
+			});
+			expect(replay.events.map(event => event.ev)).toEqual(closeRace === "none" ? ["action", "activate"] : ["action", "activate", "action"]);
+			expect(done).toHaveBeenCalledTimes(closeRace === "readOnly" ? 0 : 1);
 		} finally { await act(async () => root.unmount()); element.remove(); }
 	});
 

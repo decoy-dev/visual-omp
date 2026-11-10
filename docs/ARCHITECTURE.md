@@ -619,6 +619,10 @@ finishes first. A picker still present at confirmation is closed through its dec
 removal has a 2.5-second bound and a failed close leaves the native screen reachable. Pre-existing
 user pickers are never activated or closed. Error exits also clean up an owned picker when its scope
 remains valid, without retrying a refused or ineffective close.
+A close rejected after omp independently retires that picker is successful cleanup only when the
+same scoped watch proves that exact surface/node has departed within the existing 2.5-second bound.
+It does not resend the close or treat a replacement room as proof. A still-present picker preserves
+the original write error, and model success still requires collab confirmation of the requested target.
 Thinking combines the composer's effort `level` with collab's configured selector and sends one
 `thinking.cycle` action at a time until the requested selector is confirmed. omp can show Auto's
 resolved effort in the semantic node. The complete selector from the latest collab thinking event

@@ -100,8 +100,17 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		closeAttempted = true;
 		if (!picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.close)) throw new OmpBusyError();
 		releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
-		await send(watch, { ev: "action", sf: picker.sf, id: picker.node.id, act: TSP_ACTIONS.close });
-		if (!await waitFor(watch, () => !sessionPicker(watch.snapshot), 2500)) throw new OmpBusyError();
+		let closeError: unknown;
+		try { await send(watch, { ev: "action", sf: picker.sf, id: picker.node.id, act: TSP_ACTIONS.close }); }
+		catch (error) {
+			if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) throw error;
+			closeError = error;
+		}
+		// omp may retire this picker between the renderer's check and main's serialized write.
+		if (!await waitFor(watch, () => {
+			if (session.getSnapshot().readOnly) throw new Error(i18n.t("session:model.sessionChanged"));
+			return nodeHasLeft(watch.snapshot!.surfaces, picker.sf, picker.node.id);
+		}, 2500)) throw closeError ?? new OmpBusyError();
 		pickerClosed = true;
 	};
 	const offDrive = watch.subscribe(() => {
