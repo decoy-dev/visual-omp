@@ -210,6 +210,7 @@ Full timestamp tooltips open from keyboard focus and close with Escape. Existing
 - Saved output sections follow the live stage in the pane's outer scroll. Selecting a saved image or PDF replaces the stage with a full-height viewer; Back to outputs restores the stage and list.
 - Watch opens the originating chat's Outputs. Automatic opening is a separate General setting, off by default. Turning live previews off stops file watching and closes the stage while the existing output lists remain available.
 - Stop aborts the current turn. Stop and redirect holds queued messages, waits for stop confirmation, and prefixes that chat's existing draft while preserving its attachments. Sending from that composer or pressing Escape releases the hold. A ten-second failure releases it and permits another stop request.
+- On omp 18.18.2 or later, the main chat's header menu offers Continue while a turn runs or after it stops with an interruption or error. It uses omp's editor shortcut without adding a user message. Questions, unavailable editors and helper conversations do not offer an enabled Continue action.
 - HTML live previews use local, narrowly granted assets, with scripts and network access disabled. Links leave the preview unchanged and offer Open in browser for HTTP and HTTPS addresses. A saved page main cannot serve keeps the previous frame, and a page in a temporary or home folder notes that some assets may be unavailable.
 
 ### Git

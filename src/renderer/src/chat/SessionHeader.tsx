@@ -30,6 +30,7 @@ import { SessionTitle } from "../ui/SessionTitle";
 import { useBranchEntries } from "./branch";
 import type { TranscriptMode } from "./transcript/Transcript";
 import { useHelperFocus } from "../features/panes/helperFocus";
+import { ContinueAction } from "./ContinueAction";
 
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
 
@@ -262,6 +263,7 @@ export const SessionHeader = memo(function SessionHeader({ session, fallbackTitl
 						<IconButton data-chat-header-menu label={t("chat:header.more")} icon={<DotsThree weight="bold" />} size="md" />
 					</MenuTrigger>
 					<MenuContent align="end" className="max-h-[70vh] min-w-60 overflow-y-auto">
+						{!helperOpen && <ContinueAction session={session} />}
 						{sections.map((section, index) => (
 							<Fragment key={section[0]?.id}>
 								{index > 0 && <MenuSeparator />}

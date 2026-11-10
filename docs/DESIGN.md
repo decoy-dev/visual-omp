@@ -374,6 +374,7 @@ Session titles use `ui/SessionTitle.tsx` across chat headers, Current chats, sav
 Status text explains read-only access, stopped or reconnecting omp, pending questions, active work or readiness. After omp's turn ends while helpers still run, it reads "Helpers are working. omp is ready for your next message." beside the spinning notch. Read-only status is also reflected by the composer's placeholder.
 
 While a helper conversation is open, that column's neutral session header prefixes its title with "Parent chat:". Its status and actions continue to describe and operate on the parent chat. Other split columns retain their own header wording.
+The main chat's header menu includes Continue on omp 18.18.2 or later, using the standard menu item with Phosphor Play and a one-sentence tooltip. It is enabled while omp works or after an interrupted or failed turn, provided the editor is available. It is absent while a helper conversation covers the chat.
 
 ### 3.5 Chat column
 

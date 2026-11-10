@@ -29,6 +29,7 @@ vi.mock("../shell/hooks", () => ({ chatTitle: () => null, chatStatus: () => "sav
 vi.mock("../state/tsp/activity", () => ({ useOmpActivity: () => null }));
 vi.mock("../shell/ChatStatusMark", () => ({ ChatStatusMark: () => null }));
 vi.mock("../features/panes/helperFocus", () => ({ useHelperFocus: (tabId: string) => tabId === env.helperTab ? { id: "Atlas" } : null }));
+vi.mock("./ContinueAction", () => ({ ContinueAction: () => createElement("span", { "data-continue": true }, "Continue") }));
 vi.mock("./branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("../features/palette/run", () => ({ runCommand: vi.fn() }));
 vi.mock("../features/palette/TerminalSheet", () => ({ terminalSheet: {} }));
@@ -68,6 +69,13 @@ beforeEach(() => {
 	env.labelledButtons.clear();
 	env.items.clear();
 	env.helperTab = null;
+});
+
+it("offers Continue only in the main chat header", () => {
+	expect(render()).toContain("data-continue");
+	env.helperTab = "a";
+	expect(render()).not.toContain("data-continue");
+	expect(render("b")).toContain("data-continue");
 });
 
 describe("split header actions", () => {

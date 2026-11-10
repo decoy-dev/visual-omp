@@ -157,6 +157,106 @@ const message = (id: string, parentId: string | null, role: "user" | "assistant"
 	({ type: "message", id, parentId, timestamp: "", message: { role, content: [] } }) as unknown as SessionEntry;
 const ids = (entries: readonly SessionEntry[] | null) => entries?.map(entry => entry.id) ?? null;
 
+
+describe("Continue editor action", () => {
+	const ready = (working = true) => {
+		const session = new SessionController({ tabId: "continue", projectPath: "/p", sessionFile: null });
+		session.attach(host({ link: "L1", transport: "tsp", tspAvailability: { available: true, reason: null } }));
+		const guest = fakes.guests[0]!;
+		const aborted = { ...a1, message: { role: "assistant", content: [], stopReason: "aborted" } } as SessionEntry;
+		guest.emit("live", [u1, aborted], working);
+		respond = channel => channel === "native:snapshot" ? Promise.resolve({ modes: null, theme: null, ompVersion: "18.18.6", asyncJobsGeneration: 1 }) : undefined;
+		invoked = [];
+		return { session, guest };
+	};
+	it.each([true, false])("submits the shortcut through the immediate editor route while working=%s", async working => {
+		const { session, guest } = ready(working);
+		await session.continueTurn();
+		expect(invoked).toEqual([["native:snapshot", "h1"], ["host:submit", "h1", ".", "steer"]]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(session.getSnapshot().queue).toEqual([]);
+	});
+	it("refuses an older running engine before writing input", async () => {
+		const { session } = ready();
+		respond = channel => channel === "native:snapshot" ? Promise.resolve({ modes: null, theme: null, ompVersion: "18.18.1", asyncJobsGeneration: 1 }) : undefined;
+		await expect(session.continueTurn()).rejects.toThrow("Continue is unavailable");
+		expect(invoked).toEqual([["native:snapshot", "h1"]]);
+	});
+	it("does not consume an ask question as a literal model message", async () => {
+		const { session, guest } = ready();
+		guest.emit("live", [u1, a1], true, { uiRequest: { reqId: 1, kind: "select" } as GuestSnapshot["uiRequest"] });
+		expect(session.canContinue).toBe(false);
+		await expect(session.continueTurn()).rejects.toThrow("Continue is unavailable");
+		expect(invoked).toEqual([]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+	});
+	it("refuses a changed host while its version read is pending", async () => {
+		const { session } = ready();
+		const pending = Promise.withResolvers<unknown>();
+		respond = channel => channel === "native:snapshot" ? pending.promise : undefined;
+		const operation = session.continueTurn();
+		sendHost({ link: "L2", generation: 2 });
+		pending.resolve({ modes: null, theme: null, ompVersion: "18.18.6", asyncJobsGeneration: 1 });
+		await expect(operation).rejects.toThrow("Continue is unavailable");
+		expect(invoked.some(([channel]) => channel === "host:submit")).toBe(false);
+	});
+	it("rejects repeated activation and holds queued input until the continued turn starts", async () => {
+		const { session, guest } = ready(false);
+		const pending = Promise.withResolvers<unknown>();
+		respond = channel => channel === "native:snapshot" ? pending.promise : undefined;
+		const operation = session.continueTurn();
+		await expect(session.continueTurn()).rejects.toThrow("Continue is unavailable");
+		await session.send("Next message");
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		pending.resolve({ modes: null, theme: null, ompVersion: "18.18.6", asyncJobsGeneration: 1 });
+		await operation;
+		expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(1);
+		guest.emit("live", [u1, a1], true);
+		expect(session.getSnapshot().queue).toHaveLength(1);
+	});
+	it("keeps queued input held across a running Continue's interruption gap", async () => {
+		const { session, guest } = ready(true);
+		await session.send("Next message");
+		await session.continueTurn();
+		expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(1);
+		guest.emit("live", [u1, a1], false);
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(1);
+		guest.emit("live", [u1, a1], true);
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		guest.emit("live", [u1, a1], false);
+		await vi.waitFor(() => expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(2));
+		expect(invoked.find(([, , text]) => text === "Next message")).toEqual(["host:submit", "h1", "Next message", "steer", undefined, expect.any(String)]);
+	});
+	it.each([false, true])("acknowledges a newer assistant request while working stays true (during submit=%s)", async duringSubmit => {
+		const { session, guest } = ready(true);
+		const original = { ...a1, message: { role: "assistant", content: [], timestamp: 100, stopReason: "aborted" } } as SessionEntry;
+		const resumed = { ...original, id: "resumed", message: { ...original.message, timestamp: 200, stopReason: "stop" } } as SessionEntry;
+		guest.emit("live", [u1], true, { stream: { role: "assistant", content: [], timestamp: 100 } as GuestSnapshot["stream"] });
+		await session.send("Next message");
+		const submitted = Promise.withResolvers<unknown>();
+		respond = channel => channel === "native:snapshot"
+			? Promise.resolve({ modes: null, theme: null, ompVersion: "18.18.6", asyncJobsGeneration: 1 })
+			: channel === "host:submit" ? submitted.promise : undefined;
+		const operation = session.continueTurn();
+		await vi.waitFor(() => expect(invoked.some(([, , text]) => text === ".")).toBe(true));
+		// A late saved copy of the interrupted assistant is not a resumed request.
+		guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 100 } as GuestSnapshot["stream"] });
+		if (duringSubmit) guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 200 } as GuestSnapshot["stream"] });
+		submitted.resolve(null);
+		await operation;
+		expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(1);
+		if (!duringSubmit) {
+			expect(session.canContinue).toBe(false);
+			guest.emit("live", [u1, original], true, { stream: { role: "assistant", content: [], timestamp: 200 } as GuestSnapshot["stream"] });
+		}
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		respond = null;
+		guest.emit("live", [u1, original, resumed], false);
+		await vi.waitFor(() => expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(2));
+	});
+});
 it("reports a failed helper Stop instead of silently ignoring a closed guest", async () => {
 	const session = new SessionController({ tabId: "helper-stop", projectPath: "/p", sessionFile: null });
 	session.attach(host({ link: "ws://localhost/r/room.key", transport: "tsp" }));

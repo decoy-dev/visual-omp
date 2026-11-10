@@ -35,6 +35,11 @@
 	"exitedCode": " (exit {{code}})",
 	"restartOmp": "Start omp again",
 	"restoreOmp": "Continue where omp stopped",
+	"continue": {
+		"label": "Continue",
+		"hint": "Continue the turn, interrupting the current reply if omp is working.",
+		"unavailable": "Continue is unavailable. Wait for omp's editor to be ready and try again."
+	},
 	"hostNotices": {
 		"startup": "At startup, omp reported",
 		"recap": "Recap"

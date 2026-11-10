@@ -22,6 +22,7 @@ import { toast } from "../ui/toast";
 import { parseSessionHistory, type SessionHistory } from "./history";
 import { TspNoticeStore } from "./tsp/notice-store";
 import { TspQuestionSync } from "./tsp-questions";
+import { continueEligible, supportsContinue } from "./continue";
 
 export interface QueuedMessage {
 	id: string;
@@ -88,6 +89,8 @@ interface Acknowledgement {
 	steered: boolean;
 	/** A collab prompt is acknowledged by its own attributed text, never an unrelated guest's message. */
 	collabPrompt?: string;
+	/** Continue can keep `working` true; a newer assistant request also acknowledges it. */
+	continuationAfter?: number;
 	/** The main-owned rejection watch for an ordinary host submission. */
 	submissionId?: string;
 }
@@ -297,6 +300,7 @@ export class SessionController {
 	#completionRevision = 0;
 	#starting: Promise<void> | null = null;
 	#restarting: Promise<void> | null = null;
+	#continuing = false;
 	#listeners = new Set<() => void>();
 	#eventListeners = new Set<(event: SessionEvent) => void>();
 	#unfollow: (() => void) | null = null;
@@ -826,6 +830,7 @@ export class SessionController {
 	get #lineAhead(): boolean {
 		const view = this.#view;
 		return (
+			this.#continuing ||
 			view.working ||
 			view.queue.length > 0 ||
 			view.strandedImages ||
@@ -921,6 +926,49 @@ export class SessionController {
 			throw error;
 		}
 		await this.#deliverDirect(message, askTarget);
+	}
+
+	get canContinue(): boolean {
+		return !this.#continuing && this.#writing === 0 && this.#slashDeliveries === 0 && this.#queueHolds === 0
+			&& !this.#awaiting && continueEligible(this.#view);
+	}
+
+	/** Interrupt and resume through omp's editor shortcut, without a collab prompt or recalled message. */
+	async continueTurn(): Promise<void> {
+		if (!this.canContinue) {
+			throw new Error(i18n.t("chat:continue.unavailable"));
+		}
+		const host = this.#view.host!;
+		const room = this.#room;
+		const current = () => {
+			if (this.#disposed || this.#room !== room || this.#view.host?.hostId !== host.hostId
+				|| this.#view.host.generation !== host.generation || !continueEligible(this.#view)) {
+				throw new Error(i18n.t("chat:continue.unavailable"));
+			}
+		};
+		this.#continuing = true;
+		this.markInput();
+		try {
+			const native = await window.vomp.invoke("native:snapshot", host.hostId);
+			current();
+			if (!supportsContinue(native, this.#view)) throw new Error(i18n.t("chat:continue.unavailable"));
+			const ack = await this.#write(async (): Promise<Acknowledgement> => {
+				current();
+				const guest = this.#view.guest!;
+				const previous = guest.entries.findLast(entry => entry.type === "message" && entry.message.role === "assistant");
+				const continuationAfter = guest.stream?.timestamp ?? (previous?.type === "message" ? previous.message.timestamp : undefined) ?? Date.now();
+				const before = { room, turns: this.#turnStarts, entries: guest.entries.length, run: null, steered: false, continuationAfter };
+				this.tspNotices.endMainFeedback();
+				this.noteSent();
+				await this.#submit(".", "steer");
+				return before;
+			});
+			// A running Continue must retain its wait across the interrupted turn's idle edge.
+			if (ack.room === this.#room) this.#awaitAck(ack);
+		} finally {
+			this.#continuing = false;
+			this.#resumeQueue();
+		}
 	}
 
 	/**
@@ -1426,6 +1474,11 @@ export class SessionController {
 		if (ack.room !== this.#room) return false;
 		if (this.#turnStarts > ack.turns) return true;
 		const added = this.#view.guest?.entries.slice(ack.entries) ?? [];
+		if (ack.continuationAfter !== undefined) {
+			const after = ack.continuationAfter;
+			return (!!this.#view.guest?.stream && this.#view.guest.stream.timestamp > after)
+				|| added.some(entry => entry.type === "message" && entry.message.role === "assistant" && entry.message.timestamp > after);
+		}
 		const run = ack.run;
 		if (run) return added.some(entry => isRunResult(entry, run));
 		if (ack.collabPrompt !== undefined) return added.some(entry => {
@@ -1517,7 +1570,7 @@ export class SessionController {
 	#resumeQueue(): void {
 		const view = this.#view;
 		if (this.#disposed || view.queue.length === 0 || view.queue[0]?.error || view.mode !== "live" || view.working || view.strandedImages || view.guest?.uiRequest) return;
-		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
+		if (this.#continuing || this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
 		// A document watch can release before the separate HostState projection arrives.
 		// Missing availability leaves readiness to that watch and main's guarded writer.
 		if (view.host?.transport === "tsp") {
