@@ -11,6 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### Fixed
 
 - The notice for a model change in the current chat only shows its keyboard shortcut with the app's key symbols, so it no longer appears as an empty box.
+- Chats no longer update a hidden handoff timer every second while no handoff is in progress.
 
 ## [0.7.15] - 2026-11-10
 

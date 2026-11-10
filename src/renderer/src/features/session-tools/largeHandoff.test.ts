@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { ResumeMessage, ResumeRequest } from "../../registry/guards";
+import type * as ShellHooks from "../../shell/hooks";
 import type { SessionController } from "../../state/session";
 import { cancelLargeHandoff, LargeHandoffRow, retryLargeHandoff, sendWithoutHandoff, startLargeHandoff, useLargeHandoffs } from "./largeHandoff";
 
@@ -16,7 +17,10 @@ vi.mock("../../state/app", () => ({
 	useApp: { getState: () => app.state, subscribe: (listener: (state: { tabs: { id: string; title: string }[] }) => void) => { app.listeners.add(listener); return () => app.listeners.delete(listener); } },
 	controllerFor: (id: string) => app.controllers.get(id),
 }));
-vi.mock("../../shell/hooks", () => ({ chatTitle: (_view: unknown, title: string) => title, elapsed: () => "0:00", useNow: () => Date.now() }));
+vi.mock("../../shell/hooks", async importOriginal => ({
+	...(await importOriginal<typeof ShellHooks>()),
+	chatTitle: (_view: unknown, title: string) => title,
+}));
 
 const images = [{ path: "/projects/design/first image.png", name: "first image.png" }, { path: "/projects/design/second.png", name: "second.png" }];
 const file = "/projects/design/handoff notes/context.md";
@@ -70,6 +74,32 @@ afterEach(async () => {
 	element.remove();
 	app.listeners.clear();
 	useLargeHandoffs.setState({ pending: {} });
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+});
+
+describe("large-chat handoff elapsed timer", () => {
+	it.each(["failed", "cancelled"] as const)("runs only while an elapsed time is visible and stops for %s", async phase => {
+		vi.useFakeTimers();
+		const interval = vi.spyOn(globalThis, "setInterval");
+		const clear = vi.spyOn(globalThis, "clearInterval");
+		const secondTimers = () => interval.mock.calls.flatMap((call, index) => call[1] === 1_000 ? [interval.mock.results[index]!.value] : []);
+		await renderRow();
+		expect(secondTimers()).toHaveLength(0);
+		const handoff = { tabId: "destination", sourceFile: "/sessions/source.jsonl", projectPath: "/projects/design", title: "Large design chat", message: { text: "", images: [] }, phase: "writing" as const, started: Date.now() };
+		await act(async () => { useLargeHandoffs.setState({ pending: { destination: handoff } }); });
+		expect(secondTimers()).toHaveLength(1);
+		expect(element.textContent).toContain("0s");
+		await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+		expect(element.textContent).toContain("1s");
+		await act(async () => { useLargeHandoffs.setState({ pending: { destination: { ...handoff, phase } } }); });
+		expect(clear).toHaveBeenCalledWith(secondTimers()[0]);
+		expect(element.querySelector(".tabular-nums")).toBeNull();
+		await act(async () => { useLargeHandoffs.setState({ pending: { destination: { ...handoff, phase: "sending" } } }); });
+		expect(secondTimers()).toHaveLength(2);
+		await act(async () => { useLargeHandoffs.setState({ pending: {} }); });
+		expect(clear).toHaveBeenCalledWith(secondTimers()[1]);
+	});
 });
 
 describe("large-chat handoff transfer", () => {

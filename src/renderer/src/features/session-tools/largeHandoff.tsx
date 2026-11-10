@@ -180,10 +180,14 @@ export async function sendWithoutHandoff(tabId: string): Promise<void> {
 	}
 }
 
+function HandoffElapsed({ started }: { started: number }): ReactNode {
+	const now = useNow(1_000);
+	return <span aria-hidden className="text-sm tabular-nums">{elapsed(now - started)}</span>;
+}
+
 export function LargeHandoffRow({ session }: ChatSlotProps): ReactNode {
 	const entry = useLargeHandoffs(state => state.pending[session.tabId]);
 	const { t } = useTranslation("session");
-	const now = useNow(1_000);
 	if (!entry) return null;
 	const failed = entry.phase === "failed";
 	const cancelled = entry.phase === "cancelled";
@@ -192,7 +196,7 @@ export function LargeHandoffRow({ session }: ChatSlotProps): ReactNode {
 		<div className="flex flex-wrap items-center gap-2 text-md">
 			{failed ? <WarningCircle className="size-4 shrink-0 text-warn" aria-hidden /> : cancelled ? <Info className="size-4 shrink-0 text-fg-muted" aria-hidden /> : <Spinner size={14} />}
 			<span role="status" className="min-w-0 flex-1 break-words">{t(failed ? "largeResume.handoffFailed" : cancelled ? "largeResume.handoffCancelled" : entry.phase === "stopping" ? "largeResume.stoppingHandoff" : entry.phase === "sending" ? "largeResume.sendingHandoff" : "largeResume.writingHandoff", { title: entry.title })}</span>
-			{!recoverable && <span aria-hidden className="text-sm tabular-nums text-fg-muted">{elapsed(now - entry.started)}</span>}
+			{!recoverable && <HandoffElapsed started={entry.started} />}
 			{entry.phase === "writing" && <Button size="sm" variant="ghost" onClick={() => void cancelLargeHandoff(entry.tabId)}>{t("common.cancel")}</Button>}
 		</div>
 		{recoverable && <>
