@@ -62,7 +62,7 @@
 	"waitingJobs": "Waiting for background jobs",
 	"stopWaiting": "Stop waiting",
 	"newActivity": "Show new activity",
-	"fileRow": "{{name}}, in {{folder}}",
+	"fileRow": "{{name}}, {{path}}",
 	"attachedImage": "Attached image {{number}}",
 	"showEarlier": "Show {{count}} earlier messages",
 	"compaction": {

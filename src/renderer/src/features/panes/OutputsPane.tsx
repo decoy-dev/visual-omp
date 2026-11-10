@@ -153,8 +153,7 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 	const { t } = useTranslation("panes");
 	const path = output.path ?? "";
 	const name = baseName(path);
-	const folder = path.slice(0, path.length - name.length - 1);
-	const shownFolder = projectPath ? relativePath(projectPath, folder) : folder;
+	const shownPath = displayPath(output, name, projectPath);
 	const when = useWhen(output);
 	const Icon = languageFor(name) ? FileCode : FileIcon;
 	return (
@@ -172,8 +171,7 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 					<span aria-hidden className="min-w-0 flex-1">
 						<FileName name={name} className="text-sm text-fg" />
 						<span className="flex gap-2 text-xs text-fg-faint">
-							{/* Files at the project root have no folder worth showing ("."). */}
-							<span className="min-w-0 flex-1 truncate">{shownFolder === "." ? "" : shownFolder}</span>
+							<span className="min-w-0 flex-1 truncate">{shownPath}</span>
 							<span className="shrink-0">{when}</span>
 						</span>
 					</span>

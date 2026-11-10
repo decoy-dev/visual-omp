@@ -5,6 +5,8 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController } from "../../state/session";
 import type { ChatOutput } from "./derive";
 import type * as Media from "./media";
+import type * as Common from "./common";
+import { openFile } from "../../ui/contextActions";
 import copy from "../../i18n/en/panes.json";
 const fixture = vi.hoisted(() => {
 	// happy-dom's WAAPI cancellation rejects unlike Chromium. Exercise Motion's real JS fallback on one virtual clock.
@@ -14,19 +16,19 @@ const fixture = vi.hoisted(() => {
 	return { outputs: [] as ChatOutput[], animate };
 });
 vi.mock("../../shell/hooks", () => ({ useSessionView: () => null }));
-vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { livePreview: boolean } }) => boolean) => select({ prefs: { livePreview: true } }) }));
+vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { livePreview: boolean } }) => boolean) => select({ prefs: { livePreview: true } }), currentDock: () => ({ pane: "outputs" }), useDockVisible: () => true }));
 vi.mock("../live-preview/store", () => ({ usePreviewChat: () => ({}), visibleSubjects: () => [{}], followedSubject: () => ({ format: "image" }) }));
 vi.mock("../live-preview/Stage", () => ({ Stage: () => createElement("section", { "aria-label": "Live output" }) }));
 vi.mock("../live-preview/loader", () => ({ TrackerLoadNotice: () => null }));
 vi.mock("./outputs-store", () => ({ countOutputsMount: () => 1, useChatOutputs: () => ({ outputs: fixture.outputs }) }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: ({ children }: { children: ReactNode }) => children }));
 vi.mock("../../ui/contextActions", () => ({ copyText: vi.fn(), openFile: vi.fn(), openWithDefaultApp: vi.fn(), revealLabel: () => "Reveal" }));
-vi.mock("./common", () => ({
+vi.mock("./common", async importOriginal => ({
+	relativePath: (await importOriginal<typeof Common>()).relativePath,
 	FileName: ({ name }: { name: string }) => name,
 	PaneToolbar: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 	Section: ({ children }: { children: ReactNode }) => createElement("section", null, children),
 	SectionCount: () => null,
-	relativePath: (_root: string, path: string) => path,
 	listRowMotion: {},
 }));
 // Keep the actual PDF frame, dialog and transitions; only avoid decoding images in happy-dom.
@@ -48,11 +50,11 @@ async function until(predicate: () => boolean) {
 	expect(predicate()).toBe(true);
 }
 const button = (label: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
-const tile = (path: string) => host.querySelector<HTMLButtonElement>(`button[title="${path}"]`)!;
-async function show() {
+const tile = (path: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.title === path)!;
+async function show(projectPath = "/project") {
 	// The controller's view subscription is supplied above; only its folder/id are read here.
-	const session = { tabId: "chat", projectPath: "/project" } as SessionController;
-	await act(async () => root.render(createElement(MotionProvider, null, createElement(TooltipProvider, null, createElement(OutputsPane, { session, projectPath: "/project" })))));
+	const session = { tabId: "chat", projectPath } as SessionController;
+	await act(async () => root.render(createElement(MotionProvider, null, createElement(TooltipProvider, null, createElement(OutputsPane, { session, projectPath })))));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -91,4 +93,25 @@ it("returns focus from the expanded layer, then switches to a saved PDF and back
 	expect(host.querySelector("iframe")?.src).toContain("vomp-preview://pdf/report.pdf");
 	await act(async () => button(copy.outputs.back).click());
 	await until(() => document.activeElement === tile(pdf.path!));
+});
+
+it.each([
+	["/project", "/project/Large Media Files/Large video.mp4", "Large Media Files/Large video.mp4"],
+	["/project/", "/project/notes.txt", "notes.txt"],
+	["/project", "/project-other/Large video.mp4", "/project-other/Large video.mp4"],
+	["/project", "/other/Large video.mp4", "/other/Large video.mp4"],
+	["C:\\Project\\", "C:\\Project\\Large Media Files\\Large video.mp4", "Large Media Files/Large video.mp4"],
+	["C:\\Project", "C:\\Project\\notes.txt", "notes.txt"],
+	["C:\\Project", "D:\\Media\\Large video.mp4", "D:\\Media\\Large video.mp4"],
+] as const)("shows the shared path label under %s while retaining the absolute target %s", async (projectPath, path, shown) => {
+	fixture.outputs = [{ ...image, key: path, path, kind: "file" }];
+	await show(projectPath);
+	const row = tile(path);
+	expect(row.textContent).toContain(shown);
+	if (shown !== path) expect(row.textContent).not.toContain(projectPath.replace(/[\\/]+$/, ""));
+	expect(row.title).toBe(path);
+	expect(row.getAttribute("data-context-path")).toBe(path);
+	vi.mocked(openFile).mockClear();
+	await act(async () => row.click());
+	expect(openFile).toHaveBeenCalledExactlyOnceWith(path, projectPath);
 });

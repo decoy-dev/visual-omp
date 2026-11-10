@@ -9,6 +9,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { OPENABLE_EXT } from "../../features/panes/derive";
 import { grantFileSource } from "../../features/panes/file-source";
+import { relativePath } from "../../features/panes/common";
 import { fileRefOf, textRefs } from "./fileRefs";
 
 /** Links, code blocks and their headers, math and links already made hold no references. */
@@ -131,14 +132,6 @@ function linkElement(ref: FileRef, className: string): HTMLSpanElement {
 	return link;
 }
 
-/** The folder holding `path`, with the home folder as `~`. */
-function parentLabel(path: string, home: string | null): string {
-	const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-	const folder = cut > 0 ? path.slice(0, cut) : path.slice(0, cut + 1) || path;
-	if (home && (folder === home || folder.startsWith(`${home}/`) || folder.startsWith(`${home}\\`))) return `~${folder.slice(home.length)}`;
-	return folder;
-}
-
 function baseName(path: string): string {
 	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
@@ -158,9 +151,9 @@ function holdsOnly(block: Element, occurrence: Occurrence): boolean {
 }
 
 export interface LinkText {
-	/** The row's accessible name: the file name and its folder. */
-	row(name: string, folder: string): string;
-	home: string | null;
+	/** The row's accessible name: the file name and displayed path. */
+	row(name: string, path: string): string;
+	projectPath: string | null;
 }
 
 /**
@@ -191,12 +184,12 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 			const name = baseName(occurrence.ref).includes("…")
 				? written
 				: baseName(resolved.path) + (written.startsWith(occurrence.ref) ? written.slice(occurrence.ref.length) : "");
-			const folder = parentLabel(resolved.path, text.home);
+			const path = text.projectPath ? relativePath(text.projectPath, resolved.path) : resolved.path;
 			const tile = span("tr-file-tile", icon(kind, "tr-file-icon"));
 			if (OPENABLE_EXT.test(resolved.path) || SVG_EXT.test(resolved.path)) tile.dataset.thumb = resolved.path;
 			const row = linkElement(resolved, "tr-file-row");
-			row.setAttribute("aria-label", text.row(name, folder));
-			row.append(tile, span("tr-file-text", span("tr-file-name", name), span("tr-file-folder", folder)), icon("open", "tr-file-go"));
+			row.setAttribute("aria-label", text.row(name, path));
+			row.append(tile, span("tr-file-text", span("tr-file-name", name), span("tr-file-folder", path)), icon("open", "tr-file-go"));
 			block.replaceChildren(row);
 			rows.add(block);
 			continue;

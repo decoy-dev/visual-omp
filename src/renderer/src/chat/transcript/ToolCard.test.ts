@@ -34,7 +34,7 @@ afterEach(async () => {
 
 async function render(running: boolean) {
 	await act(async () => root.render(createElement(TooltipProvider, null,
-		createElement(FileRefContext.Provider, { value: { chat: "watch-chat", bases: [], home: null } },
+		createElement(FileRefContext.Provider, { value: { chat: "watch-chat", bases: [] } },
 			createElement(ToolCard, { name: "eval", args: { language: "js", code: "console.log(1)" }, running, verbose: false, engageId: "visual-call" })))));
 	await vi.waitFor(async () => {
 		await act(async () => {});

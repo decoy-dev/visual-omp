@@ -452,9 +452,9 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 	it.each(["light", "dark"])("links spaced reply files through the checked Files viewer path in %s", async theme => {
 		const root = realpathSync(await mkdtemp(join(tmpdir(), "vomp-reply-files-")));
 		try {
-			const project = join(root, "chat");
+			const project = root;
 			const folder = join(root, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
-			await mkdir(project); await mkdir(folder, { recursive: true });
+			await mkdir(folder, { recursive: true });
 			const names = ["FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"];
 			const paths = names.map(name => join(folder, name));
 			for (const other of ["one", "two"]) {
@@ -477,15 +477,30 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await page.evaluate(`window.gate.resolveFiles(0, ${JSON.stringify(resolved)});`);
 			await page.until("document.querySelectorAll('section[aria-label=\"Reply file references\"] .tr-file-row').length === 2");
 			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row')].map(row => row.dataset.filePath)")).toEqual(paths.slice(0, 2));
+			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row .tr-file-folder')].map(row => row.textContent)")).toEqual(names.map(name => `ReadyCloud Files/ReadyReturns Chat Demos/Videos/${name}`));
+			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row')].map(row => row.title)")).toEqual(paths.slice(0, 2));
 			expect(await page.evaluate("!!document.querySelector('.tr-file-list') && !!document.querySelector('.tr-file-chip[data-file-kind=\"folder\"]')")).toBe(true);
 			expect(await page.evaluate("[...document.querySelectorAll('.tr-md code')].filter(code => /^(Shared|Missing) Return Chat\\.mp4$/.test(code.textContent)).length")).toBe(2);
+			await page.evaluate("document.fonts.ready.then(() => true)");
 			for (const [index, path] of paths.slice(0, 2).entries()) {
 				await page.clickElement(`document.querySelectorAll('.tr-file-row')[${index}]`);
 				expect(await page.evaluate("window.gate.fileViewer()")).toEqual({ path, pane: "files" });
 			}
-			await page.evaluate("document.fonts.ready.then(() => true)");
+			await page.evaluate("window.pathCopied = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.pathCopied = text; } } }); document.querySelector('.tr-file-row').focus();");
+			await page.key("F10", "F10", 8);
+			await page.until("[...document.querySelectorAll('[role=\"menuitem\"]')].some(item => item.textContent === 'Copy path')");
+			await page.clickElement("[...document.querySelectorAll('[role=\"menuitem\"]')].find(item => item.textContent === 'Copy path')");
+			expect(await page.evaluate("window.pathCopied")).toBe(paths[0]);
+			await page.until("!document.querySelector('[role=\"menu\"]')");
 			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 			await writeFile(join(shots, `reply-files-${theme}.png`), Buffer.from(capture.data, "base64"));
+			await page.clickElement("[...document.querySelectorAll('button')].find(button => button.textContent.startsWith('Changed 4 files'))");
+			await page.until("document.querySelectorAll('button[data-context-path][data-context-changes]').length === 4");
+			const summary = await page.evaluate<{ path: string; label: string; title: string }[]>("[...document.querySelectorAll('button[data-context-path][data-context-changes]')].map(button => ({ path: button.dataset.contextPath, label: button.textContent, title: button.title }))");
+			for (const file of summary) { expect(file.title).toBe(file.path); expect(file.label).toContain(file.path.slice(project.length + 1)); expect(file.label).not.toContain(project); }
+			await page.until("window.gate.buttonVisible([...document.querySelectorAll('button[data-context-path][data-context-changes]')].at(-1))");
+			const summaryCapture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `reply-files-summary-${theme}.png`), Buffer.from(summaryCapture.data, "base64"));
 		} finally { await rm(root, { recursive: true, force: true }); }
 	}, 60_000);
 	it.each([360, 1400].flatMap(width => ["light", "dark"].map(theme => ({ width, theme }))))("keeps table tokens readable at $width pixels in $theme", async ({ width, theme }) => {

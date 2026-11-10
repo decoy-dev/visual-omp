@@ -11,6 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### Fixed
 
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
+- File rows show project-relative paths for files inside the chat's folder, while files elsewhere keep their absolute paths.
 
 ## [0.7.12] - 2026-11-09
 

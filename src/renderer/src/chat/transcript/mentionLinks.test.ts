@@ -6,7 +6,7 @@ import { linkHtml, occurrences, parse } from "./fileLinkMarkup";
 import { MentionText } from "./MentionText";
 import { ComposerMirror } from "../composer/ComposerTags";
 
-const labels = { home: null, row: (name: string, folder: string) => `${name} in ${folder}` };
+const labels = { projectPath: null, row: (name: string, path: string) => `${name}, ${path}` };
 
 describe("quoted transcript mentions", () => {
 	it("paints a quoted spaced path as one complete composer chip", () => {

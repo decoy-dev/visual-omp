@@ -1021,8 +1021,8 @@ export function TranscriptBody({
 	// Other lookup candidates belong to the reply itself: named directories and its turn's known Outputs.
 	const home = useHomeDir();
 	const fileRefScope = useMemo(
-		() => ({ chat: scope.tabId, bases: [scope.projectPath], home }),
-		[scope.tabId, scope.projectPath, home],
+		() => ({ chat: scope.tabId, bases: [scope.projectPath] }),
+		[scope.tabId, scope.projectPath],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
