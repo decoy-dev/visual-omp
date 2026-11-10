@@ -130,6 +130,10 @@ The visible card height never decreases while the same
 form remains active, including across shorter text questions and width changes. The retained
 height is released when the form ends. Field focus
 does not scroll the chat, and bottom-pinned form updates have no smooth catch-up animation.
+A completed form remains fixed until its native presentation leaves. The card and question
+tray then depart without a second height animation or a reverse scroll movement. A working
+row that follows the form adopts its final geometry immediately. Pinned geometry is repaired
+before paint; readers who scrolled up remain unpinned.
 The same cards handle omp 18.18.4 and 18.18.5 tabbed forms, Review and Hide through
 collab's complete field sequence. Ask forms never open the omp screen automatically.
 When a form cannot be presented or matched, the chat retains the question and an explicit

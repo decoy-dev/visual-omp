@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
 import { BtwDrawer } from "../features/btw/BtwPane";
@@ -14,6 +14,7 @@ import { useHelperFocus, closeHelper } from "../features/panes/helperFocus";
 import { lazyView, LoadFailed } from "../registry/lazy";
 import type { Helper } from "../features/panes/derive";
 import { HelperConversationAnnouncement, HelperConversationBanner } from "../features/panes/HelperConversationBanner";
+import { usePresentedForm } from "./transcript/formPresentation";
 
 const Transcript = lazyView(() => import("./transcript/Transcript").then(module => module.Transcript), () => <div data-transcript-frame="loading" aria-busy className="min-h-0 flex-1" />, ({ retry }) => <div data-transcript-frame="error" className="min-h-0 flex-1 overflow-y-auto"><LoadFailed retry={retry} /></div>);
 const HelperFocusView = lazyView(() => import("../features/panes/HelperFocusView").then(module => module.HelperFocusView), HelperFocusPending, HelperFocusPending);
@@ -161,6 +162,32 @@ export function WorkingRow({ view, session, activity, stopFocus }: { view: Sessi
 	);
 }
 
+/** The footer stays absent until the completed form's native presentation departs. */
+export function WorkingStatus(props: Parameters<typeof WorkingRow>[0]): ReactNode {
+	const { view } = props;
+	const host = view.host;
+	const question = questionPresentation(view);
+	const nativeForm = usePresentedForm(view.mode === "live" && !view.readOnly && host?.transport === "tsp" ? host.hostId : null, host?.generation ?? 0);
+	const form = question.form?.toolCallId ?? nativeForm;
+	const previousForm = useRef(form);
+	const previousHost = useRef(`${host?.hostId}:${host?.generation}`);
+	const hostScope = `${host?.hostId}:${host?.generation}`;
+	const formDeparture = previousHost.current === hostScope && previousForm.current !== null && form === null;
+	const open = !question.pending && form === null && (view.working || view.guest?.awaitingAsyncWork === true || props.activity !== null);
+	// Keep the instant branch for this open segment, so the next streamed update cannot
+	// remount an animated disclosure and briefly collapse the newly shown row again.
+	const instantOpen = useRef(false);
+	const instant = formDeparture || previousHost.current === hostScope && open && instantOpen.current;
+	useLayoutEffect(() => {
+		previousForm.current = form;
+		previousHost.current = hostScope;
+		instantOpen.current = open && instant;
+	}, [form, hostScope, open, instant]);
+	return <Expand open={open} instant={instant}>
+		<WorkingRow {...props} />
+	</Expand>;
+}
+
 export function ChatView({ session, title, focused }: { session: SessionController; title: string | null; focused: boolean }): ReactNode {
 	const { t } = useTranslation("shell");
 	const view = useSessionView(session);
@@ -204,9 +231,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 					.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
-				<Expand open={!questionPresentation(view).pending && (view.working || view.guest?.awaitingAsyncWork === true || activity !== null)}>
-					<WorkingRow view={view} session={session} activity={activity} stopFocus={stopFocus} />
-				</Expand>
+				<WorkingStatus view={view} session={session} activity={activity} stopFocus={stopFocus} />
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">
 					<Composer session={session} />
 				</div>

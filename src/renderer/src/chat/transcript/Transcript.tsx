@@ -940,9 +940,11 @@ export function TranscriptBody({
 	// Reveal state by message, so a streamed reply's saved entry continues the same reveal (`usePlayout`).
 	const [playouts] = useState(() => new Map<number | string, Playout>());
 	const outOfSight = useOutOfSight(rootRef);
+	const inPlaceQuestion = pendingQuestion?.inPlace === true;
+	const previousInPlaceQuestion = useRef(false);
 	// Pinned to the bottom, the view follows new rows and the content column's own growth (a paced reply, an opening
 	// card) in one eased write per frame. Scrolled up, it stays put.
-	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight, instant: pendingQuestion?.inPlace === true });
+	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight, instant: inPlaceQuestion || previousInPlaceQuestion.current });
 
 	const recordEdge = () => {
 		const el = rootRef.current;
@@ -1107,15 +1109,18 @@ export function TranscriptBody({
 	);
 	const openFile = useCallback((path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId }), [scope.projectPath, scope.tabId]);
 
-	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
-	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
+	// Form results and native departure change the card, footer and viewport in one commit. Repair pinned geometry
+	// before paint, including the departure commit, without extending form input authority or moving an unpinned reader.
+	// Other content retains its eased following after the initial loaded commit.
 	const settledRef = useRef(false);
-	useEffect(() => {
+	useLayoutEffect(() => {
+		const formCommit = inPlaceQuestion || previousInPlaceQuestion.current;
+		previousInPlaceQuestion.current = inPlaceQuestion;
 		const el = rootRef.current;
 		// A view exactly at the bottom (the content shrank, or never overflowed) is pinned whatever unpinned it earlier,
 		// so "Show new activity" never offers a jump to where the reader already is, and the window follows the tail
 		// again. A reader who scrolled up even a little stays where they are.
-		if (!pinnedRef.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 1) {
+		if (!formCommit && !pinnedRef.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 1) {
 			pinnedRef.current = true;
 			setPinnedStart(null);
 		}
@@ -1129,7 +1134,7 @@ export function TranscriptBody({
 			follow.snap();
 			settledRef.current = loaded;
 		}
-	}, [follow, loaded, entries, stream, activeTools, pendingQuestion, working, tspNotices, localRuns]);
+	}, [follow, loaded, entries, stream, activeTools, pendingQuestion, inPlaceQuestion, working, tspNotices, localRuns, footer]);
 	let lastSeen = -1;
 	for (let index = visible.length - 1; index >= 0; index--) {
 		if (arrivals.seen.has(visible[index]?.id ?? "")) {
@@ -1307,8 +1312,9 @@ export function TranscriptBody({
 									</Rise>
 								)}
 								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} tabId={scope.tabId} hidden={outOfSight} />
+								{pendingQuestion?.inPlace && <div key={pendingQuestion.key}>{pendingQuestion.node}</div>}
 								<AnimatePresence initial={false} mode="wait">
-									{pendingQuestion && (
+									{pendingQuestion && !pendingQuestion.inPlace && (
 										<motion.div
 											key={pendingQuestion.key}
 											initial={{ opacity: 0, y: 8 }}

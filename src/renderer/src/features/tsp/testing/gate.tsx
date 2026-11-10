@@ -9,8 +9,7 @@ import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
 import { TranscriptBody } from "../../../chat/transcript/Transcript";
 import { Composer } from "../../../chat/composer/Composer";
 import { SessionHeader } from "../../../chat/SessionHeader";
-import { WorkingRow } from "../../../chat/ChatView";
-import { Expand } from "../../../ui";
+import { WorkingStatus } from "../../../chat/ChatView";
 import { recordFormLayout } from "./form-layout-evidence";
 import type { FormLayoutEvidence, FormLayoutRecorder } from "./form-layout-types";
 import { useFiles } from "../../panes/files-store";
@@ -20,7 +19,7 @@ import type { ToolResultLike } from "../../../tool-render/types";
 import type { GuestClient, GuestSnapshot } from "../../../collab/lib/client";
 import { presentationClaims } from "../../../state/tsp/presentation-claims";
 import { OmpDialogCard } from "../../session-tools/OmpDialogCard";
-import { questionPresentation, SessionController, type SessionView } from "../../../state/session";
+import { SessionController, type SessionView } from "../../../state/session";
 import { screenActivity, type ScreenActivityKind } from "../../../state/tsp/screen-activity";
 import { controllerFor, useApp } from "../../../state/app";
 import { registerComposerEditor } from "../../../chat/composer/drafts";
@@ -58,7 +57,8 @@ interface Gate {
 	buttonVisible(button: HTMLButtonElement): boolean;
 	showPlan(snapshot: TspHostSnapshot): void;
 	showAsk(snapshot: TspHostSnapshot, request: CollabUiRequest | null, args: Record<string, unknown>, result?: ToolResultLike, classic?: boolean, entries?: SessionEntry[]): Promise<void>;
-	finishForm(result: ToolResultMessage): void;
+	finishForm(result: ToolResultMessage, working?: boolean): void;
+	finishWorking(): void;
 	showFormLayout(snapshot: TspHostSnapshot, request: CollabUiRequest, args: Record<string, unknown>, entries: SessionEntry[]): Promise<void>;
 	startLayoutEvidence(): void;
 	markLayoutEvidence(phase: string): void;
@@ -122,7 +122,7 @@ function FormLayoutHarness() {
 		<section data-chat-column aria-label="Form layout chat" className="flex min-h-0 min-w-0 flex-col bg-sheet">
 			<div data-gate-header><SessionHeader session={session} fallbackTitle="04 Ask form" /></div>
 			<TranscriptBody scope={session} entries={current.guest?.entries ?? []} mode="normal" working={current.working} activeTools={current.guest?.activeTools} ready identity="form-layout" pendingQuestion={pending} />
-			<div data-gate-working><Expand open={!questionPresentation(current).pending && (current.working || current.guest?.awaitingAsyncWork === true)}><WorkingRow view={current} session={session} activity={null} stopFocus={stopFocus} /></Expand></div>
+			<div data-gate-working><WorkingStatus view={current} session={session} activity={null} stopFocus={stopFocus} /></div>
 			<div data-gate-composer className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] shrink-0 px-6 pb-4"><Composer session={session} /></div>
 		</section>
 		<aside aria-label="Fixture side panel" className="my-3 mr-3 rounded-lg border border-border bg-panel p-4"><h2>Tasks</h2><p className="mt-4">Release fixture questions</p></aside>
@@ -238,14 +238,15 @@ function Harness() {
 				setShowPlan(false);
 				setAsk({ request, args, result });
 			},
-			finishForm(result) {
+			finishForm(result, working = false) {
 				if (!view.guest) throw new Error("No form is open in the gate");
 				if (!view.guest.activeTools.has(result.toolCallId)) throw new Error("The recorded result must complete the gate's active form tool call");
 				const entry: SessionEntry = { type: "message", id: "gate-result", parentId: null, timestamp: new Date(0).toISOString(), message: result };
-				view = { ...view, working: false, guest: { ...view.guest, working: false, uiRequest: null, pendingUiRequests: [], activeTools: new Map(), entries: [...view.guest.entries, entry] } };
+				view = { ...view, working, guest: { ...view.guest, working, uiRequest: null, pendingUiRequests: [], activeTools: new Map(), entries: [...view.guest.entries, entry] } };
 				setAsk(previous => previous && { ...previous, request: null, result });
 				for (const listener of sessionListeners) listener();
 			},
+			finishWorking() { view = { ...view, working: false, guest: view.guest && { ...view.guest, working: false } }; for (const listener of sessionListeners) listener(); },
 			showCommandResults(results) { calls.length = 0; resetModes(); setCommandResults(results); },
 			showMarkdown(text) { calls.length = 0; resetModes(); setMarkdown(text); },
 			fileRequests,

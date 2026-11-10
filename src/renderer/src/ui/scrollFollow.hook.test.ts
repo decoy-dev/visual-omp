@@ -2,7 +2,7 @@
 import { act, createElement, useLayoutEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { releaseScrollFollow, type ScrollFollow, useScrollFollow } from "./motion";
+import { Expand, releaseScrollFollow, type ScrollFollow, useScrollFollow } from "./motion";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -98,22 +98,75 @@ describe("transcript bottom pin", () => {
 		}
 	});
 
-	it("follows in-place question changes on the next frame without an eased glide", () => {
+	it("follows in-place question changes synchronously before the next frame", () => {
 		act(() => root.render(createElement(Probe, { instant: true })));
 		height += 140;
 		resized();
-		const batch = [...frames.values()];
-		frames.clear();
-		for (const callback of batch) callback(1000 / 60);
 		expect(element.scrollTop).toBe(height - viewport);
-		settle(); // The follow may schedule one final no-op frame after reaching its target.
+		expect(frames.size).toBe(0);
+		height += 80;
+		follow.follow();
+		expect(element.scrollTop).toBe(height - viewport);
+		expect(frames.size).toBe(0);
+	});
+
+	it("cancels a pending eased frame when an in-place question snaps", () => {
+		height += 140;
+		resized();
+		expect(frames.size).toBe(1);
+		expect(element.scrollTop).toBe(1200);
+		act(() => root.render(createElement(Probe, { instant: true })));
+		follow.follow();
+		expect(element.scrollTop).toBe(height - viewport);
+		expect(frames.size).toBe(0);
+		scroll(element.scrollTop); // The synchronous write is still recognized as the follow's own.
+		expect(pinned.current).toBe(true);
+		expect(frames.size).toBe(0);
+	});
+
+	it("preserves an unpinned reader without writes during instant resize, follow and snap", () => {
+		act(() => root.render(createElement(Probe, { instant: true })));
 		element.dispatchEvent(new WheelEvent("wheel", { deltaY: -30 }));
-		scroll(element.scrollTop - 30);
+		scroll(1170);
+		let top = element.scrollTop;
+		const write = vi.fn((value: number) => { top = value; });
+		Object.defineProperty(element, "scrollTop", { configurable: true, get: () => top, set: write });
+		height += 140;
+		viewport -= 40;
+		resized();
+		follow.follow();
+		follow.snap();
+		expect(pinned.current).toBe(false);
+		expect(element.scrollTop).toBe(1170);
+		expect(write).not.toHaveBeenCalled();
+		expect(frames.size).toBe(0);
+	});
+
+	it("reconciles clamping before an instant viewport resize follows", () => {
+		act(() => root.render(createElement(Probe, { instant: true })));
+		viewport += 100;
+		element.scrollTop = 1100;
+		height += 160;
+		resized();
+		expect(pinned.current).toBe(true);
+		expect(element.scrollTop).toBe(height - viewport);
+		expect(frames.size).toBe(0);
+		scroll(element.scrollTop);
+		expect(pinned.current).toBe(true);
+	});
+
+	it("resumes eased following after leaving in-place question mode", () => {
+		act(() => root.render(createElement(Probe, { instant: true })));
 		height += 100;
 		resized();
+		expect(element.scrollTop).toBe(1300);
+		act(() => root.render(createElement(Probe, { instant: false })));
+		height += 100;
+		resized();
+		expect(element.scrollTop).toBe(1300);
+		expect(frames.size).toBe(1);
 		settle();
-		expect(pinned.current).toBe(false);
-		expect(element.scrollTop).toBe(1310);
+		expect(Math.abs(element.scrollTop - 1400)).toBeLessThanOrEqual(0.5);
 	});
 
 	it("keeps following when the helper strip changes the viewport during an eased append", () => {
@@ -275,5 +328,27 @@ describe("transcript bottom pin", () => {
 		settle();
 		expect(pinned.current).toBe(false);
 		expect(element.scrollTop).toBe(900);
+	});
+});
+
+describe("instant disclosure geometry", () => {
+	it("renders both structural boxes at rest and removes them in the closing commit", () => {
+		act(() => root.render(createElement(Expand, { open: true, instant: true, id: "question-status", className: "status-content", children: "Question status" })));
+		const box = container.querySelector<HTMLElement>("#question-status")!;
+		expect(box.style.height).toBe("");
+		expect(box.style.opacity).toBe("");
+		expect(box.children).toHaveLength(1);
+		expect(box.firstElementChild?.className).toBe("status-content");
+		expect(box.textContent).toBe("Question status");
+		act(() => root.render(createElement(Expand, { open: false, instant: true, children: "Question status" })));
+		expect(container.childElementCount).toBe(0);
+		expect(box.isConnected).toBe(false);
+	});
+
+	it("drops an already animated disclosure synchronously when instant closing is requested", () => {
+		act(() => root.render(createElement(Expand, { open: true, children: "Working" })));
+		expect(container.textContent).toBe("Working");
+		act(() => root.render(createElement(Expand, { open: false, instant: true, children: "Working" })));
+		expect(container.childElementCount).toBe(0);
 	});
 });

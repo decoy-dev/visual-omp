@@ -6,6 +6,7 @@ export interface FormLayoutFrame {
 	phase: string;
 	requestId: number | null;
 	card: LayoutBox | null;
+	cardOpacity: number | null;
 	form: LayoutBox | null;
 	transcript: (LayoutBox & { scrollTop: number; scrollHeight: number; clientHeight: number }) | null;
 	composer: LayoutBox | null;

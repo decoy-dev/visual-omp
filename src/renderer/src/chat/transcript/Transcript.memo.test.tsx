@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssistantMessage, SessionEntry } from '@oh-my-pi/pi-wire';
@@ -7,7 +7,7 @@ import type { RiseProps } from '../../ui/motion';
 import type * as MotionModule from '../../ui/motion';
 import type * as PaceModule from './pace';
 import { MotionProvider, TooltipProvider } from '../../ui';
-import { TranscriptBody } from './Transcript';
+import { TranscriptBody, type TranscriptBodyProps } from './Transcript';
 import '../../i18n';
 
 const observed = vi.hoisted(() => {
@@ -66,6 +66,23 @@ async function paint(stream: AssistantMessage | null, rows = entries) {
 	await act(async () => root.render(createElement(MotionProvider, null, createElement(TooltipProvider, null, child))));
 }
 
+function QuestionTranscript({ pendingQuestion, rows = entries, onLayout }: {
+	pendingQuestion: TranscriptBodyProps['pendingQuestion'];
+	rows?: readonly SessionEntry[];
+	onLayout?: () => void;
+}) {
+	useLayoutEffect(() => onLayout?.());
+	return createElement(TranscriptBody, { scope, entries: rows, mode: 'normal', working: true, ready: true, identity: 'memo', pendingQuestion });
+}
+
+function paintQuestion(pendingQuestion: TranscriptBodyProps['pendingQuestion'], onLayout?: () => void, rows = entries) {
+	act(() => root.render(createElement(MotionProvider, null, createElement(TooltipProvider, null, createElement(QuestionTranscript, { pendingQuestion, rows, onLayout })))));
+}
+
+function question(inPlace = true, closing = false): NonNullable<TranscriptBodyProps['pendingQuestion']> {
+	return { key: 'form-call', inPlace, node: createElement('button', { 'data-question': true }, closing ? 'Question closing' : 'Choose a value') };
+}
+
 describe('settled transcript memo boundaries', () => {
 	it('does not re-render settled entry wrappers for text-only stream changes', async () => {
 		await paint(assistant('First live words'));
@@ -103,5 +120,83 @@ describe('settled transcript memo boundaries', () => {
 		const appended: SessionEntry = { type: 'message', id: 'next', parentId: 'reply', timestamp: new Date(6000).toISOString(), message: assistant('Saved continuation', 6000) };
 		await paint(null, [...entries, appended]);
 		expect(log.scrollTop).toBe(400);
+	});
+});
+
+describe('in-place form departure', () => {
+	it('removes the form DOM in the departure commit without retaining an exit child', () => {
+		paintQuestion(question());
+		const card = container.querySelector('[data-question]')!;
+		paintQuestion(question(true, true));
+		expect(container.querySelector('[data-question]')).toBe(card);
+		expect(card.textContent).toBe('Question closing');
+		let presentInLayout: boolean | undefined;
+		paintQuestion(null, () => { presentInLayout = card.isConnected; });
+		expect(presentInLayout).toBe(false);
+		expect(container.querySelector('[data-question]')).toBeNull();
+	});
+
+	it('retains the existing exit animation for a general question', () => {
+		paintQuestion(question(false));
+		const card = container.querySelector('[data-question]')!;
+		let presentInLayout: boolean | undefined;
+		paintQuestion(null, () => { presentInLayout = card.isConnected; });
+		expect(presentInLayout).toBe(true);
+	});
+
+	it.each(['result-first', 'departure-first'])('snaps pinned form and departure geometry before parent layout (%s)', order => {
+		paintQuestion(question());
+		const log = container.querySelector<HTMLElement>('[role=log]')!;
+		let height = 1600;
+		let viewport = 200;
+		Object.defineProperties(log, {
+			clientHeight: { configurable: true, get: () => viewport },
+			scrollHeight: { configurable: true, get: () => height },
+		});
+		log.scrollTop = height - viewport;
+		act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })));
+		const result: SessionEntry = { type: 'message', id: 'form-result', parentId: 'reply', timestamp: new Date(6000).toISOString(), message: { role: 'toolResult', toolCallId: 'form-call', toolName: 'ask', content: [{ type: 'text', text: 'Answered' }], isError: false, timestamp: 6000 } };
+		const completed = [...entries, result];
+		if (order === 'result-first') {
+			height += 180;
+			let resultTop: number | undefined;
+			paintQuestion(question(true, true), () => { resultTop = log.scrollTop; }, completed);
+			expect(resultTop).toBe(height - viewport);
+		}
+		height -= 650;
+		viewport += 32;
+		let departureTop: number | undefined;
+		let presentInLayout: boolean | undefined;
+		paintQuestion(null, () => {
+			departureTop = log.scrollTop;
+			presentInLayout = container.querySelector('[data-question]') !== null;
+		}, order === 'result-first' ? completed : entries);
+		expect(presentInLayout).toBe(false);
+		expect(departureTop).toBe(height - viewport);
+		// A later result uses the ordinary transcript path after the native form has ended.
+		if (order === 'departure-first') paintQuestion(null, undefined, completed);
+	});
+
+	it('does not write scrollTop for an unpinned reader as results arrive and the form departs', () => {
+		paintQuestion(question());
+		const log = container.querySelector<HTMLElement>('[role=log]')!;
+		let height = 1600;
+		Object.defineProperties(log, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, get: () => height } });
+		log.scrollTop = 1400;
+		act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })));
+		act(() => log.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 })));
+		log.scrollTop = 400;
+		act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })));
+		let top = log.scrollTop;
+		const write = vi.fn((value: number) => { top = value; });
+		Object.defineProperty(log, 'scrollTop', { configurable: true, get: () => top, set: write });
+		height += 180;
+		paintQuestion(question(true, true));
+		expect(log.scrollTop).toBe(400);
+		// Even a shrink that puts this reader at the bottom must leave the pin and position alone for this commit.
+		height = 600;
+		paintQuestion(null);
+		expect(log.scrollTop).toBe(400);
+		expect(write).not.toHaveBeenCalled();
 	});
 });

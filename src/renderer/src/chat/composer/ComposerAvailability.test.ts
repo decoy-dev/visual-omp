@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { HostState } from "@shared/ipc";
@@ -18,7 +18,12 @@ vi.hoisted(() => {
 	// Exercise Motion's JS fallback: happy-dom's cancelled WAAPI promises reject during draft transitions.
 	Reflect.deleteProperty(Element.prototype, "animate");
 });
-const tray = vi.hoisted(() => ({ questionId: null as number | null, askWaiting: false }));
+const tray = vi.hoisted(() => ({ questionId: null as number | null, askWaiting: false, formQuestion: false }));
+const presentation = vi.hoisted(() => ({ form: null as string | null, listeners: new Set<() => void>() }));
+vi.mock("../transcript/formPresentation", () => {
+	const subscribe = (listener: () => void) => { presentation.listeners.add(listener); return () => presentation.listeners.delete(listener); };
+	return { usePresentedForm: (hostId: string | null, generation: number) => useSyncExternalStore(subscribe, () => hostId === "host" && generation === 1 ? presentation.form : null) };
+});
 vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean }; btwDrawers: Record<string, boolean> }) => unknown) => select({ prefs: { voiceInput: false }, btwDrawers: {} }) }));
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
@@ -42,6 +47,7 @@ async function publish(patch: Partial<SessionView>) {
 	await act(async () => {
 		view = { ...view, ...patch };
 		for (const listener of subscribers) listener();
+		for (const listener of presentation.listeners) listener();
 	});
 }
 // These tests mount Composer itself; only unrelated data sources and auxiliary tools are replaced.
@@ -50,7 +56,7 @@ const host = (transport: HostState["transport"], tspAvailability: HostState["tsp
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	subscribers.clear();
-	tray.questionId = null; tray.askWaiting = false;
+	tray.questionId = null; tray.askWaiting = false; tray.formQuestion = false; presentation.form = null;
 	vi.mocked(session.send).mockReset().mockResolvedValue(undefined);
 	vi.mocked(session.preserveFailedMessage).mockReset();
 	// happy-dom omits FontFaceSet; Composer only subscribes to its loadingdone event here.
@@ -171,6 +177,70 @@ it("keeps form presentation through request gaps and delayed matches without gra
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 	await publish({ guest: { ...view.guest!, uiRequest: null }, host: { ...view.host!, generation: 2 } });
 	expect(tray.questionId).toBeNull();
+});
+
+it("retains the final form question id when send readiness changes during native-held closing", async () => {
+	const request = { reqId: 7, kind: "editor" as const, title: "Which database?", prefill: "SQLite" };
+	const args = { html: '<form><label>Which database?<input name="db"></label></form>' };
+	presentation.form = "native-form";
+	view = { ...view, working: true, host: { ...host("tsp", { available: false, reason: "Question waiting", reasonCode: "matched-question", questionReqId: 7 }),
+		tspComposer: { sendable: false, text: "", cursor: 0, ghost: "", editorId: null, surfaceId: null, queued: [], blockedBy: "ask" } }, guest: {
+		phase: "live", endedReason: null, header: null, readOnly: false, entries: [], state: null, stream: null, streamDone: false, working: true,
+		agents: [], progress: new Map(), lifecycle: new Map(), backgroundTools: new Map(), notices: [], thinkingSelector: null, loading: null,
+		uiRequest: request, pendingUiRequests: [request], activeTools: new Map([["form-call", { toolCallId: "form-call", toolName: "ask", args, startedAt: 0 }]]),
+	} };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(tray.questionId).toBe(7);
+	await publish({ guest: { ...view.guest!, uiRequest: null, pendingUiRequests: [], activeTools: new Map() } });
+	expect(tray.questionId).toBe(7);
+	expect(tray.formQuestion).toBe(true);
+	expect(tray.askWaiting).toBe(true);
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	await publish({ working: false, guest: { ...view.guest!, working: false } });
+	expect(tray.questionId).toBe(7);
+	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(session.send).not.toHaveBeenCalled();
+
+	presentation.form = null;
+	await publish({});
+	expect(tray.questionId).toBeNull();
+	expect(tray.formQuestion).toBe(false);
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	expect(view.host!.tspComposer!.blockedBy).toBe("ask");
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	// Repeated snapshots of the stale reason cannot insert a replacement status row.
+	await publish({});
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	await publish({ host: { ...view.host!, tspAvailability: { available: false, reason: "Another question", reasonCode: "matched-question", questionReqId: 99 } } });
+	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");
+	await publish({ host: { ...view.host!, generation: 2 } });
+	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");
+});
+
+it("does not carry a cached form question id into another form or reuse its retired blocked reason", async () => {
+	const args = { html: '<form><label>Name<input name="name"></label></form>' };
+	const request = { reqId: 7, kind: "editor" as const, title: "Name" };
+	presentation.form = "first-native-form";
+	view = { ...view, host: host("tsp", { available: false, reason: "Question waiting", reasonCode: "ask-editor" }), guest: {
+		phase: "live", endedReason: null, header: null, readOnly: false, entries: [], state: null, stream: null, streamDone: false, working: true,
+		agents: [], progress: new Map(), lifecycle: new Map(), backgroundTools: new Map(), notices: [], thinkingSelector: null, loading: null,
+		uiRequest: request, pendingUiRequests: [request], activeTools: new Map([["first-form", { toolCallId: "first-form", toolName: "ask", args, startedAt: 0 }]]),
+	} };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(tray.questionId).toBe(7);
+	await publish({ guest: { ...view.guest!, uiRequest: null, pendingUiRequests: [] } });
+	presentation.form = "restarted-native-form";
+	await publish({});
+	expect(tray.questionId).toBeNull();
+	await publish({ guest: { ...view.guest!, uiRequest: request, pendingUiRequests: [request] } });
+	expect(tray.questionId).toBe(7);
+	presentation.form = "second-native-form";
+	await publish({ guest: { ...view.guest!, uiRequest: null, pendingUiRequests: [], activeTools: new Map([["second-form", { toolCallId: "second-form", toolName: "ask", args, startedAt: 0 }]]) } });
+	expect(tray.questionId).toBeNull();
+	presentation.form = null;
+	await publish({ host: host("tsp", { available: true, reason: null }), guest: { ...view.guest!, activeTools: new Map() } });
+	await publish({ host: host("tsp", { available: false, reason: "Another question", reasonCode: "matched-question", questionReqId: 99 }) });
+	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");
 });
 
 it("keeps the ask exception unavailable for a different blocking hook or without a live ask", async () => {

@@ -136,6 +136,8 @@ export interface ExpandProps {
 	id?: string;
 	/** Animate when the component first mounts already open. Default false: open-on-mount content renders at rest. */
 	animateOnMount?: boolean;
+	/** Resolve geometry synchronously and remove closed content without retaining an exit child. */
+	instant?: boolean;
 }
 
 /** Expand timing: open lets the height lead and the content follow 40ms later; close fades the content first. */
@@ -166,14 +168,15 @@ const expandVariants: Variants = {
  * reaches it. The clip is therefore written on the element by the animation callbacks, which keeps the fading content
  * from spilling over the rows that move up beneath it, and the close's starting height goes through `custom`.
  */
-export function Expand({ open, children, className, id, animateOnMount = false }: ExpandProps) {
+export function Expand({ open, children, className, id, animateOnMount = false, instant = false }: ExpandProps) {
 	const reduced = useMotionReduced();
 	const box = useRef<HTMLDivElement>(null);
 	const clip = (moving: boolean) => {
 		if (box.current) box.current.style.overflow = moving ? "hidden" : "";
 	};
 	// Read in the render that closes it, while the box still has its open height (later renders during the close are ignored).
-	const from = open || reduced ? undefined : box.current?.offsetHeight;
+	const from = open || reduced || instant ? undefined : box.current?.offsetHeight;
+	if (instant) return open ? <div id={id}><div className={className}>{children}</div></div> : null;
 	return (
 		<AnimatePresence initial={animateOnMount} custom={from}>
 			{open && (
@@ -430,7 +433,7 @@ export interface ScrollFollowOptions {
 }
 
 export interface ScrollFollow {
-	/** Follow new content on the next frame, if the view is pinned to the bottom. */
+	/** Follow new content while pinned, synchronously in instant mode and on the next frame otherwise. */
 	follow(): void;
 	/** Go to the bottom now (a chat that just loaded). */
 	snap(): void;
@@ -524,6 +527,13 @@ export function useScrollFollow(
 			ledger.wrote(el.scrollTop);
 			remember(el);
 		};
+		/** ResizeObserver runs before paint; instant forms must settle in this callback rather than the next frame. */
+		const settleInstant = (el: HTMLElement) => {
+			stop();
+			if (!pinnedRef.current || draggingScrollbar) return;
+			const target = el.scrollHeight - el.clientHeight;
+			if (Math.abs(target - el.scrollTop) > 0.5) write(el, target);
+		};
 		const run = (now: number) => {
 			frame = 0;
 			const el = ref.current;
@@ -544,7 +554,13 @@ export function useScrollFollow(
 			frame = requestAnimationFrame(run);
 		};
 		const follow = () => {
-			if (!frame && pinnedRef.current && !draggingScrollbar) frame = requestAnimationFrame(run);
+			if (!pinnedRef.current || draggingScrollbar) return;
+			if (instant.current) {
+				const el = ref.current;
+				if (!el) return;
+				reconcile(el);
+				settleInstant(el);
+			} else if (!frame) frame = requestAnimationFrame(run);
 		};
 		const unpin = () => {
 			if (!ref.current || ref.current.scrollTop <= 0) return;
@@ -585,8 +601,10 @@ export function useScrollFollow(
 			},
 			release,
 			resize() {
-				if (ref.current && !draggingScrollbar) reconcile(ref.current);
-				follow();
+				const el = ref.current;
+				if (el && !draggingScrollbar) reconcile(el);
+				if (instant.current && el) settleInstant(el);
+				else follow();
 			},
 			/** Wheel up states intent before any scroll event; unpin immediately so no frame pulls the view back. */
 			wheel(event: WheelEvent) {

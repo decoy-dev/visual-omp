@@ -8,7 +8,7 @@
  */
 import { ArrowCounterClockwise, DotsSixVertical, Hourglass, ImageSquare, PaperPlaneRight, PencilSimple, Question, Warning, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type DragEvent, type KeyboardEvent, useRef, useState } from "react";
+import { type DragEvent, type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isResumeDeclined } from "../../registry/guards";
 import type { QueuedMessage, SessionController } from "../../state/session";
@@ -22,6 +22,8 @@ interface QueueTrayProps {
 	/** Pending omp question (reqId) not yet answered. */
 	questionId: number | null;
 	askWaiting?: boolean;
+	/** Form layout leaves with its paired native node, without a second collapse animation. */
+	formQuestion?: boolean;
 	sendBlocked?: boolean;
 	/** omp may still hold rejected text or images (`SessionView.strandedImages`). */
 	strandedImages: boolean;
@@ -42,13 +44,16 @@ function revealQuestion(reqId: number, reduced: boolean): void {
  * The tray stays mounted in the composer and opens or closes itself. After the last queued message leaves, the
  * section is held open until that row's exit animation finishes, then collapses.
  */
-export function QueueTray({ session, queue, questionId, askWaiting = false, sendBlocked = false, strandedImages }: QueueTrayProps) {
+export function QueueTray({ session, queue, questionId, askWaiting = false, formQuestion = false, sendBlocked = false, strandedImages }: QueueTrayProps) {
 	const { t } = useTranslation("composer");
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const reducedMotion = useMotionReduced();
+	const previousForm = useRef(formQuestion);
+	const formDeparture = previousForm.current && !formQuestion && questionId === null;
+	useLayoutEffect(() => { previousForm.current = formQuestion; }, [formQuestion]);
 	// Held open while rows are still leaving; the last visible count labels the section during that exit.
 	const [held, setHeld] = useState(queue.length > 0);
 	if (queue.length > 0 && !held) setHeld(true);
@@ -112,9 +117,9 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, send
 	};
 
 	return (
-		<Expand open={held || questionId !== null || strandedImages}>
+		<Expand open={held || questionId !== null || strandedImages} instant={formDeparture && !held && !strandedImages}>
 			<div className="mx-3 rounded-t-lg border border-b-0 border-border-strong bg-inset">
-			<Expand open={questionId !== null}>
+			<Expand open={questionId !== null} instant={formDeparture}>
 				<div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-1.5">
 					<button
 						type="button"

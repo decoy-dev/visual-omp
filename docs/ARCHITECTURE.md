@@ -1058,6 +1058,17 @@ The composer's Stop/Send set uses the same pending presentation. A form-scoped d
 cache preserves its previous send-button appearance through ask-specific readiness gaps;
 submission independently checks the current request and native readiness, including before
 the next visual snapshot. This cache grants no input authority.
+`chat/transcript/formPresentation.ts` reads the current scoped native form and its existing
+active or available presentation claim. That identity retains the composer question id and
+keeps the working row absent while a completed form is still presented. Send-readiness
+changes cannot erase the retained question id. A stale ask-only availability reason cannot
+insert a replacement status row after native departure; actual submission guards still use it.
+In-place forms leave outside the ordinary question exit animation. Their question tray and
+the following working-row segment resolve geometry synchronously, while legacy questions
+and ordinary queue disclosures retain their existing motion. Transcript layout effects and
+instant ResizeObserver following repair pinned geometry before paint through the departure
+commit. An unpinned reader receives no scroll writes.
+
 
 
 omp 18.18.4 and 18.18.5 nest the form inside a scrolling list and expose only the active

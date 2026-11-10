@@ -50,6 +50,16 @@ const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Appl
 
 /** Explicit test-only baseline; production and ordinary gates always load working-tree sources. */
 function formLayoutBaseline() {
+	if (process.env.TSP_FORM_LAYOUT_GATE === "1" && process.env.TSP_FORM_CLOSE_BASELINE === "1") {
+		const files = ["chat/ChatView.tsx", "chat/composer/Composer.tsx", "chat/composer/QueueTray.tsx", "chat/transcript/Transcript.tsx", "chat/transcript/QuestionCard.tsx", "ui/motion.tsx"];
+		const sources = new Map(files.map(file => {
+			const path = `src/renderer/src/${file}`;
+			let source = execFileSync("git", ["show", `e557710:${path}`], { cwd: root, encoding: "utf8" });
+			if (file === "chat/ChatView.tsx") source += '\nexport function WorkingStatus(props) { return <Expand open={!questionPresentation(props.view).pending && (props.view.working || props.view.guest?.awaitingAsyncWork === true || props.activity !== null)}><WorkingRow {...props} /></Expand>; }\n';
+			return [resolve(root, path), source];
+		}));
+		return [{ name: "form-close-e557710-baseline", enforce: "pre" as const, load(id: string) { return sources.get(id.split("?")[0]!); } }];
+	}
 	if (process.env.TSP_FORM_LAYOUT_GATE !== "1" || process.env.TSP_FORM_LAYOUT_BASELINE !== "1") return [];
 	const files = [
 		"chat/transcript/QuestionCard.tsx", "chat/transcript/QuestionChoices.tsx",
@@ -158,6 +168,7 @@ function recorded(name: string, idle = false): TspHostSnapshot {
 interface AskEvidence {
 	stages: { stage: string; afterMessage: number; surfaces: unknown; request: CollabUiRequest | null }[];
 	sessions: { text: string }[];
+	engineVersion?: string;
 }
 function askTranscript(evidence: AskEvidence): { entries: SessionEntry[]; call: ToolCallContent; result: ToolResultMessage } {
 	const entries = evidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line) as SessionEntry);
@@ -792,13 +803,16 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		}
 	}
 	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each(
-		(["reduced", "full"] as const).flatMap(motion => (["short", "overflowing"] as const).map(history => ({ motion, history }))),
-	)("records form layout at owner dimensions with $motion motion and $history history", async ({ motion, history }) => {
+		(["reduced", "full"] as const).flatMap(motion => (["short", "overflowing"] as const).flatMap(history => (["idle", "continues", "finishes"] as const).map(reply => ({ motion, history, reply })))),
+	)("records form layout at owner dimensions with $motion motion, $history history and $reply reply", async ({ motion, history, reply }) => {
 		const baseline = process.env.TSP_FORM_LAYOUT_BASELINE === "1";
-		const directory = join(homedir(), "vomp-checks/form-jump", baseline ? "before" : "after");
+		const closeBaseline = process.env.TSP_FORM_CLOSE_BASELINE === "1";
+		const directory = process.env.TSP_FORM_LAYOUT_EVIDENCE ?? join(homedir(), "vomp-checks/form-jump", baseline ? "before" : "after");
 		await mkdir(directory, { recursive: true });
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 1568, height: 1002, deviceScaleFactor: 1, mobile: false });
-		const evidence = formGuest185 as AskEvidence;
+		const evidence = process.env.TSP_FORM_LAYOUT_RECORDING ? JSON.parse(await readFile(process.env.TSP_FORM_LAYOUT_RECORDING, "utf8")) as AskEvidence : formGuest185 as AskEvidence;
+		const engine = evidence.engineVersion ?? "18.18.5";
+		const outputName = `${history}-${motion}${reply === "idle" ? "" : `-${reply}`}`;
 		const { entries, call, result } = askTranscript(evidence);
 		const historyEntries: SessionEntry[] = [];
 		if (history === "overflowing") {
@@ -869,17 +883,18 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 				}
 			}
 			stabilityEnd = await page.evaluate<number>("performance.now()");
-			await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)})`);
+			await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)},${reply !== "idle"})`);
 			await mark("result-before-native-departure");
 			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
 			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(evidence.stages.at(-1)!, []))})`);
-			await mark("native-departed", 450);
+			await mark("native-departed", reply === "finishes" ? 100 : 450);
+			if (reply === "finishes") { await page.evaluate("window.gate.finishWorking()"); await mark("reply-finished", 350); }
 			await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
 		} finally {
 			captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
 			const calls = await page.evaluate("window.gate.calls");
 			const events = await page.evaluate("window.gate.formPresentationEvents");
-			await writeFile(join(directory, `${history}-${motion}.json`), JSON.stringify({ baseline: baseline ? "e88bd9d" : null, fixture: "18.18.5/ask-fixture-form-guest", seam: "Production TranscriptBody, usePendingQuestion and Composer; recorded requests and native matches; captured collab answer transport", stabilityEnd, ...captured, calls, events }, null, 2));
+			await writeFile(join(directory, `${outputName}.json`), JSON.stringify({ baseline: baseline ? "e88bd9d" : closeBaseline ? "e557710" : null, fixture: `${engine}/ask-fixture-form-guest`, reply, seam: "Production TranscriptBody, usePendingQuestion, WorkingStatus and Composer; recorded requests and native matches; captured collab answer transport", stabilityEnd, ...captured, calls, events }, null, 2));
 		}
 		const frames = captured.frames.filter(frame => frame.time <= stabilityEnd);
 		expect(frames.length).toBeGreaterThan(30);
@@ -897,7 +912,17 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(frames.every(frame => frame.claims === 1), "native ownership persists through every measured request gap").toBe(true);
 		const range = (values: number[]) => Math.max(...values) - Math.min(...values);
 		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
-		await writeFile(join(directory, `${history}-${motion}-summary.json`), JSON.stringify({ baseline, history, motion, frames: frames.length, movement, shifts: captured.shifts }, null, 2));
+		const completion = captured.frames.filter(frame => frame.time > stabilityEnd);
+		const visibleClosing = completion.filter(frame => frame.card && (frame.cardOpacity ?? 1) > 0.05);
+		const previous = frames.at(-1)!;
+		const travelExcess = (values: number[]) => values.slice(1).reduce((sum, value, index) => sum + Math.abs(value - values[index]!), 0) - Math.abs(values.at(-1)! - values[0]!);
+		const departure = {
+			cardDip: Math.max(0, ...visibleClosing.map(frame => frame.card!.top - previous.card!.top)),
+			cardDrift: Math.max(0, ...visibleClosing.map(frame => Math.abs(frame.card!.top - previous.card!.top))),
+			footerReversal: travelExcess([previous.composer!.top, ...completion.map(frame => frame.composer!.top)]),
+			scrollReversal: travelExcess([previous.transcript!.scrollTop, ...completion.map(frame => frame.transcript!.scrollTop)]),
+		};
+		await writeFile(join(directory, `${outputName}-summary.json`), JSON.stringify({ baseline, closeBaseline, engine, history, motion, reply, frames: frames.length, movement, departure, shifts: captured.shifts }, null, 2));
 		if (!baseline) {
 			let tallestCard = 0;
 			let tallestForm = 0;
@@ -916,9 +941,13 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			expect(movement.scrollTop, "answering or focusing must not scroll the transcript").toBeLessThanOrEqual(1);
 			expect(movement.documentScroll).toBe(0);
 		}
-		if (!baseline) {
-			const completion = captured.frames.filter(frame => frame.phase === "result-before-native-departure" || frame.phase === "native-departed");
-			for (let index = 1; index < completion.length; index++) expect(completion[index]!.composer!.top + 1, "the completed form's footer must close once without bouncing upward").toBeGreaterThanOrEqual(completion[index - 1]!.composer!.top);
+		if (!baseline && !closeBaseline) {
+			expect(departure.cardDip, "a completed form must not dip before it leaves").toBeLessThanOrEqual(1);
+			expect(departure.cardDrift, "the held form stays fixed until native departure").toBeLessThanOrEqual(1);
+			expect(departure.footerReversal, "the footer closes in one direction").toBeLessThanOrEqual(1);
+			expect(departure.scrollReversal, "form departure never scrolls away and back").toBeLessThanOrEqual(1);
+			const last = completion.at(-1)!;
+			expect(Math.abs(last.transcript!.scrollHeight - last.transcript!.clientHeight - last.transcript!.scrollTop)).toBeLessThanOrEqual(1);
 		}
 		if (baseline) expect(Math.max(movement.cardTop, movement.composerTop, movement.composerInputTop, movement.scrollTop), "the original production modules must reproduce the reported movement").toBeGreaterThan(1);
 		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));

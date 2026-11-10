@@ -67,6 +67,7 @@ import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistor
 import { type Attachment, appendWithSpace, composerText, notifyComposerAction, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret } from "./fuzzy";
 import { formatFileMention } from "../fileMentions";
+import { usePresentedForm } from "../transcript/formPresentation";
 import { ComposerMirror, keywordAtPoint, modelTagAtCaret, ModelTagMenu, useComposerAssist } from "./ComposerTags";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
@@ -667,17 +668,27 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const currentQuestionId = view.uiRequest?.reqId ?? null;
 	const questionHost = `${view.hostId}:${view.generation}`;
+	const presentedForm = usePresentedForm(view.transport === "tsp" && view.mode === "live" && !readOnly ? view.hostId : null, view.generation);
 	const formKey = view.formCallId === null ? null : `${questionHost}:${view.formCallId}`;
-	const [questionDisplay, setQuestionDisplay] = useState({ host: questionHost, scope: formKey, id: currentQuestionId, sendReady: !tspReason });
-	// Presentation can outlast the displayed request, but input authority always uses uiRequest.
-	const formPresented = formKey !== null || view.mode === "live" && !readOnly && questionDisplay.host === questionHost && questionDisplay.scope !== null && view.tspComposer?.blockedBy === "ask";
-	const displayScope = formKey ?? (formPresented ? questionDisplay.scope : null);
-	const formQuestionBlocked = formPresented && (view.tspAvailability?.reasonCode === "ask-editor" || view.tspAvailability?.reasonCode === "matched-question");
+	const [questionDisplay, setQuestionDisplay] = useState({ host: questionHost, scope: formKey, native: presentedForm, id: currentQuestionId, sendReady: !tspReason, retired: null as string | null });
+	const sameHost = questionDisplay.host === questionHost;
+	// Native presentation can outlast the tool result. It never grants input authority.
+	const formPresented = formKey !== null || presentedForm !== null;
+	const displayScope = formKey ?? (presentedForm !== null ? sameHost && questionDisplay.native === presentedForm ? questionDisplay.scope ?? presentedForm : presentedForm : null);
+	const sameScope = sameHost && questionDisplay.scope === displayScope && (presentedForm === null || questionDisplay.native === null || questionDisplay.native === presentedForm);
+	const questionId = currentQuestionId ?? (displayScope !== null && sameScope ? questionDisplay.id : null);
+	const questionBlockReason = view.tspAvailability?.reasonCode === "ask-editor" || view.tspAvailability?.reasonCode === "matched-question";
+	const questionBlockKey = questionBlockReason ? `${view.tspAvailability?.reasonCode}:${view.tspAvailability?.questionReqId ?? ""}` : null;
+	// Main's availability can arrive after the native departure. Keep its old ask reason from
+	// adding a second status row, while leaving that reason in the submission guard.
+	const retiredForm = view.mode === "live" && !readOnly && view.transport === "tsp" && sameHost && currentQuestionId === null && displayScope === null && questionBlockKey !== null
+		&& (questionDisplay.retired === questionBlockKey || questionDisplay.scope !== null && (view.tspAvailability?.reasonCode === "ask-editor" || view.tspAvailability?.questionReqId === undefined || view.tspAvailability.questionReqId === questionDisplay.id)) ? questionBlockKey : null;
+	const formQuestionBlocked = questionBlockReason && (formPresented || retiredForm !== null);
 	// Retain appearance only. Submission checks the current request and native readiness again.
-	const retainSendReady = !drawerOpen && view.questionPending && formQuestionBlocked && questionDisplay.host === questionHost && questionDisplay.scope === displayScope;
+	const retainSendReady = !drawerOpen && view.questionPending && formQuestionBlocked && sameScope;
 	const sendReady = !tspReason || retainSendReady && questionDisplay.sendReady;
-	if (questionDisplay.host !== questionHost || questionDisplay.scope !== displayScope || currentQuestionId !== null && questionDisplay.id !== currentQuestionId || questionDisplay.sendReady !== sendReady) setQuestionDisplay({ host: questionHost, scope: displayScope, id: currentQuestionId, sendReady });
-	const questionId = currentQuestionId ?? (displayScope !== null ? questionDisplay.id : null);
+	const native = presentedForm ?? (displayScope !== null && sameScope ? questionDisplay.native : null);
+	if (!sameScope || questionDisplay.native !== native || questionDisplay.id !== questionId || questionDisplay.sendReady !== sendReady || questionDisplay.retired !== retiredForm) setQuestionDisplay({ host: questionHost, scope: displayScope, native, id: questionId, sendReady, retired: retiredForm });
 	const visualCanSend = !readOnly && !sendBlocked && sendReady && hasMessage;
 	const actionSet = `${queueing}:${visualCanSend}`;
 	// Slots below order 50 sit on the left of the row under the card (folder, permission); the rest on the right.
@@ -708,7 +719,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 				<p className="flex-1">{view.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
 				<Button size="sm" variant="secondary" disabled={readOnly} onClick={() => void session.retryEditorRestore().catch((error: unknown) => toast({ tone: "err", message: String(error) }))}>{t("editorRestore.retry")}</Button>
 			</div>}
-			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={view.questionPending || formPresented} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
+			<QueueTray session={session} queue={view.queue} questionId={questionId} formQuestion={displayScope !== null} askWaiting={view.questionPending || formPresented} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
 					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",
