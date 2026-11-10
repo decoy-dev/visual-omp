@@ -50,8 +50,8 @@ export default {
     },
     {
       id: "files-and-commands", title: "03 File rows and command results", pane: "files",
-      files: ["Large Media Files/Large video.mp4", "Large Media Files/Large image.png", "Large Media Files/Large document.pdf", "Large Media Files/Large notes.txt"],
-      expectedReply: "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`",
+      files: ["Large Media Files/Large video.mp4", "Large Media Files/Large image.png", "Large Media Files/Large document.pdf", "Large Media Files/Large notes.txt", "Client Ads/08-card.png", "notes.md"],
+      expectedReply: "[View the revised card](<Client Ads/08-card.png>)\n\n[notes](./notes.md)",
       prompts: [[
         "fixture bigmedia",
         "Check project-relative file rows, /stats and model loading.",
@@ -59,6 +59,12 @@ export default {
         "1. In the reply, check each file row shows a project-relative path such as Large Media Files/Large notes.txt. No row should show the full scratch path. Click one file row and check its file opens in the side-panel viewer.",
         "2. Type /stats and press Enter. Check the result shows the dashboard address with Copy URL. The result should have no duplicate Open dashboard line.",
         "3. Choose Restart omp from the chat menu, then immediately open Settings > Models & roles. While the model list loads, no role should show This model isn't available. Pick another one. Repeat if the list loads before you can inspect it; preparation does not establish this timing check.",
+      ].join("\n"), [
+        "fixture link",
+        "The local fixture creates a small image and notes file, then replies with Markdown links to them.",
+        "",
+        "1. In the reply below, click View the revised card. Client Ads/08-card.png should open in the side-panel viewer. The link's relative destination contains a space and uses angle brackets.",
+        "2. Click notes in the same reply. notes.md should open in the side-panel viewer.",
       ].join("\n")],
     },
     {

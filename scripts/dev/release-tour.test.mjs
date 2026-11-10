@@ -84,7 +84,7 @@ test("0.7.13 prepares five focused chats with local model choices and explicit i
   for (const [index, chat] of latest.chats.entries()) {
     assert.ok(chat.title.startsWith(`${String(index + 1).padStart(2, "0")} `));
     for (const prompt of chat.prompts) {
-      assert.match(prompt, /^fixture (notes|bigmedia)\n/);
+      assert.match(prompt, /^fixture (notes|bigmedia|link)\n/);
       assert.match(prompt, /\n1\. .*\n2\. /s);
       assert.ok(!/[\u2013\u2014]/.test(prompt));
     }
@@ -93,9 +93,10 @@ test("0.7.13 prepares five focused chats with local model choices and explicit i
   assert.equal(helpers.pane, "tasks");
   assert.match(helpers.prompts[0], /cannot keep helpers running.*fixture helpers.*Open TourWorker1's conversation.*teal band.*small Back button.*Back to 02 Helper conversations are clearly marked.*Message helper TourWorker1.*Parent chat: 02 Helper conversations are clearly marked.*Choose Back/s);
   const previousMedia = next.chats.find(chat => chat.id === "large-media");
-  assert.deepEqual(files.files, previousMedia.files);
-  assert.equal(files.expectedReply, previousMedia.expectedReply);
+  assert.deepEqual(files.files, [...previousMedia.files, "Client Ads/08-card.png", "notes.md"]);
+  assert.equal(files.expectedReply, "[View the revised card](<Client Ads/08-card.png>)\n\n[notes](./notes.md)");
   assert.match(files.prompts[0], /^fixture bigmedia\n.*Large Media Files\/Large notes\.txt.*No row should show the full scratch path.*Click one file row.*\/stats.*Copy URL.*no duplicate Open dashboard.*Restart omp.*Settings > Models & roles.*While the model list loads.*isn't available.*does not establish this timing/s);
+  assert.match(files.prompts[1], /^fixture link\n.*click View the revised card.*Client Ads\/08-card\.png.*side-panel viewer.*relative destination contains a space.*angle brackets.*Click notes.*notes\.md.*side-panel viewer/s);
   assert.match(form.prompts[0], /question card closes without jumping.*omp 18\.18\.3.*cannot keep a question open.*fixture form.*Release channel.*Platforms to check.*Release note headline.*Review depth.*last answer.*close without jumping.*all four answers/s);
   assert.match(question.prompts[0], /\/reset-question.*synthetic account.*redeems no reset.*omp 18\.18\.6.*Type \/reset-question.*question card.*work@example\.com.*described Yes and No.*omp screen should stay closed.*Answer Yes.*Reset question choice: Yes\. No reset was redeemed/s);
   const layout = tourLayout(latest.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));

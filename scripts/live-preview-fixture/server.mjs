@@ -199,6 +199,22 @@ function mentionsCommand() {
   return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
 }
 
+function linkCommand() {
+  return `python3 - <<'PY'
+from pathlib import Path
+import struct, zlib
+folder = Path('Client Ads')
+folder.mkdir(exist_ok=True)
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+pixels = (b'\\x00' + bytes((25, 127, 134)) * 240) * 160
+png = b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 240, 160, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b'')
+(folder / '08-card.png').write_bytes(png)
+Path('notes.md').write_text('# Reply link notes\\n\\nBoth reply links open local files.\\n')
+print('Created Client Ads/08-card.png and notes.md.')
+PY`;
+}
+
 function textOf(message) {
   if (typeof message?.content === "string") return message.content;
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
@@ -229,7 +245,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -303,6 +319,18 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.end("data: [DONE]\n\n");
         return;
       }
+      if (fixture === "link" && afterTool) {
+        const result = messages.at(-1);
+        const output = textOf(result);
+        const created = !result.isError && !/(?:Error:|failed|exit code [1-9])/i.test(output)
+          && output.includes("Created Client Ads/08-card.png and notes.md.");
+        send({ role: "assistant", content: created
+          ? "[View the revised card](<Client Ads/08-card.png>)\n\n[notes](./notes.md)"
+          : "The fixture tool result did not confirm that the reply-link files were created. Check the tool result before opening the samples." });
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
       if (fixture === "bigmedia" && afterTool) {
         const result = messages.at(-1);
         const output = textOf(result);
@@ -322,7 +350,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      const calls = fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },

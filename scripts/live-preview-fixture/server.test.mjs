@@ -244,6 +244,38 @@ test("bigmedia stops without claiming creation when the tool fails or its output
   }
 });
 
+test("link writes a PNG in a spaced folder and replies with angle-bracket and dot-relative Markdown links", async () => {
+  const [call] = await callsFor("fixture link");
+  assert.equal(call.name, "bash");
+  assert.equal(call.args.timeout, 30);
+  assert.match(call.args.command, /folder = Path\('Client Ads'\).*folder\.mkdir.*240, 160, 8, 2.*08-card\.png.*Path\('notes\.md'\)\.write_text/s);
+  assert.ok(call.args.command.includes("png = b'\\x89PNG\\r\\n\\x1a\\n'"));
+  const followUp = await replyFor("", [
+    { role: "user", content: "fixture link" },
+    { role: "assistant", tool_calls: [{ id: "link-0", function: { name: call.name, arguments: JSON.stringify(call.args) } }] },
+    { role: "tool", content: "Created Client Ads/08-card.png and notes.md." },
+  ]);
+  assert.deepEqual(followUp.calls, []);
+  assert.equal(followUp.finishReason, "stop");
+  assert.equal(followUp.content, "[View the revised card](<Client Ads/08-card.png>)\n\n[notes](./notes.md)");
+});
+
+test("link does not offer file links when creation failed or was not confirmed", async () => {
+  for (const result of [
+    { content: "Error: Python failed with exit code 1" },
+    { content: "Created Client Ads/08-card.png." },
+    { content: "Created Client Ads/08-card.png and notes.md.", isError: true },
+  ]) {
+    const reply = await replyFor("", [
+      { role: "user", content: "fixture link" },
+      { role: "tool", ...result },
+    ]);
+    assert.deepEqual(reply.calls, []);
+    assert.equal(reply.finishReason, "stop");
+    assert.equal(reply.content, "The fixture tool result did not confirm that the reply-link files were created. Check the tool result before opening the samples.");
+  }
+});
+
 test("a second video render flips the test pattern while replacing the same path", async () => {
   const [call] = await callsFor("", [
     { role: "user", content: "fixture video" },
