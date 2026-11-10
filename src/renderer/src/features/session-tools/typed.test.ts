@@ -9,6 +9,7 @@ import { sendSlashCommand } from "./typed";
 import { OmpBusyError, readyEditor, runCommand, TspEditorWatch } from "./drive";
 import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording } from "../tsp/testing/documents";
 import { composer, openOverlay, unclaimed } from "@shared/tsp/view-state";
+import { screenActivity } from "../../state/tsp/screen-activity";
 
 const fake = vi.hoisted(() => {
 	class Guest {
@@ -471,6 +472,63 @@ describe("TSP slash delivery", () => {
 		expect(channels).not.toContain("host:tui-focus");
 	});
 
+	it.each(["/model", "/unknown-native-screen"])("requests native presentation for typed %s through editor ownership", async line => {
+		semanticSession();
+		const scope = tsp!;
+		const write = Promise.withResolvers<void>(); submission = write.promise;
+		tspSubmit = () => publishTsp({}, "screen");
+		const sending = sendSlashCommand(session, line);
+		await submissionStarted.promise;
+		expect(screenActivity.has(scope, "request")).toBe(true);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		write.resolve(); await sending;
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(screenActivity.has(scope, "request")).toBe(true);
+		publishTsp(); await vi.advanceTimersByTimeAsync(650);
+		expect(screenActivity.has(scope, "request")).toBe(false);
+		expect(session.getSnapshot().inputHistory.map(item => item.text)).toContain(line);
+	});
+
+	it("releases typed request intent when its pending write fails", async () => {
+		semanticSession();
+		const scope = tsp!;
+		const write = Promise.withResolvers<void>(); submission = write.promise;
+		failure = new Error("Submission refused");
+		const sending = sendSlashCommand(session, "/unknown-native-screen");
+		await submissionStarted.promise;
+		expect(screenActivity.has(scope, "request")).toBe(true);
+		const rejected = expect(sending).rejects.toThrow("Submission refused");
+		write.resolve(); await rejected;
+		expect(screenActivity.has(scope, "request")).toBe(false);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	});
+
+	it("releases typed request intent on epoch cleanup before a pending write returns", async () => {
+		semanticSession();
+		const scope = tsp!;
+		const write = Promise.withResolvers<void>(); submission = write.promise;
+		const sending = sendSlashCommand(session, "/unknown-native-screen");
+		await submissionStarted.promise;
+		publishTsp({ epoch: scope.epoch + 1 });
+		expect(screenActivity.has(scope, "request")).toBe(false);
+		write.resolve(); await sending;
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	});
+
+	it("supersedes request ownership without leaking the previous typed interaction", async () => {
+		semanticSession();
+		const scope = tsp!;
+		await sendSlashCommand(session, "/first-extension");
+		await sendSlashCommand(session, "/second-extension");
+		const sending = session.sendNow(session.getSnapshot().queue[0]!.id);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(screenActivity.has(scope, "request")).toBe(true);
+		await vi.advanceTimersByTimeAsync(650);
+		await sending;
+		expect(screenActivity.has(scope, "request")).toBe(false);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	});
+
 	it.each(["overlay", "screen"] as const)("submits once and holds following messages while an omp %s is open", async blocked => {
 		semanticSession();
 		tspSubmit = text => { if (text.startsWith("/")) publishTsp({}, blocked); };
@@ -907,5 +965,31 @@ describe("TSP slash delivery", () => {
 		await vi.advanceTimersByTimeAsync(650);
 		expect(commandResults(session)[0]!.lines).toEqual(['Session renamed to "first".']);
 		expect(session.tspNotices.getSnapshot()).toMatchObject([{ content: 'Session renamed to "second".' }]);
+	});
+});
+
+describe("classic presentation intent", () => {
+	it("holds app drive only around the classic submission", async () => {
+		setWorking(false);
+		const scope = { hostId: "host", generation: 1, epoch: null };
+		const write = Promise.withResolvers<void>(); submission = write.promise;
+		const pending = runCommand(session, "/extension-status");
+		await submissionStarted.promise;
+		expect(screenActivity.has(scope, "drive")).toBe(true);
+		expect(screenActivity.has(scope, "request")).toBe(false);
+		write.resolve(); await vi.advanceTimersByTimeAsync(150);
+		await pending;
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	});
+
+	it("keeps typed classic request through native history and releases on host cleanup", async () => {
+		setWorking(false);
+		const scope = { hostId: "host", generation: 1, epoch: null };
+		await sendSlashCommand(session, "/btw");
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(screenActivity.has(scope, "request")).toBe(true);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		session.attach({ ...session.getSnapshot().host!, generation: 2 });
+		expect(screenActivity.has(scope, "request")).toBe(false);
 	});
 });

@@ -21,6 +21,10 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import { OverlayWatcher } from "./OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "./TerminalSheet";
 import { presentationClaims } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
+import { openRequestedScreen } from "../session-tools/drive";
+import { TSP_ROLES } from "@shared/tsp/roles";
+import type { TspNode } from "@shared/tsp";
 import "../../i18n";
 
 vi.mock("../../chat/ChatView", () => ({
@@ -109,6 +113,7 @@ it.each(["hook-input", "hook-confirm", "hook-editor", "extension-rows", "plan-re
 	for (let update = 0; update < 3; update++) await act(async () => publish(documents));
 	expect(runtimeErrors).toEqual([]);
 	if (name === "extension-rows") {
+		await act(async () => { await vi.waitFor(() => expect(useApp.getState().terminalTabId).toBe(tabId)); });
 		expect(useApp.getState().terminalTabId).toBe(tabId); expect(opened).toEqual([tabId]); expect(presentationClaims.getSnapshot()).toHaveLength(0);
 	} else {
 		expect(element.querySelector(`section[aria-label="${name.startsWith("plan-") ? "Plan ready for review" : "Question from omp"}"]`)).not.toBeNull();
@@ -140,4 +145,67 @@ it.each(["hook-input", "hook-confirm", "hook-editor", "extension-rows", "plan-re
 	}
 	expect(emitted).toEqual(expected.map(input => "keys" in input ? { keys: input.keys } : input.body));
 	expect(runtimeErrors).toEqual([]); expect(useApp.getState().terminalTabId).toBeNull(); expect(presentationClaims.getSnapshot()).toHaveLength(0);
+});
+
+function recordedUntil(name: string, ready: (node: TspNode) => boolean): FixtureDocuments {
+	const documents = new FixtureDocuments();
+	for (const message of loadFixtureRecording(name).messages) {
+		documents.receive({ ...message, body: JSON.stringify(message.body) });
+		if (documents.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(ready))) return documents;
+	}
+	throw new Error(`Missing recorded native state: ${name}`);
+}
+function replaceNativeDocument(documents: FixtureDocuments): void {
+	const previous = snapshot;
+	const next = build(documents);
+	snapshot = { ...next, surfaces: next.surfaces.map(surface => ({ ...surface, sequence: Math.max(surface.sequence, (previous.surfaces.find(prior => prior.open.id === surface.open.id)?.sequence ?? 0) + 1) })) };
+	for (const listener of updates) listener(tspHostPatch(null, snapshot));
+}
+
+it("lets a replacement native card register before deciding an explicit handoff", async () => {
+	snapshot = build(recordedUntil("plan-review-execute", node => node.p?.role === TSP_ROLES.planReview));
+	await act(async () => root.render(createElement(Harness)));
+	const request = vi.spyOn(screenActivity, "requestOnce");
+	const replacement = recordedUntil("hook-input-open", node => node.p?.role === TSP_ROLES.hookInput);
+	await act(async () => {
+		replaceNativeDocument(replacement);
+		openRequestedScreen(controllerFor(tabId)!, snapshot);
+		expect(request).toHaveBeenCalledOnce();
+	});
+	expect(element.querySelector('section[aria-label="Question from omp"]')).not.toBeNull();
+	expect(opened).toEqual([]);
+	expect(screenActivity.has(snapshot, "request")).toBe(false);
+	expect(runtimeErrors).toEqual([]);
+});
+
+it("defers an explicit native handoff until an overlapping app drive releases", async () => {
+	vi.useFakeTimers();
+	snapshot = build(recordedUntil("model-switch", node => node.p?.role === TSP_ROLES.editor));
+	await act(async () => root.render(createElement(Harness)));
+	const release = screenActivity.hold(snapshot, "drive");
+	try {
+		await act(async () => {
+			replaceNativeDocument(recordedUntil("model-switch", node => node.k === "picker" && node.p?.noun === "models"));
+			openRequestedScreen(controllerFor(tabId)!, snapshot);
+		});
+		await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+		expect(opened).toEqual([]);
+		expect(screenActivity.has(snapshot, "request")).toBe(true);
+		await act(async () => release());
+		expect(opened).toEqual([tabId]);
+		expect(screenActivity.has(snapshot, "request")).toBe(false);
+	} finally { release(); vi.useRealTimers(); }
+	expect(runtimeErrors).toEqual([]);
+});
+
+it("preserves an explicit startup handoff without enabling unattended startup opening", async () => {
+	const session = controllerFor(tabId)!;
+	vi.mocked(session.getSnapshot).mockReturnValue({ ...session.getSnapshot(), mode: "starting" });
+	snapshot = build(recordedUntil("plan-review-save", node => node.p?.role === TSP_ROLES.planSave));
+	await act(async () => root.render(createElement(Harness)));
+	expect(opened).toEqual([]);
+	await act(async () => openRequestedScreen(session, snapshot));
+	expect(opened).toEqual([tabId]);
+	expect(autoOpened.tabId).toBe(tabId);
+	expect(screenActivity.has(snapshot, "request")).toBe(false);
 });

@@ -5,10 +5,18 @@ export interface PresentationTarget { hostId: string; epoch: number; surfaceId: 
 const visiblePresentation = createContext(true);
 const tabVisibility = new Map<object, { tabId: string; visible: boolean }>();
 const visibilityListeners = new Set<() => void>();
-const subscribeVisibility = (listener: () => void) => { visibilityListeners.add(listener); return () => visibilityListeners.delete(listener); };
+const subscribeVisibility = (listener: () => void) => {
+	visibilityListeners.add(listener);
+	if (typeof document !== "undefined") document.addEventListener("visibilitychange", listener);
+	return () => {
+		visibilityListeners.delete(listener);
+		if (typeof document !== "undefined") document.removeEventListener("visibilitychange", listener);
+	};
+};
 
 /** Global screen opening follows the same hidden-pane state as native presentation claims. */
 export function currentTabPresentationVisible(tabId: string): boolean {
+	if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
 	let known = false;
 	for (const item of tabVisibility.values()) if (item.tabId === tabId) {
 		known = true;
@@ -65,6 +73,12 @@ class PresentationClaimRegistry {
 export const presentationClaims = new PresentationClaimRegistry();
 const availableConsumers = new PresentationClaimRegistry();
 const consumerRegistries = [presentationClaims, availableConsumers] as const;
+
+/** Semantic continuity can change before the next visually batched render. */
+export function subscribePresentationConsumers(listener: () => void): () => void {
+	const off = [...consumerRegistries.map(registry => registry.subscribe(listener)), subscribeVisibility(listener)];
+	return () => { for (const stop of off) stop(); };
+}
 
 /** Read at an automatic-opening decision, after consumers have registered in layout effects. */
 export function currentPresentationConsumers(hostId: string | null, epoch: number | undefined): TspPresentationClaims {

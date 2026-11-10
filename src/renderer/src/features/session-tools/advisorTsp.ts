@@ -4,6 +4,7 @@ import { nodeHasLeft } from "@shared/tsp/dialogs";
 import { TSP_ADVISOR, TSP_ROLES } from "@shared/tsp/roles";
 import { walkNodes } from "@shared/tsp/view-state";
 import { presentationClaims } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { isApprovalRequest, type SessionController } from "../../state/session";
 import { TspEditorWatch } from "./drive";
 
@@ -15,13 +16,14 @@ export async function applyAdvisorSemantic(session: SessionController, scope: Ad
 	let ownedKey: string | null = null;
 	let driving = false;
 	let release = () => {};
+	let releaseDrive = () => {};
 	const assertCurrent = () => {
 		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) throw new Error("The chat changed before advisor configuration finished applying.");
 		const guest = session.getSnapshot().guest;
 		if (guest?.pendingUiRequests?.some(isApprovalRequest) || guest?.uiRequest && isApprovalRequest(guest.uiRequest)) throw new Error("Answer the approval before applying advisor configuration.");
 	};
 	const claim = () => {
-		const target = driving ? advisorOverlay(watch.snapshot?.surfaces ?? []) : null;
+		const target = driving && !watch.ended && !watch.snapshot?.closing && !session.getSnapshot().readOnly ? advisorOverlay(watch.snapshot?.surfaces ?? []) : null;
 		const key = target ? JSON.stringify([target.surface.open.id, target.node.id]) : null;
 		if (key === ownedKey) return;
 		release(); ownedKey = key;
@@ -44,7 +46,10 @@ export async function applyAdvisorSemantic(session: SessionController, scope: Ad
 		const snapshot = watch.snapshot!;
 		await window.vomp.invoke("host:tsp-advisor", snapshot.hostId, snapshot.generation, { sf: target.surface.open.id, id: target.node.id, scope: target.scope, act }, snapshot.epoch);
 	};
-	const off = watch.subscribe(claim);
+	const off = watch.subscribe(() => {
+		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) releaseDrive();
+		claim();
+	});
 	try {
 		assertCurrent();
 		await watch.ready();
@@ -52,6 +57,7 @@ export async function applyAdvisorSemantic(session: SessionController, scope: Ad
 		assertCurrent();
 		if (!watch.available) throw new Error("Close the open omp menu before applying advisor configuration.");
 		driving = true;
+		releaseDrive = screenActivity.hold(watch.snapshot!, "drive");
 		await session.command(TSP_ADVISOR.command);
 		await waitFor(() => !!advisorOverlay(watch.snapshot?.surfaces ?? []), "omp did not open its advisor configuration.");
 		claim();
@@ -85,5 +91,5 @@ export async function applyAdvisorSemantic(session: SessionController, scope: Ad
 		if (!watch.ended && target && ownedKey === JSON.stringify([target.surface.open.id, target.node.id])) await send(target, "close").catch(() => undefined);
 		if (token && !finalized) await window.vomp.invoke("advisor:finishApply", token);
 		throw error;
-	} finally { off(); release(); watch.dispose(); }
+	} finally { off(); release(); releaseDrive(); watch.dispose(); }
 }

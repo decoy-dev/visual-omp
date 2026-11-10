@@ -13,6 +13,7 @@
  */
 import { commandOutcomeSpec } from "@shared/tsp/command-result";
 import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { displayedEntries } from "../../chat/branch";
 import { liveGuest, type SessionController, setSlashDelivery } from "../../state/session";
 import { useApp } from "../../state/app";
@@ -79,7 +80,7 @@ async function editorBack(session: SessionController): Promise<void> {
  * replaces its editor, the chat's queue is held, and the sheet the app opened for it closes again when
  * the editor is back.
  */
-async function watch(session: SessionController, line: string, before: string[], anchor: string | null): Promise<void> {
+async function watch(session: SessionController, line: string, before: string[], anchor: string | null, releaseRequest: () => void): Promise<void> {
 	const startView = session.getSnapshot();
 	const room = roomKey(startView);
 	const guest = session.guestClient();
@@ -97,6 +98,7 @@ async function watch(session: SessionController, line: string, before: string[],
 		supersede: () => {
 			if (superseded) return;
 			superseded = true;
+			releaseRequest();
 			const lines = supersededResult(state);
 			if (lines) record(lines);
 		},
@@ -143,6 +145,7 @@ async function watch(session: SessionController, line: string, before: string[],
 		// omp stopped or its screen became unreadable mid-watch: nothing more to show.
 	} finally {
 		if (watches.get(session) === entry) watches.delete(session);
+		releaseRequest();
 		if (screenClosed) closeAutoSheet(session);
 		releaseQueue?.();
 	}
@@ -163,10 +166,12 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 				let reservation: TspCommandNoticeReservation | undefined;
 				let cancelFeedback: (() => void) | undefined;
 				let cancelPanels: (() => void) | undefined;
+				let releaseRequest = () => {};
+				const offRequest = watch.subscribe(() => { if (watch.ended) releaseRequest(); });
 				try {
 					await watch.ready();
 					watches.get(session)?.supersede();
-					const entry = { supersede: () => { reservation?.cancel(); watch.dispose(); } };
+					const entry = { supersede: () => { releaseRequest(); reservation?.cancel(); watch.dispose(); } };
 					watches.set(session, entry);
 					const baseline = watch.snapshot!;
 					const declared = commandOutcomeSpec(line);
@@ -184,6 +189,7 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 						session.tspNotices.endMainFeedback();
 						const current = watch.snapshot;
 						if (!current || watch.ended) return;
+						releaseRequest = screenActivity.hold(current, "request");
 						cancelPanels = startCommandPanels(session, line, current, anchor, room);
 						if (!spec && !declared?.panel) cancelFeedback = session.tspNotices.beginMainFeedback(current, line, mainCommandFeedback(session, line, () => displayedEntries(session.getSnapshot()).at(-1)?.id ?? null, room));
 					});
@@ -195,11 +201,11 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 						} else reservation?.cancel();
 					}).finally(() => {
 						if (watches.get(session) === entry) watches.delete(session);
-						reservation?.cancel(); watch.dispose();
+						releaseRequest(); offRequest(); reservation?.cancel(); watch.dispose();
 					});
 					return { watching };
 				} catch (error) {
-					cancelPanels?.(); cancelFeedback?.(); reservation?.cancel(); watch.dispose();
+					releaseRequest(); offRequest(); cancelPanels?.(); cancelFeedback?.(); reservation?.cancel(); watch.dispose();
 					throw error;
 				}
 			}
@@ -217,12 +223,25 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			const timestamp = Date.now();
 			const submittedView = session.getSnapshot();
 			const submittedGuest = session.guestClient();
-			await session.command(line);
+			let releaseRequest = () => {};
+			try {
+				await session.command(line, () => {
+					const host = session.getSnapshot().host;
+					if (!host) return;
+					const release = screenActivity.hold({ hostId: host.hostId, generation: host.generation, epoch: null }, "request");
+					const off = session.subscribe(() => {
+						const current = session.getSnapshot();
+						if (current.mode !== "live" || current.host?.hostId !== host.hostId || current.host.generation !== host.generation) releaseRequest();
+					});
+					releaseRequest = () => { release(); off(); };
+				});
+			} catch (error) { releaseRequest(); throw error; }
 			const current = session.getSnapshot();
 			if (current.host?.hostId !== submittedView.host?.hostId ||
 				current.host?.generation !== submittedView.host?.generation ||
 				roomKey(current) !== roomKey(submittedView) || session.guestClient() !== submittedGuest) {
 				// A completed old-room submission cannot add history or open feedback in its replacement.
+				releaseRequest();
 				return { watching: Promise.resolve() };
 			}
 			session.recordInput(line, timestamp);
@@ -230,7 +249,8 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			// sheet to the reader, and check visibility after submission in case they switched away.
 			if (sideQuestion) openSheet(session, false);
 			// An ephemeral answer may pause while streaming, so a quiet screen is not its completion.
-			return { watching: sideQuestion && (fileSide || parsed?.args) ? Promise.resolve() : watch(session, line, before, anchor) };
+			if (sideQuestion && (fileSide || parsed?.args)) { releaseRequest(); return { watching: Promise.resolve() }; }
+			return { watching: watch(session, line, before, anchor, releaseRequest) };
 		});
 	typing.set(session, typed);
 	return typed;

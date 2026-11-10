@@ -8,6 +8,7 @@ import { composer, walkNodes } from "@shared/tsp/view-state";
 import { composerFacts } from "../../../../main/omp/tsp/composer";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";
 import type { SessionController } from "../../state/session";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { navigateTo } from "./navigate";
 import "../../i18n";
@@ -26,7 +27,7 @@ class Replay {
 	readonly docs = new FixtureDocuments();
 	readonly listeners = new Set<() => void>();
 	readonly events: TspRendererEvent[] = [];
-	readonly guest = {};
+	guest = {};
 	readonly setLeaf = vi.fn();
 	readonly answer = vi.fn((_reqId: number, value: string) => {
 		expect(value).toBe("No summary");
@@ -35,6 +36,7 @@ class Replay {
 		this.consume({ ev: "activate", sf: question.surface.open.id, id: question.dialog.body.target, item: question.dialog.body.options.find(option => option.label === value)!.id });
 	});
 	index = 0; message = 0; revision = 0; generation = 1; epoch = 1;
+	readOnly = false;
 	match: "unmatched" | "matched" | "ambiguous" = "unmatched";
 	mutate: ((snapshot: TspHostSnapshot) => void) | null = null;
 	holdActivation = false;
@@ -97,6 +99,7 @@ class Replay {
 		for (const listener of this.listeners) listener();
 	}
 	consume(event: TspRendererEvent) {
+		if (event.ev !== "send" || event.text !== "/exit") expect(screenActivity.has(this.snapshot(), "drive")).toBe(true);
 		const input = this.recording.inputs[this.index]!;
 		expect(event).toEqual((input as Extract<FixtureInput, { verb: "e" }>).body);
 		this.events.push(event); this.index++;
@@ -105,7 +108,7 @@ class Replay {
 	readonly session = {
 		hostId: "host", tabId: "chat", projectPath: "/tmp", sessionFile: "/tmp/tree-session.jsonl",
 		whenLive: async () => {}, guestClient: () => this.guest,
-		getSnapshot: () => ({ mode: "live", working: false, readOnly: false, displayLeaf: null,
+		getSnapshot: () => ({ mode: "live", working: false, readOnly: this.readOnly, displayLeaf: null,
 			host: { hostId: "host", generation: this.generation, sessionId: "session", phase: "live", transport: "tsp" } }),
 		subscribe: (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); },
 		command: async (text: string) => { const target = composer(this.docs.snapshot().surfaces)!; this.consume({ ev: "send", sf: target.surface.open.id, id: target.node.id, text }); },
@@ -147,13 +150,18 @@ beforeEach(() => {
 	} } });
 	localStorage.clear(); useComposerDrafts.setState({ drafts: {}, previews: {}, editorRestores: {}, pendingFocus: {} });
 });
-afterEach(async () => { await Promise.resolve(); vi.useRealTimers(); });
+afterEach(async () => {
+	await Promise.resolve();
+	expect(screenActivity.has({ hostId: "host", generation: 1, epoch: 1 }, "drive")).toBe(false);
+	vi.useRealTimers();
+});
 
 describe("TSP tree navigation", () => {
 	it.each(["tree-navigate", "tree-navigate-summary"])("completes %s with one exact tree activation and recoverable exact draft transfer", async name => {
 		const replay = new Replay(name);
 		useComposerDrafts.getState().setDraft("chat", "Newer app draft");
 		await expect(navigateTo(replay.session, "00000003")).resolves.toEqual({ draft });
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 		expect(replay.events.filter(event => event.ev === "activate" && event.item === "00000003")).toHaveLength(1);
 		expect(replay.events.some(event => event.ev === "select")).toBe(false);
 		expect(replay.snapshot().composer?.text).toBe("");
@@ -162,6 +170,16 @@ describe("TSP tree navigation", () => {
 		await replay.session.command("/exit");
 		expect(replay.index).toBe(replay.recording.inputs.length);
 		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+	it("holds the unclaimed tree picker beyond the automatic screen settle interval", async () => {
+		const replay = new Replay("tree-navigate"); replay.holdActivation = true;
+		const navigation = navigateTo(replay.session, "00000003");
+		await vi.advanceTimersByTimeAsync(500);
+		expect(replay.events.map(event => event.ev)).toEqual(["send", "activate"]);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		replay.holdActivation = false; replay.advance();
+		await expect(navigation).resolves.toEqual({ draft });
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
 	it("answers a replicated summary question only through collab", async () => {
 		const replay = new Replay("tree-navigate-summary"); replay.match = "matched";
@@ -184,6 +202,7 @@ describe("TSP tree navigation", () => {
 		} };
 		await expect(navigateTo(replay.session, "00000003")).rejects.toThrow("This recorded entry is disabled.");
 		expect(replay.events.map(event => event.ev)).toEqual(["send"]);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
 	it("changes the original selector's filter before exactly one recorded entry activation", async () => {
 		const replay = filteredReplay();
@@ -205,12 +224,53 @@ describe("TSP tree navigation", () => {
 	it.each(["generation", "epoch"] as const)("cancels navigation after a %s change without draft transfer", async change => {
 		const replay = new Replay("tree-navigate"); replay.holdActivation = true;
 		const navigation = navigateTo(replay.session, "00000003");
+		const scope = replay.snapshot();
 		const rejected = expect(navigation).rejects.toThrow("chat changed");
-		await vi.advanceTimersByTimeAsync(1);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(screenActivity.has(scope, "drive")).toBe(true);
 		if (change === "generation") replay.generation++; else replay.epoch++;
 		replay.publish(); await rejected;
+		expect(screenActivity.has(scope, "drive")).toBe(false);
 		expect(replay.setLeaf).not.toHaveBeenCalled();
 		expect(useComposerDrafts.getState().drafts.chat).toBeUndefined();
 		expect(bridge.listeners.size).toBe(0);
+	});
+	describe.each(["command", "activation", "restore"] as const)("pending navigation %s", stage => {
+		it.each(["generation", "epoch", "guest", "lifecycle", "readOnly", "closing"] as const)("releases its drive immediately on %s invalidation", async change => {
+			const replay = new Replay("tree-navigate");
+			const pending = Promise.withResolvers<void>();
+			if (stage === "command") vi.spyOn(replay.session, "command").mockImplementation(() => pending.promise);
+			else {
+				const invoke = bridge.invoke.getMockImplementation()!;
+				const channelToHold = stage === "activation" ? "host:tsp-tree-activate" : "host:take-editor-restore";
+				bridge.invoke.mockImplementation((channel: string, ...args: unknown[]) => channel === channelToHold ? pending.promise : invoke(channel, ...args));
+			}
+			const scope = replay.snapshot();
+			let finished = false;
+			const navigation = navigateTo(replay.session, "00000003").then(
+				() => { finished = true; return null; },
+				error => { finished = true; return error; },
+			);
+			await vi.advanceTimersByTimeAsync(10);
+			expect(screenActivity.has(scope, "drive")).toBe(true);
+			if (stage === "command") expect(replay.session.command).toHaveBeenCalledWith("/tree");
+			else expect(bridge.invoke.mock.calls.some(([channel]) => channel === (stage === "activation" ? "host:tsp-tree-activate" : "host:take-editor-restore"))).toBe(true);
+			if (change === "generation") replay.generation++;
+			else if (change === "epoch") replay.epoch++;
+			else if (change === "guest") replay.guest = {};
+			else if (change === "readOnly") replay.readOnly = true;
+			else replay.mutate = snapshot => {
+				if (change === "lifecycle") snapshot.lifecycle = "transitioning";
+				else snapshot.closing = true;
+			};
+			replay.publish();
+			expect(finished).toBe(false);
+			expect(screenActivity.has(scope, "drive")).toBe(false);
+			pending.reject(new Error("Pending native write refused"));
+			expect(await navigation).toBeInstanceOf(Error);
+			expect(replay.events.map(event => event.ev)).toEqual(stage === "command" ? [] : stage === "activation" ? ["send"] : ["send", "activate"]);
+			expect(useComposerDrafts.getState().drafts.chat).toBeUndefined();
+			expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+		});
 	});
 });

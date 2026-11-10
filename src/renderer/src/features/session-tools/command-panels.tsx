@@ -6,6 +6,7 @@ import { region, walkNodes } from "@shared/tsp/view-state";
 import type { SessionController } from "../../state/session";
 import { tspHost } from "../../state/tsp/hosts";
 import { presentationClaims, usePresentationClaim } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { useTsp } from "../../state/tsp/useTsp";
 import { addCommandResult, roomKey, type CommandResultRecord } from "./results";
 
@@ -82,7 +83,16 @@ export function CommandPanelOwnership({ result, onRelease }: { result: CommandRe
 		if (!latest?.negotiated || latest.hostId !== panel.hostId || latest.epoch !== panel.epoch || latest.generation !== panel.generation || latest.lifecycle !== "live" || latest.closing || !latestNode || JSON.stringify(latestNode) !== panel.text) return;
 		if (closedReports.has(panel)) return;
 		closedReports.add(panel);
-		void window.vomp.invoke("host:tsp-event", panel.hostId, panel.generation, { ev: "action", sf: panel.surfaceId, id: panel.close.id, act: panel.close.act }, panel.epoch).catch(() => {
+		const releaseDrive = screenActivity.hold(panel, "drive");
+		const source = tspHost(panel.hostId);
+		const off = source.subscribe(() => {
+			const current = source.getSnapshot();
+			if (!current || current.epoch !== panel.epoch || current.generation !== panel.generation || current.lifecycle !== "live" || current.closing) releaseDrive();
+		});
+		void (async () => {
+			try { await window.vomp.invoke("host:tsp-event", panel.hostId, panel.generation, { ev: "action", sf: panel.surfaceId, id: panel.close!.id, act: panel.close!.act }, panel.epoch); }
+			finally { releaseDrive(); off(); }
+		})().catch(() => {
 			const after = tspHost(panel.hostId).getSnapshot();
 			const afterSurface = after?.surfaces.find(item => item.open.id === panel.surfaceId && !item.closed && !item.suspended && item.documentGeneration === panel.generation);
 			const afterNode = afterSurface ? [...walkNodes(afterSurface.document)].find(item => item.id === panel.nodeId) : undefined;

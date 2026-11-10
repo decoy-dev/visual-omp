@@ -8,6 +8,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";
 import type { SessionController } from "../../state/session";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import { switchModel, setThinking } from "./model";
 import { semanticThinking } from "./modelTsp";
@@ -39,7 +40,7 @@ class Replay {
 	readonly docs = new FixtureDocuments();
 	readonly listeners = new Set<() => void>();
 	readonly events: TspRendererEvent[] = [];
-	readonly guest = {};
+	guest = {};
 	index = 0;
 	message = 0;
 	revision = 0;
@@ -50,6 +51,7 @@ class Replay {
 	thinkingEvent: ThinkingEvent | null = null;
 	entries: SessionEntry[] = [];
 	generation = 1;
+	readOnly = false;
 	autoConfirm = true;
 	confirmDelay = 0;
 	responseDelay = 0;
@@ -57,7 +59,7 @@ class Replay {
 	beforeEvent: ((event: TspRendererEvent) => void) | null = null;
 	view = this.readView();
 	readView() {
-		return { mode: "live", readOnly: false, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: this.transport }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, thinkingEvent: this.thinkingEvent, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
+		return { mode: "live", readOnly: this.readOnly, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: this.transport }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, thinkingEvent: this.thinkingEvent, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
 	}
 	constructor(name: string) {
 		this.recording = loadFixtureRecording(name);
@@ -66,6 +68,7 @@ class Replay {
 			if (channel === "host:tsp-snapshot") return this.snapshot();
 			if (channel === "host:tsp-event") {
 				expect(generation).toBe(1); expect(epoch).toBe(1);
+				expect(screenActivity.has(this.snapshot(), "drive")).toBe(true);
 				this.beforeEvent?.(event);
 				this.consume(event);
 			}
@@ -118,6 +121,7 @@ class Replay {
 		getSnapshot: () => this.view,
 		subscribe: (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); },
 		command: async (text: string) => {
+			expect(screenActivity.has(this.snapshot(), "drive")).toBe(true);
 			const target = composer(this.docs.snapshot().surfaces)!;
 			this.consume({ ev: "send", sf: target.surface.open.id, id: target.node.id, text });
 		},
@@ -129,7 +133,11 @@ beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	Element.prototype.scrollIntoView = vi.fn();
 });
-afterEach(async () => { await act(async () => {}); vi.useRealTimers(); });
+afterEach(async () => {
+	await act(async () => {});
+	expect(screenActivity.has({ hostId: "host", generation: 1, epoch: 1 }, "drive")).toBe(false);
+	vi.useRealTimers();
+});
 
 async function settle<T>(promise: Promise<T>, milliseconds = 10000): Promise<T> {
 	await vi.advanceTimersByTimeAsync(milliseconds);
@@ -149,6 +157,21 @@ describe("TSP composer model controls", () => {
 		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
 	});
 
+	it("holds a roleless model picker beyond the automatic screen settle interval", async () => {
+		const replay = new Replay("model-switch");
+		const advance = replay.advance.bind(replay);
+		replay.beforeEvent = event => {
+			if (event.ev === "activate") replay.advance = () => { setTimeout(advance, 750); };
+		};
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "activate"]);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await vi.advanceTimersByTimeAsync(251);
+		await expect(switching).resolves.toBe(true);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+	});
+
 	it("does not report success from a closed picker alone", async () => {
 		const replay = new Replay("model-switch"); replay.autoConfirm = false;
 		await expect(settle(switchModel(replay.session, small))).resolves.toBe(false);
@@ -160,7 +183,11 @@ describe("TSP composer model controls", () => {
 		replay.beforeEvent = event => { if (event.ev === "activate") {
 			replay.advance = () => { replay.model = small; replay.publish(); };
 		} };
-		await expect(settle(switchModel(replay.session, small))).resolves.toBe(false);
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await expect(settle(switching)).resolves.toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
 
 	it("replays documented typed switching when the model action is unavailable", async () => {
@@ -202,6 +229,7 @@ describe("TSP composer model controls", () => {
 		await expect(switchModel(replay.session, small)).resolves.toBe(false);
 		expect(replay.events).toEqual([{ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" }]);
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "Fixture model disabled" });
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
 
 	it("does not write when the thinking action declaration is missing", async () => {
@@ -225,24 +253,83 @@ describe("TSP composer model controls", () => {
 		expect(bridge.toast.mock.calls.every(([value]) => value.message === "Answer the approval card before changing the model or thinking level.")).toBe(true);
 	});
 
-	it("cancels a waiting switch after a room changes", async () => {
+	it.each(["generation", "epoch"] as const)("cancels a held model picker after a %s change", async change => {
 		const replay = new Replay("model-switch"); replay.autoConfirm = false;
+		replay.beforeEvent = event => { if (event.ev === "activate") replay.advance = () => { replay.publish(); }; };
 		const switching = switchModel(replay.session, small);
-		await vi.advanceTimersByTimeAsync(100);
-		replay.generation = 2; replay.publish();
+		const scope = replay.snapshot();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(screenActivity.has(scope, "drive")).toBe(true);
+		if (change === "generation") replay.generation++;
+		else replay.mutate = snapshot => { snapshot.epoch++; };
+		replay.publish();
 		await expect(switching).resolves.toBe(false);
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: expect.stringContaining("The chat changed") });
 		expect(bridge.listeners.size).toBe(0);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	});
+
+	describe.each(["model", "typed", "thinking"] as const)("pending %s write", control => {
+		it.each(["generation", "epoch", "guest", "lifecycle", "readOnly", "closing"] as const)("releases its drive immediately on %s invalidation", async change => {
+			const replay = new Replay(control === "thinking" ? "thinking-cycle" : control === "typed" ? "switch-typed" : "model-switch");
+			const pending = Promise.withResolvers<void>();
+			if (control === "typed") {
+				replay.mutate = snapshot => {
+					for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) if (node.p?.role === "omp.composer.model") node.p.actions = undefined;
+				};
+				vi.spyOn(replay.session, "command").mockImplementation(() => pending.promise);
+			} else {
+				const invoke = bridge.invoke.getMockImplementation()!;
+				bridge.invoke.mockImplementation((channel: string, ...args: unknown[]) => channel === "host:tsp-event" ? pending.promise : invoke(channel, ...args));
+			}
+			const scope = replay.snapshot();
+			let finished = false;
+			const changing = (control === "thinking" ? setThinking(replay.session, "high", []) : switchModel(replay.session, small)).then(result => { finished = true; return result; });
+			await vi.advanceTimersByTimeAsync(10);
+			expect(screenActivity.has(scope, "drive")).toBe(true);
+			if (control === "typed") expect(replay.session.command).toHaveBeenCalledWith(`/switch ${small.selector}`);
+			else expect(bridge.invoke.mock.calls.some(([channel]) => channel === "host:tsp-event")).toBe(true);
+			if (change === "generation") replay.generation++;
+			else if (change === "guest") replay.guest = {};
+			else if (change === "readOnly") replay.readOnly = true;
+			else replay.mutate = snapshot => {
+				if (change === "epoch") snapshot.epoch++;
+				else if (change === "lifecycle") snapshot.lifecycle = "transitioning";
+				else snapshot.closing = true;
+			};
+			replay.publish();
+			expect(finished).toBe(false);
+			expect(screenActivity.has(scope, "drive")).toBe(false);
+			pending.reject(new Error("Pending native write refused"));
+			await expect(changing).resolves.toBe(false);
+			expect(replay.events).toEqual([]);
+			expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+		});
 	});
 
 	it("replays effort actions through Auto and resolved levels without keys", async () => {
 		const replay = new Replay("thinking-cycle");
 		await expect(setThinking(replay.session, "auto", [])).resolves.toBe(true);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("auto");
 		await expect(setThinking(replay.session, "high", [])).resolves.toBe(true);
 		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("high");
 		expect(replay.events).toHaveLength(5);
 		expect(replay.events.every(event => event.ev === "action" && event.act === "thinking.cycle")).toBe(true);
+	});
+
+	it.each(["timeout", "generation", "epoch", "writer"] as const)("releases a thinking cycle drive after %s failure", async failure => {
+		const replay = new Replay("thinking-cycle");
+		const scope = replay.snapshot();
+		replay.consume = event => { replay.events.push(event); };
+		if (failure === "writer") replay.beforeEvent = () => { throw new Error("Thinking action refused"); };
+		const changing = setThinking(replay.session, "high", []);
+		await vi.advanceTimersByTimeAsync(500);
+		if (failure !== "writer") expect(screenActivity.has(scope, "drive")).toBe(true);
+		if (failure === "generation") { replay.generation++; replay.publish(); }
+		else if (failure === "epoch") { replay.mutate = snapshot => { snapshot.epoch++; }; replay.publish(); }
+		await expect(settle(changing)).resolves.toBe(false);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
 	});
 
 	it.each(["event", "entry"] as const)("keeps Auto selected from its %s after omp resolves it to Low without cycling", async source => {
@@ -325,6 +412,7 @@ describe("TSP composer model controls", () => {
 		expect(replay.events).toHaveLength(7);
 		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("off");
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "This model does not offer the Max thinking level." });
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
 
 	it("keeps waiting while recorded compaction remains active beyond five minutes and then confirms", async () => {
@@ -333,6 +421,7 @@ describe("TSP composer model controls", () => {
 		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
 		await vi.advanceTimersByTimeAsync(310000);
 		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 		await vi.advanceTimersByTimeAsync(51000);
 		expect(finished).toBe(false);
 		await expect(settle(switching, 5000)).resolves.toBe(true);

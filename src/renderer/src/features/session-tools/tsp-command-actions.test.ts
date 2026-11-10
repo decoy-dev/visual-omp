@@ -36,13 +36,14 @@ const session = (transport: "tsp" | "classic") => ({ tabId: "chat", sessionFile:
 it("reports TSP security feedback through notices without inventing a success toast or a second command", async () => {
 	const chat = session("tsp");
 	await fake.commands.get("chat.security")!.run({ session: chat, projectPath: "/tmp" });
-	expect(fake.runCommand).toHaveBeenCalledExactlyOnceWith(chat, "/security scan", expect.anything());
+	expect(fake.runCommand).toHaveBeenCalledExactlyOnceWith(chat, "/security scan", expect.objectContaining({ screenIntent: "request" }));
 	expect(fake.toast).not.toHaveBeenCalled();
 });
 
-it("leaves TSP cleanse screen opening to OverlayWatcher", async () => {
-	await fake.commands.get("chat.cleanse")!.run({ session: session("tsp"), projectPath: "/tmp" });
-	expect(fake.runAndReport).toHaveBeenCalledOnce();
+it("requests TSP cleanse live-board presentation without opening the classic sheet directly", async () => {
+	const chat = session("tsp");
+	await fake.commands.get("chat.cleanse")!.run({ session: chat, projectPath: "/tmp" });
+	expect(fake.runAndReport).toHaveBeenCalledExactlyOnceWith(chat, "/cleanse", { screenIntent: "request" });
 	expect(fake.openTerminal).not.toHaveBeenCalled();
 });
 

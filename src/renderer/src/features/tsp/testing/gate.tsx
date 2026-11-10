@@ -21,6 +21,7 @@ import type { GuestClient, GuestSnapshot } from "../../../collab/lib/client";
 import { presentationClaims } from "../../../state/tsp/presentation-claims";
 import { OmpDialogCard } from "../../session-tools/OmpDialogCard";
 import { questionPresentation, SessionController, type SessionView } from "../../../state/session";
+import { screenActivity, type ScreenActivityKind } from "../../../state/tsp/screen-activity";
 import { controllerFor, useApp } from "../../../state/app";
 import { registerComposerEditor } from "../../../chat/composer/drafts";
 import { TerminalSheet } from "../../palette/TerminalSheet";
@@ -49,6 +50,9 @@ interface Gate {
 	calls: CapturedCall[];
 	view(): SessionView;
 	open(snapshot: TspHostSnapshot): void;
+	showAutomatic(snapshot: TspHostSnapshot): Promise<void>;
+	beginScreenActivity(kind: ScreenActivityKind): void;
+	endScreenActivity(): void;
 	update(snapshot: TspHostSnapshot): void;
 	invoke(channel: string, args: unknown[]): unknown;
 	buttonVisible(button: HTMLButtonElement): boolean;
@@ -65,7 +69,7 @@ interface Gate {
 	showMarkdown(text: string): void;
 	beginFormUpdates(): void;
 	advanceFormRequest(request: CollabUiRequest | null): void;
-	formPresentationEvents: { terminalTabId: string | null; requestId: number | null; claims: number }[];
+	formPresentationEvents: { terminalTabId: string | null; requestId: number | null; claims: number; at: number }[];
 	showReplyFiles(entries: SessionEntry[], projectPath: string): void;
 	fileRequests: { request: FileRefRequest; resolve: (value: (FileRef | null)[]) => void }[];
 	resolveFiles(index: number, value: (FileRef | null)[]): void;
@@ -96,6 +100,14 @@ function AskHarness({ args, result, showQuestion }: { args: Record<string, unkno
 	const pending = usePendingQuestion(controller, current?.guest?.uiRequest ?? null);
 	const open = useApp(app => app.terminalTabId === controller.tabId);
 	return <><OverlayWatcher /><section className="mx-auto max-w-3xl space-y-4" aria-label="Ask form"><ToolView name="ask" args={args} result={result} running={!result} defaultOpen />{showQuestion && pending && <div key={pending.key}>{pending.node}</div>}</section>{open && <TerminalSheet tabId={controller.tabId} controller={controller} />}</>;
+}
+
+function AutomaticScreenHarness() {
+	const session = askController!;
+	const open = useApp(app => app.terminalTabId === session.tabId);
+	const composer = useRef<HTMLTextAreaElement>(null);
+	useEffect(() => registerComposerEditor(session.tabId, { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), [session]);
+	return <><OverlayWatcher /><main className="h-full bg-sheet p-4 text-fg"><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label></main>{open && <TerminalSheet tabId={session.tabId} controller={session} />}</>;
 }
 
 /** Production transcript following and composer queue disclosures share one constrained chat column. */
@@ -141,6 +153,7 @@ function Harness() {
 	const [showPlan, setShowPlan] = useState(false);
 	const [ask, setAsk] = useState<{ request: CollabUiRequest | null; args: Record<string, unknown>; result?: ToolResultLike } | null>(null);
 	const [formLayout, setFormLayout] = useState(false);
+	const [automatic, setAutomatic] = useState(false);
 	const [showQuestion, setShowQuestion] = useState(true);
 	const [commandResults, setCommandResults] = useState<CommandResultRecord[]>([]);
 	const [markdown, setMarkdown] = useState<string | null>(null);
@@ -151,11 +164,14 @@ function Harness() {
 		const formPresentationEvents: Gate["formPresentationEvents"] = [];
 		const fileRequests: Gate["fileRequests"] = [];
 		let layoutRecorder: FormLayoutRecorder | null = null;
+		let releaseScreenActivity: (() => void) | undefined;
 		const unsubscribe = useApp.subscribe((next, previous) => {
-			if (next.terminalTabId !== previous.terminalTabId) formPresentationEvents.push({ terminalTabId: next.terminalTabId, requestId: view.guest?.uiRequest?.reqId ?? null, claims: presentationClaims.getSnapshot().length });
+			if (next.terminalTabId !== previous.terminalTabId) formPresentationEvents.push({ terminalTabId: next.terminalTabId, requestId: view.guest?.uiRequest?.reqId ?? null, claims: presentationClaims.getSnapshot().length, at: performance.now() });
 		});
 		// Entry points select one harness mode and release the previous mode's native claims.
 		const resetModes = () => {
+			releaseScreenActivity?.(); releaseScreenActivity = undefined;
+			setAutomatic(false);
 			setAsk(null); setShowPlan(false); setCommandResults([]); setShowQuestion(true);
 			setMarkdown(null);
 			setReplyFiles(null);
@@ -163,6 +179,25 @@ function Harness() {
 			setFormLayout(false);
 			useApp.setState({ terminalTabId: null });
 			view = { ...view, working: false, guest: null, host: { ...view.host!, transport: "tsp" } };
+		};
+		const ensureGateController = async () => {
+			if (!askController) {
+				const ensureLive = SessionController.prototype.ensureLive;
+				SessionController.prototype.ensureLive = async () => {};
+				try {
+					const tabId = await useApp.getState().newChat("/tmp/vomp-fixture");
+					if (!tabId) throw new Error("The gate could not create a chat");
+					askController = controllerFor(tabId)!;
+				} finally { SessionController.prototype.ensureLive = ensureLive; }
+				view = { ...askController.getSnapshot(), ...view };
+				askController.getSnapshot = () => view;
+				askController.subscribe = controller.subscribe;
+				askController.answer = controller.answer;
+				askController.ensureLive = controller.ensureLive;
+				askController.guestClient = () => guest as GuestClient;
+			}
+			useApp.setState({ view: "chat", activeTabId: askController.tabId, splitTabId: null });
+			return askController;
 		};
 		const update = (snapshot: TspHostSnapshot) => {
 			revision = Math.max(revision + 1, snapshot.revision);
@@ -176,6 +211,9 @@ function Harness() {
 		state.gate = {
 			calls, buttonVisible, update, view: () => view,
 			formPresentationEvents,
+			async showAutomatic(snapshot) { await ensureGateController(); calls.length = 0; resetModes(); formPresentationEvents.length = 0; update(snapshot); setAutomatic(true); },
+			beginScreenActivity(kind) { releaseScreenActivity?.(); releaseScreenActivity = screenActivity.hold(state.gateSnapshot, kind); },
+			endScreenActivity() { releaseScreenActivity?.(); releaseScreenActivity = undefined; },
 			beginFormUpdates() { formPresentationEvents.length = 0; formAnswerGaps = true; },
 			advanceFormRequest(request) { publishFormRequest(request, request ? [request] : []); },
 			async showFormLayout(snapshot, request, args, entries) {
@@ -192,20 +230,7 @@ function Harness() {
 			async showAsk(snapshot, request, args, result, classic = false, entries = []) {
 				calls.length = 0;
 				resetModes();
-				if (!askController) {
-					const ensureLive = SessionController.prototype.ensureLive;
-					SessionController.prototype.ensureLive = async () => {};
-					try {
-						const tabId = await useApp.getState().newChat("/tmp/vomp-fixture");
-						if (!tabId) throw new Error("Ask gate could not create a chat");
-						askController = controllerFor(tabId)!;
-					} finally { SessionController.prototype.ensureLive = ensureLive; }
-					view = { ...askController.getSnapshot(), ...view };
-					askController.getSnapshot = () => view;
-					askController.subscribe = controller.subscribe;
-					askController.answer = controller.answer;
-					askController.guestClient = () => guest as GuestClient;
-				}
+				await ensureGateController();
 				const toolCallId = entries.flatMap(entry => entry.type === "message" && entry.message.role === "assistant" ? entry.message.content : []).flatMap(part => part.type === "toolCall" && part.name === "ask" ? [part.id] : [])[0] ?? "form";
 				const replica: GuestSnapshot = { phase: "live", endedReason: null, header: null, state: null, agents: [], progress: new Map(), lifecycle: new Map(), streamDone: false, backgroundTools: new Map(), notices: [], thinkingSelector: null, readOnly: false, loading: null, uiRequest: request, pendingUiRequests: request ? [request] : [], activeTools: new Map(result ? [] : [[toolCallId, { toolCallId, toolName: "ask", args, intent: undefined, startedAt: 0 }]]), entries, stream: null, working: !result };
 				view = { ...view, working: !result, host: { ...view.host!, transport: classic ? "classic" : "tsp" }, guest: replica };
@@ -242,8 +267,8 @@ function Harness() {
 				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
 			},
 		};
-		return () => { unsubscribe(); layoutRecorder?.stop(); };
+		return () => { unsubscribe(); releaseScreenActivity?.(); layoutRecorder?.stop(); };
 	}, []);
-	return <MotionProvider><TooltipProvider>{formLayout ? <FormLayoutHarness /> : <main className="h-full overflow-auto bg-sheet p-4 text-fg">{replyFiles ? <section aria-label="Reply file references" className="flex h-full flex-col"><TranscriptBody scope={{ tabId: "gate-reply", projectPath: replyFiles.projectPath }} entries={replyFiles.entries} mode="normal" ready identity={replyFiles.projectPath} /></section> : <>{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</>}</main>}</TooltipProvider></MotionProvider>;
+	return <MotionProvider><TooltipProvider>{automatic ? <AutomaticScreenHarness /> : formLayout ? <FormLayoutHarness /> : <main className="h-full overflow-auto bg-sheet p-4 text-fg">{replyFiles ? <section aria-label="Reply file references" className="flex h-full flex-col"><TranscriptBody scope={{ tabId: "gate-reply", projectPath: replyFiles.projectPath }} entries={replyFiles.entries} mode="normal" ready identity={replyFiles.projectPath} /></section> : <>{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</>}</main>}</TooltipProvider></MotionProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Harness />);

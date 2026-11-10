@@ -15,6 +15,7 @@ import { routeSlash } from "../session-tools/slash";
 import { OverlayWatcher } from "../palette/OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "../palette/TerminalSheet";
 import { PresentationVisibility } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { FixtureDocuments, loadFixtureRecording, type FixtureMessage } from "../tsp/testing/documents";
 import type * as LazyModule from "../../registry/lazy";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
@@ -347,10 +348,13 @@ it.each(["Done", "outside click", "Escape"])("recovers a stalled opening with %s
 	vi.useFakeTimers();
 	let sending: Promise<boolean>;
 	await act(async () => { sending = routeSlash(controller, "/btw A delayed question"); });
+	expect(screenActivity.has(snapshot, "drive")).toBe(true);
+	expect(screenActivity.has(snapshot, "request")).toBe(false);
 	expect(element.querySelector("[data-btw-drawer]")?.getAttribute("aria-modal")).toBeNull();
 	expect(drawerDone().disabled).toBe(false);
 	await act(async () => { await vi.advanceTimersByTimeAsync(8001); });
 	await expect(sending!).resolves.toBe(true);
+	expect(screenActivity.has(snapshot, "drive")).toBe(false);
 	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe("omp did not open the side question.");
 	await act(async () => dismissDrawer(action));
 	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
@@ -456,6 +460,7 @@ it("retains its presentation until the closing document arrives", async () => {
 	await openForClosing();
 	separateCloseDocument = true;
 	await act(async () => drawerDone().click());
+	expect(screenActivity.has(snapshot, "drive")).toBe(false);
 	expect(closeRequests).toHaveLength(1);
 	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
 	expect(savedToasts()).toHaveLength(0);
@@ -475,7 +480,9 @@ it.each(["history read", "native close", "closing document"])("expires the entir
 	else separateCloseDocument = true;
 	vi.useFakeTimers();
 	await act(async () => drawerDone().click());
+	expect(screenActivity.has(snapshot, "drive")).toBe(stall === "native close");
 	await act(async () => { await vi.advanceTimersByTimeAsync(8001); });
+	expect(screenActivity.has(snapshot, "drive")).toBe(false);
 	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe("omp did not close the side-question history.");
 	expect(savedToasts()).toHaveLength(0);
 	expect(opened).toEqual([]);
@@ -539,12 +546,30 @@ it("releases the claim immediately for an unsupported document layout", async ()
 	await act(async () => { await routeSlash(controller, "/btw What is the first fixture side question?"); });
 	const surface = snapshot.surfaces[0]!;
 	const body = [...walkNodes(surface.document)].find(node => node.p?.role === "omp.btw.body")!;
+	vi.useFakeTimers();
 	await act(async () => {
 		const projection = receive({ verb: "f", body: { sf: surface.open.id, s: surface.sequence + 1, ops: [["set", body.id, { role: "extension.btw.layout" }]] } });
 		expect(projection?.supported).toBe(false);
 		for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	});
+	await act(async () => { await vi.advanceTimersByTimeAsync(301); });
 	expect(opened).toEqual([tabId]);
 	expect(useApp.getState().terminalTabId).toBe(tabId);
 	expect(document.querySelector(".tsp-screen")?.textContent).toContain("What is the first fixture side question?");
+});
+
+it("releases an opening drive when its host scope changes before the native request returns", async () => {
+	messages = loadFixtureRecording("btw-ask").messages;
+	while (cursor < 4) receive();
+	await act(async () => root.render(createElement(Harness)));
+	const pending = Promise.withResolvers<void>(); openingGate = pending.promise;
+	let sending: Promise<boolean>;
+	await act(async () => { sending = routeSlash(controller, "/btw A delayed scoped question"); });
+	const scope = snapshot;
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	view = { ...view, host: { ...view.host!, generation: view.host!.generation + 1 } };
+	await act(async () => { for (const listener of viewUpdates) listener(); });
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	await act(async () => pending.resolve());
+	await sending!;
 });

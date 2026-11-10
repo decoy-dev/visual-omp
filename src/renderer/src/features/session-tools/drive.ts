@@ -11,6 +11,10 @@ import { isResumeDeclined } from "../../registry/guards";
 import { i18n } from "../../i18n";
 import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
 import { tspHost, type TspHostSource } from "../../state/tsp/hosts";
+import { screenActivity } from "../../state/tsp/screen-activity";
+import { useApp } from "../../state/app";
+import { currentPresentationConsumers, currentTabPresentationVisible, subscribePresentationConsumers } from "../../state/tsp/presentation-claims";
+import { screenCandidateKey } from "../palette/auto-screen";
 import type { SessionController } from "../../state/session";
 import { outputTone, roomKey } from "./results";
 import { displayedEntries } from "../../chat/branch";
@@ -243,8 +247,35 @@ export interface CommandOptions {
 	/** Resolve once the screen passes this test (default: any new output line or a status-line change). */
 	until?: (lines: string[], output: string[]) => boolean;
 	timeoutMs?: number;
+	/** Deliberately show omp's live board or other unpresented native UI immediately. */
+	screenIntent?: "request";
 	/** Return true only after displaying this output. Undelivered TSP feedback returns to notices. */
 	present?: (result: CommandResult) => boolean;
+}
+
+/** Queue an exact native handoff for the watcher to decide after the current layout commits. */
+export function openRequestedScreen(session: SessionController, snapshot: TspHostSnapshot): void {
+	const source = tspHost(snapshot.hostId);
+	const sessionId = session.getSnapshot().host?.sessionId;
+	const currentCandidate = (): { snapshot: TspHostSnapshot; key: string } | null => {
+		const view = session.getSnapshot();
+		const latest = source.getSnapshot();
+		if ((view.mode !== "live" && view.mode !== "starting") || view.readOnly || view.host?.transport !== "tsp"
+			|| view.host.hostId !== snapshot.hostId || view.host.generation !== snapshot.generation || view.host.sessionId !== sessionId
+			|| !latest || latest.hostId !== snapshot.hostId || latest.generation !== snapshot.generation || latest.epoch !== snapshot.epoch
+			|| latest.revision < snapshot.revision || !latest.negotiated || latest.lifecycle !== "live" || latest.closing) return null;
+		const app = useApp.getState();
+		if (app.view !== "chat" || (app.activeTabId !== session.tabId && app.splitTabId !== session.tabId) || app.terminalTabId || app.sheet || !currentTabPresentationVisible(session.tabId)) return null;
+		const key = screenCandidateKey(latest, currentPresentationConsumers(latest.hostId, latest.epoch));
+		return key === null ? null : { snapshot: latest, key };
+	};
+	const candidate = currentCandidate();
+	if (!candidate) return;
+	const request = screenActivity.requestOnce(candidate.snapshot, candidate.snapshot.revision, candidate.key);
+	const check = () => { if (currentCandidate()?.key !== candidate.key) request.cancel(); };
+	const off = [source.subscribe(check), session.subscribe(check), subscribePresentationConsumers(check), useApp.subscribe(check)];
+	void request.done.then(() => { for (const stop of off) stop(); });
+	check();
 }
 
 /** Type a slash command into omp and collect the feedback it prints. */
@@ -254,6 +285,8 @@ export async function runCommand(session: SessionController, line: string, optio
 		const watch = new TspEditorWatch(session);
 		let reservation: TspCommandNoticeReservation | undefined;
 		let stopPanels: (() => void) | undefined;
+		let releaseIntent = () => {};
+		const offIntent = watch.subscribe(() => { if (watch.ended) releaseIntent(); });
 		try {
 			await watch.ready();
 			const baseline = watch.snapshot!;
@@ -265,12 +298,16 @@ export async function runCommand(session: SessionController, line: string, optio
 				if (!outcome) reservation?.cancel();
 				return outcome;
 			}) : watch.watch().then(() => null);
-			await session.command(line, () => {
-				const current = watch.snapshot;
-				if (!current || watch.ended) return;
-				const view = session.getSnapshot();
-				stopPanels = startCommandPanels(session, line, current, displayedEntries(view).at(-1)?.id ?? null, roomKey(view));
-			});
+			try {
+				await session.command(line, () => {
+					const current = watch.snapshot;
+					if (!current || watch.ended) return;
+					releaseIntent = screenActivity.hold(current, options.screenIntent ?? "drive");
+					const view = session.getSnapshot();
+					stopPanels = startCommandPanels(session, line, current, displayedEntries(view).at(-1)?.id ?? null, roomKey(view));
+				});
+			} finally { if (!options.screenIntent) releaseIntent(); }
+			if (options.screenIntent && !watch.ended && watch.snapshot) openRequestedScreen(session, watch.snapshot);
 			session.holdQueue(watching.then(() => undefined));
 			const outcome = await watching;
 			const result: CommandResult = { output: outcome?.lines ?? [], screen: [], ...(outcome ? { status: outcome.status } : {}) };
@@ -279,10 +316,22 @@ export async function runCommand(session: SessionController, line: string, optio
 		} catch (error) {
 			stopPanels?.();
 			throw error;
-		} finally { reservation?.cancel(); watch.dispose(); }
+		} finally { releaseIntent(); offIntent(); reservation?.cancel(); watch.dispose(); }
 	}
 	const beforeStatus = JSON.stringify(parseStatusLine(before));
-	await session.command(line);
+	let releaseIntent = () => {};
+	try {
+		await session.command(line, () => {
+			const host = session.getSnapshot().host;
+			if (!host) return;
+			const release = screenActivity.hold({ hostId: host.hostId, generation: host.generation, epoch: null }, options.screenIntent ?? "drive");
+			const off = session.subscribe(() => {
+				const current = session.getSnapshot();
+				if (current.mode !== "live" || current.host?.hostId !== host.hostId || current.host.generation !== host.generation) releaseIntent();
+			});
+			releaseIntent = () => { release(); off(); };
+		});
+	} finally { releaseIntent(); }
 	let output: string[] = [];
 	const screen =
 		(await waitForScreen(

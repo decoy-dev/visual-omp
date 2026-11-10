@@ -1,35 +1,28 @@
 /**
- * Opens the terminal sheet by itself whenever omp shows one of its own full-screen screens that
- * visual-omp does not draw (settings, pickers, login…), and closes it again when that screen goes
- * away — but only if it was opened this way.
- *
- * Two signals: omp's overlay count (full-screen menus), and the keyboard focus leaving omp's main
- * editor for a known dialog that replaces the editor in place (session tree, sign-in, goal prompt…).
+ * Shows persistent omp UI that has no app presentation. Internal app drivers suppress
+ * automatic openings; explicit screen requests remain immediate. Only automatic sheets
+ * close when their native content disappears.
  */
-import { openOverlay, screenSurface, unclaimed, type TspPresentationClaims, type TspSurfaces } from "@shared/tsp/view-state";
-import { hasUnclaimedDockPanel } from "@shared/tsp/dock-panels";
 import { useEffect, useMemo, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../../state/tsp/useTsp";
-import { currentPresentationConsumers, currentTabPresentationVisible, usePresentationAvailability, usePresentationClaims, useTabPresentationVisible } from "../../state/tsp/presentation-claims";
+import { currentPresentationConsumers, currentTabPresentationVisible, subscribePresentationConsumers, usePresentationAvailability, usePresentationClaims, useTabPresentationVisible } from "../../state/tsp/presentation-claims";
+import { screenActivity, useScreenActivity } from "../../state/tsp/screen-activity";
+import { SCREEN_SETTLE_MS, ScreenSettle, screenCandidateKey } from "./auto-screen";
 
-/** Let omp finish painting before reading the screen. */
-const SETTLE_MS = 300;
-
-/** Unclaimed dock fallbacks such as extension rows need the same sheet as layer overlays. */
-function hasUnpresentedScreen(surfaces: TspSurfaces, consumers: TspPresentationClaims): boolean {
-	if (openOverlay(surfaces, false, consumers)) return true;
-	const screen = screenSurface(surfaces);
-	if (screen && (!consumers.get(screen.open.id)?.size
-		|| (["main", "dock", "layer"] as const).some(area => unclaimed(screen, area, consumers.get(screen.open.id)).length))) return true;
-	return hasUnclaimedDockPanel(surfaces, consumers);
+function closeAutomaticSheet(tabId: string): void {
+	if (autoOpened.tabId !== tabId) return;
+	autoOpened.tabId = null;
+	if (useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
 }
 
+
 function TabWatch({ tabId }: { tabId: string }) {
-	const view = useSessionView(controllerFor(tabId));
+	const controller = controllerFor(tabId);
+	const view = useSessionView(controller);
 	const visible = useTabPresentationVisible(tabId);
 	/** Component kind that holds focus when omp sits at its main editor (names are minified per build). */
 	const editorKind = useRef<string | null>(null);
@@ -37,15 +30,29 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const tui = live ? (view?.host?.tui ?? null) : null;
 	const hostId = view?.host?.hostId ?? null;
 	const tsp = view?.host?.transport === "tsp";
-	const { snapshot } = useTsp(tsp ? view?.host?.hostId ?? null : null);
+	const { snapshot, store } = useTsp(tsp ? hostId : null);
 	const claims = usePresentationClaims(hostId, snapshot?.epoch);
 	const available = usePresentationAvailability(hostId, snapshot?.epoch);
 	// Automatic sheet state must not feed back through a card's covered/presented flag.
 	// Availability survives that cover; hidden layout ancestors and unmount still release it.
 	const nativeConsumers = useMemo(() => currentPresentationConsumers(hostId, snapshot?.epoch), [claims, available, hostId, snapshot?.epoch]);
-	const surfaces = snapshot?.lifecycle === "live" && snapshot.generation === view?.host?.generation
-		? snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation) : [];
-	const semanticScreen = hasUnpresentedScreen(surfaces, nativeConsumers);
+	const scope = tsp && snapshot?.lifecycle === "live" && snapshot.hostId === hostId && snapshot.generation === view?.host?.generation ? snapshot : null;
+	const semanticKey = scope ? screenCandidateKey(scope, nativeConsumers) : null;
+	const activityScope = scope ?? (!tsp && view?.host ? { hostId: view.host.hostId, generation: view.host.generation, epoch: null } : null);
+	const driveVersion = useScreenActivity(activityScope, "drive");
+	const requestVersion = useScreenActivity(activityScope, "request");
+	const settle = useRef<ScreenSettle | null>(null);
+	settle.current ??= new ScreenSettle();
+	const currentKey = useRef<() => string | null>(() => null);
+	currentKey.current = () => {
+		const current = controller?.getSnapshot();
+		const latest = store.getSnapshot();
+		const app = useApp.getState();
+		if (!scope || !current || (current.mode !== "live" && !(current.mode === "starting" && (screenActivity.has(scope, "request") || autoOpened.tabId === tabId))) || current.readOnly || current.host?.hostId !== scope.hostId || current.host.generation !== scope.generation
+			|| !latest || latest.lifecycle !== "live" || latest.closing || latest.hostId !== scope.hostId || latest.generation !== scope.generation || latest.epoch !== scope.epoch
+			|| app.view !== "chat" || app.activeTabId !== tabId && app.splitTabId !== tabId || !currentTabPresentationVisible(tabId)) return null;
+		return screenCandidateKey(latest, currentPresentationConsumers(scope.hostId, scope.epoch));
+	};
 	const asking = Boolean(view?.guest?.uiRequest || view?.guest && [...view.guest.activeTools.values()].some(tool => tool.toolName === "ask"));
 	const overlays = tui?.overlays ?? 0;
 	const focused = tui?.focused ?? null;
@@ -58,20 +65,42 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const screenKey = `${overlays}|${focused ?? ""}|${tui?.overlayKinds.join(",") ?? ""}`;
 
 	useEffect(() => {
+		if (!tsp) return;
+		const observe = () => {
+			const key = currentKey.current();
+			settle.current!.observe(scope && screenActivity.has(scope, "drive") ? null : key, Date.now());
+			if (key === null) closeAutomaticSheet(tabId);
+		};
+		const off = [store.subscribe(observe), ...(controller ? [controller.subscribe(observe)] : []), screenActivity.subscribe(observe), subscribePresentationConsumers(observe), useApp.subscribe(observe)];
+		observe();
+		return () => { for (const stop of off) stop(); settle.current!.observe(null, Date.now()); };
+	}, [tsp, store, controller, hostId, view?.host?.generation, snapshot?.epoch, tabId]);
+
+	useEffect(() => {
 		const onScreen = currentTabPresentationVisible(tabId);
 		if (tsp) {
-			// A passive effect may precede the rerender caused by a sibling's layout registration.
-			const needsSemanticScreen = hasUnpresentedScreen(surfaces, currentPresentationConsumers(hostId, snapshot?.epoch));
-			if (!live || !onScreen || !needsSemanticScreen) {
-				if (autoOpened.tabId === tabId) {
-					autoOpened.tabId = null;
-					if (useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
+			let cancelled = false;
+			let timer: number | undefined;
+			const attempt = () => {
+				const latest = store.getSnapshot();
+				// Opening waits for this exact native frame's layout claims, including queued handoffs.
+				if (cancelled || !scope || !latest || latest.revision !== scope.revision || latest.generation !== scope.generation || latest.epoch !== scope.epoch) return;
+				const key = currentKey.current();
+				if (key === null) {
+					if ((live || view?.mode === "starting") && onScreen && currentTabPresentationVisible(tabId)) screenActivity.consumeRequests(scope, scope.revision);
+					closeAutomaticSheet(tabId); return;
 				}
-			} else if (!useApp.getState().terminalTabId) {
+				if (key !== semanticKey || screenActivity.has(scope, "drive")) return;
+				const explicit = screenActivity.allowsRequest(scope, scope.revision, key);
+				screenActivity.consumeRequests(scope, scope.revision);
+				if (useApp.getState().terminalTabId) return;
+				const remaining = explicit ? 0 : settle.current!.remaining(key, Date.now());
+				if (remaining > 0) { timer = window.setTimeout(attempt, remaining); return; }
 				autoOpened.tabId = tabId;
 				useApp.getState().openTerminal(tabId);
-			}
-			return;
+			};
+			attempt();
+			return () => { cancelled = true; clearTimeout(timer); };
 		}
 		if (!needsSheet || !hostId || !onScreen) {
 			if (autoOpened.tabId === tabId) {
@@ -80,25 +109,26 @@ function TabWatch({ tabId }: { tabId: string }) {
 			}
 			return;
 		}
+		if (activityScope && screenActivity.has(activityScope, "drive")) return;
 		if (useApp.getState().terminalTabId) return;
 		let cancelled = false;
 		const timer = window.setTimeout(() => {
 			void window.vomp
 				.invoke("host:screen", hostId)
 				.then(lines => {
-					if (cancelled || useApp.getState().terminalTabId || isNativeOverlay(lines)) return;
+					if (cancelled || useApp.getState().terminalTabId || activityScope && screenActivity.has(activityScope, "drive") || isNativeOverlay(lines)) return;
 					// An in-place dialog only counts when we recognise it; focus moves for other reasons too.
 					if (overlays === 0 && screenName(lines) === null) return;
 					autoOpened.tabId = tabId;
 					useApp.getState().openTerminal(tabId);
 				})
 				.catch(() => undefined);
-		}, SETTLE_MS);
+		}, SCREEN_SETTLE_MS);
 		return () => {
 			cancelled = true;
 			clearTimeout(timer);
 		};
-	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticScreen, live, snapshot, visible]);
+	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticKey, live, visible, driveVersion, requestVersion, snapshot?.revision]);
 
 	return null;
 }

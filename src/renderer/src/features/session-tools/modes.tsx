@@ -57,14 +57,14 @@ registerCommand({ id: "chat.handoff", title: "session:commands.handoff.title", h
 registerCommand({ id: "chat.security", title: "session:commands.security.title", hint: "session:commands.security.hint", slash: "/security scan", group: "modes", icon: ShieldCheck, header: 285, when: sessionWhen, run: async ({ session }) => {
 	if (!session) return;
 	try {
-		const { output } = await runCommand(session, "/security scan", { timeoutMs: 10000, until: (_lines, out) => out.some(line => /security|scan|disabled|error/i.test(line)) });
+		const { output } = await runCommand(session, "/security scan", { screenIntent: "request", timeoutMs: 10000, until: (_lines, out) => out.some(line => /security|scan|disabled|error/i.test(line)) });
 		if (session.getSnapshot().host?.transport === "tsp") return; // Semantic notices carry the result.
 		if (output.some(line => /Security is disabled/i.test(line))) { toast({ tone: "warn", message: i18n.t("session:security.disabled") }); return; }
 		const result = await runCommand(session, "/security status", { timeoutMs: 10000, until: (_lines, out) => out.length > 0 });
 		toast({ message: result.output.at(-1) ?? i18n.t("session:security.started") });
 	} catch (error) { reportFailure(error); }
 } });
-registerCommand({ id: "chat.cleanse", title: "session:commands.cleanse.title", hint: "session:commands.cleanse.hint", slash: "/cleanse", group: "modes", icon: Broom, header: 290, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runAndReport(session, "/cleanse"); if (session.getSnapshot().host?.transport !== "tsp" && result && !parseStatusLine(result.screen)) useApp.getState().openTerminal(session.tabId); } } });
+registerCommand({ id: "chat.cleanse", title: "session:commands.cleanse.title", hint: "session:commands.cleanse.hint", slash: "/cleanse", group: "modes", icon: Broom, header: 290, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runAndReport(session, "/cleanse", { screenIntent: "request" }); if (session.getSnapshot().host?.transport !== "tsp" && result && !parseStatusLine(result.screen)) useApp.getState().openTerminal(session.tabId); } } });
 registerCommand({ id: "chat.export", title: "session:commands.export.title", hint: "session:commands.export.hint", slash: "/export", group: "modes", icon: Export, header: 150, when: sessionWhen, run: async ({ session }) => { if (session) await exportChat(session); } });
 registerCommand({ id: "chat.rename", title: "session:commands.rename.title", hint: "session:commands.rename.hint", slash: "/rename", group: "modes", icon: PencilSimple, header: 110, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "rename"); } });
 registerCommand({ id: "chat.stop", title: "session:commands.stop.title", hint: "session:commands.stop.hint", slash: "Esc", shortcut: "⌘.", group: "chat", icon: StopCircle, when: ctx => Boolean(ctx.session?.getSnapshot().working), run: ({ session }) => session?.abort() });

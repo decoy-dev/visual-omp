@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useSyncExternalStore, type PropsWithChildren, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type MockInstance } from "vitest";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
@@ -17,7 +17,10 @@ import { useApp } from "../../state/app";
 import { composer, openOverlay, walkNodes } from "@shared/tsp/view-state";
 import type { TspNode } from "@shared/tsp";
 import { TSP_ROLES } from "@shared/tsp/roles";
-import { presentationClaims, PresentationVisibility } from "../../state/tsp/presentation-claims";
+import { currentPresentationConsumers, presentationClaims, PresentationVisibility } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
+import { autoOpened } from "../palette/TerminalSheet";
+import { screenCandidateKey } from "../palette/auto-screen";
 import { Composer } from "../../chat/composer/Composer";
 import { OmpScreenSheet } from "../tsp/OmpScreenSheet";
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", invoke: async () => [], on: () => () => {} } }); });
@@ -51,6 +54,7 @@ let invoke: ReturnType<typeof vi.fn>;
 let view: SessionView;
 let controller: SessionController;
 let sessionListeners: Set<() => void>;
+let requestOnce: MockInstance<typeof screenActivity.requestOnce>;
 function recorded(name: string) {
 	const doc = new FixtureDocuments();
 	for (const message of loadFixtureRecording(name).messages) {
@@ -138,7 +142,9 @@ async function menu() {
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.clearAllMocks(); mocks.approval.mockReset().mockResolvedValue(undefined); listeners = new Set(); sessionListeners = new Set();
+	requestOnce = vi.spyOn(screenActivity, "requestOnce");
 	useComposerDrafts.getState().forget("plan-test"); useApp.setState({ terminalTabId: null });
+	autoOpened.tabId = null;
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
 	const docs = recorded("plan-review-execute");
 	snapshot = { ...docs, hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Plan review" }, surfaces: docs.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
@@ -153,7 +159,11 @@ beforeEach(() => {
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") listeners.add(listener); return () => listeners.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
-afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
+afterEach(async () => {
+	for (const result of requestOnce.mock.results) if (result.type === "return") { result.value.cancel(); await result.value.done; }
+	requestOnce.mockRestore();
+	await act(async () => root.unmount()); element.remove();
+});
 it.each([["Approve and run", "execute"], ["Approve and compact first", "compact"], ["Save and stop", "save"]] as const)("renders the recorded card and sends %s once by option id", async (label, action) => {
 	await render();
 	expect(element.textContent).toContain("Fixture plan"); expect(element.textContent).toContain("Cover the consumer-visible result.");
@@ -318,4 +328,67 @@ it("claims only a mounted, visible card and releases when the omp screen covers 
 	await render(); expect(presentationClaims.getSnapshot()).toHaveLength(1);
 	await act(async () => useApp.setState({ terminalTabId: "plan-test" }));
 	expect(presentationClaims.getSnapshot()).toHaveLength(0);
+});
+
+it("queues Save for post-layout policy after the confirmed physical swap", async () => {
+	useApp.setState({ view: "chat", activeTabId: "plan-test", splitTabId: null, sheet: null });
+	await render();
+	const scope = snapshot;
+	await click("Save and stop");
+	expect(screenActivity.has(scope, "request")).toBe(true);
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	expect(useApp.getState().terminalTabId).toBeNull();
+	expect(requestOnce).not.toHaveBeenCalled();
+	const next = withoutReview();
+	const layer = next.surfaces[0]!.document.c!.find(node => node.id === "layer")!;
+	layer.c = [...(layer.c ?? []), { id: "save-path", k: "overlay", p: { role: TSP_ROLES.planSave, head: "Save plan" }, c: [{ id: "path", k: "input", p: { text: "/tmp/plan.md" } }] }];
+	await act(async () => update(next));
+	expect(requestOnce).toHaveBeenCalledExactlyOnceWith(snapshot, snapshot.revision, screenCandidateKey(snapshot, currentPresentationConsumers(snapshot.hostId, snapshot.epoch)));
+	expect(useApp.getState().terminalTabId).toBeNull();
+	expect(autoOpened.tabId).toBeNull();
+	const request = requestOnce.mock.results[0]!.value!;
+	const remainingListeners = sessionListeners.size;
+	request.cancel(); await request.done;
+	expect(sessionListeners.size).toBe(remainingListeners - 1);
+});
+
+it.each(["no native content", "hidden chat", "another sheet", "manual terminal"] as const)("does not take over Save after %s", async state => {
+	useApp.setState({ view: "chat", activeTabId: "plan-test", splitTabId: null, sheet: null });
+	await render(); await click("Save and stop");
+	const next = withoutReview();
+	const layer = next.surfaces[0]!.document.c!.find(node => node.id === "layer")!;
+	if (state !== "no native content") layer.c = [...(layer.c ?? []), { id: "save-path", k: "overlay", p: { role: TSP_ROLES.planSave } }];
+	if (state === "hidden chat") useApp.setState({ activeTabId: "other-chat" });
+	if (state === "another sheet") useApp.getState().openSheet("session-text-action", { tabId: "plan-test", kind: "rename" });
+	if (state === "manual terminal") useApp.setState({ terminalTabId: "plan-test" });
+	await act(async () => update(next));
+	expect(useApp.getState().terminalTabId).toBe(state === "manual terminal" ? "plan-test" : null);
+	expect(autoOpened.tabId).toBeNull();
+	expect(requestOnce).not.toHaveBeenCalled();
+});
+
+it.each(["Approve and run", "Approve and compact first"] as const)("holds %s drive until physical departure", async label => {
+	await render();
+	const scope = snapshot;
+	await click(label);
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	expect(screenActivity.has(scope, "request")).toBe(false);
+	await act(async () => changeReview(commitReview));
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	await act(async () => update(withoutReview()));
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+});
+
+it.each(["write failure", "epoch change", "unmount"] as const)("releases a tier write drive on %s", async end => {
+	await render();
+	const scope = snapshot;
+	const write = Promise.withResolvers<undefined>();
+	invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : write.promise);
+	await click("smol");
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	if (end === "write failure") await act(async () => write.reject(new Error("Tier refused")));
+	else if (end === "epoch change") await act(async () => update({ ...snapshot, revision: snapshot.revision + 1, epoch: snapshot.epoch + 1 }));
+	else await act(async () => root.render(null));
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	if (end !== "write failure") await act(async () => write.resolve(undefined));
 });

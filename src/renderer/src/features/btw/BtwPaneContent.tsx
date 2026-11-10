@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { BtwState, BtwStatus, BtwTopic, BtwTopicRef } from "@shared/contracts/btw";
 import type { HostState } from "@shared/ipc";
 import { tspHost, type TspHostSource } from "../../state/tsp/hosts";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { btwTopicKey, projectBtw, sameBtwTopic, type BtwProjection } from "@shared/tsp/btw";
 import { TSP_ACTIONS } from "@shared/tsp/roles";
 import { errorText } from "@shared/errors";
@@ -53,14 +54,20 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 	let expired = false;
 	let nativeSettled = false;
 	let requestSettled = false;
+	let releaseDrive = () => {};
 	let latest = store.getSnapshot();
 	const finished = () => !latest || latest.generation !== host.generation || latest.epoch !== host.tspEpoch
 		|| projectBtw(latest.surfaces)?.nodeId !== projection.nodeId;
 	const off = store.subscribe(() => {
 		const next = store.getSnapshot();
+		if (!next || next.hostId !== host.hostId || next.generation !== host.generation || next.epoch !== host.tspEpoch || next.lifecycle !== "live" || next.closing) releaseDrive();
 		if (!next || next.hostId !== host.hostId || latest && next.revision <= latest.revision) return;
 		latest = next;
-		if (finished()) documentClosed.resolve();
+		if (finished()) { releaseDrive(); documentClosed.resolve(); }
+	});
+	const offSession = session.subscribe(() => {
+		const current = session.getSnapshot().host;
+		if (current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) releaseDrive();
 	});
 	const timer = setTimeout(() => {
 		expired = true;
@@ -76,7 +83,11 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 		const current = session.getSnapshot().host;
 		if (controllerFor(session.tabId) !== session || state.hostId !== host.hostId || state.generation !== host.generation || state.epoch !== host.tspEpoch
 			|| current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) throw new Error("The chat changed before the side question could be put away.");
-		if (state.overlay) await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch });
+		if (state.overlay) {
+			releaseDrive = screenActivity.hold({ hostId: host.hostId, generation: host.generation, epoch: host.tspEpoch }, "drive");
+			try { await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch }); }
+			finally { releaseDrive(); }
+		}
 	})();
 	const settleNative = () => {
 		nativeSettled = true;
@@ -96,7 +107,9 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 		if (nativeSettled) operation.active = false;
 		clearTimeout(timer);
 		off();
+		offSession();
 		documentClosed.resolve();
+		releaseDrive();
 		releasePresentation();
 		for (const listener of panelPutAwayListeners) listener();
 	}).then(result.resolve, result.reject);
@@ -121,6 +134,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 	let seen = false;
 	let closing = false;
 	let stopped = false;
+	let releaseDrive = () => {};
 	const notify = () => { for (const listener of panelPutAwayListeners) listener(); };
 	const current = () => {
 		const next = session.getSnapshot().host;
@@ -130,6 +144,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 		error: null, dismissed: false,
 		dismiss() {
 			request.dismissed = true;
+			releaseDrive();
 			clearTimeout(timer);
 			ready.resolve();
 			useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: false } }));
@@ -139,6 +154,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 		stop() {
 			if (stopped) return;
 			stopped = true;
+			releaseDrive();
 			clearTimeout(timer); off(); offSession(); offApp(); ready.resolve();
 			if (btwOpenings.get(session) === request) btwOpenings.delete(session);
 			notify();
@@ -146,6 +162,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 	};
 	const timer = setTimeout(() => {
 		request.error = i18n.t("panes:btw.openingFailed");
+		releaseDrive();
 		ready.resolve(); notify();
 	}, 8000);
 	const off = store.subscribe(() => {
@@ -172,7 +189,8 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 		useApp.getState().returnToChat();
 	});
 	notify();
-	const native = window.vomp.invoke("btw:ask", host.hostId, question, { generation: host.generation, epoch }).catch(error => {
+	releaseDrive = screenActivity.hold({ hostId: host.hostId, generation: host.generation, epoch }, "drive");
+	const native = window.vomp.invoke("btw:ask", host.hostId, question, { generation: host.generation, epoch }).finally(() => releaseDrive()).catch(error => {
 		if (stopped) return;
 		request.error = errorText(error);
 		clearTimeout(timer); ready.resolve(); notify();
@@ -343,6 +361,8 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 	const [contexts, setContexts] = useState<Record<string, PaneContext>>({});
 	const operations = useRef(new Map<string, symbol>());
 	const contextKey = JSON.stringify([hostId, state?.generation ?? null, state?.epoch ?? null]);
+	const driveReleases = useRef(new Set<() => void>());
+	useEffect(() => () => { for (const release of driveReleases.current) release(); driveReleases.current.clear(); }, [contextKey]);
 	let context = contexts[contextKey] ?? emptyContext();
 	const overlay = state?.overlay;
 	const overlayKey = overlay ? JSON.stringify([overlay.surfaceId, overlay.nodeId, overlay.selectedTopic && btwTopicKey(overlay.selectedTopic), overlay.followUp]) : null;
@@ -410,6 +430,13 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 			update(current => current.busy === owner ? { ...current, busy: null } : current);
 		}
 	};
+	const performNative = (action: () => Promise<unknown>, onSuccess?: (current: PaneContext) => PaneContext) =>
+		perform(async () => {
+			const release = screenActivity.hold({ hostId, ...scope! }, "drive");
+			driveReleases.current.add(release);
+			try { return await action(); }
+			finally { release(); driveReleases.current.delete(release); }
+		}, onSuccess);
 	const startComposer = (mode: "ask" | "followUp") => {
 		if (disabled || operations.current.has(contextKey)) return;
 		const key = `${mode}:${topicKey}`;
@@ -418,7 +445,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 	const submit = async () => {
 		if (disabled || !draft.trim() || !scope || !composerKey || !composer || mode === "followUp" && (!topicRef || !displayingOverlay)) return;
 		const sentComposer = context.composers[composerKey];
-		await perform(() => mode === "followUp" && topicRef
+		await performNative(() => mode === "followUp" && topicRef
 			? window.vomp.invoke("btw:followUp", hostId, topicRef, draft, scope)
 			: window.vomp.invoke("btw:ask", hostId, draft, scope), current => {
 			if (current.composers[composerKey] !== sentComposer) return current;
@@ -435,7 +462,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 		update(current => ({ ...current, selection: ref, activeComposer: null, error: null }));
 		follow.current = false;
 		body.current?.scrollTo({ top: 0 });
-		if (!historyOnly && !readOnly && overlay?.supported && overlay.topics.some(topic => sameBtwTopic(topic, ref)) && scope) void perform(() => window.vomp.invoke("btw:select", hostId, ref, scope));
+		if (!historyOnly && !readOnly && overlay?.supported && overlay.topics.some(topic => sameBtwTopic(topic, ref)) && scope) void performNative(() => window.vomp.invoke("btw:select", hostId, ref, scope));
 	};
 	const statusLabel = (status: BtwStatus) => t(`btw.status.${status}`);
 	const copy = () => { if (topic) void perform(() => navigator.clipboard.writeText(topic.turns.map(turn => turn.answer).filter(Boolean).join("\n\n")), current => current.selection === context.selection && current.overlayKey === overlayKey ? { ...current, copied: true } : current); };
@@ -447,7 +474,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 				</MenuRadioGroup></MenuContent>
 			</Menu>
 			{!historyOnly && <Button size="sm" variant="ghost" className="ml-auto" icon={<Plus />} disabled={disabled || sideTurnRunning || !!overlay?.followUp} onClick={() => startComposer("ask")}>{t("btw.new")}</Button>}
-			{!historyOnly && !overlay && topics.length > 0 && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:ask", hostId, "", scope!)); }}>{t("btw.openHistory")}</Button>}
+			{!historyOnly && !overlay && topics.length > 0 && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { void performNative(() => window.vomp.invoke("btw:ask", hostId, "", scope!)); }}>{t("btw.openHistory")}</Button>}
 		</PaneToolbar>
 		<div ref={body} onScroll={() => { const element = body.current; if (element) follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48; }} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-md" tabIndex={0} aria-label={t("btw.answers")}>
 			{!state && !loadError ? <p role="status" className="flex items-center gap-2 text-fg-muted"><Spinner />{t("btw.loading")}</p>
@@ -479,8 +506,8 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 		{(loadError || error) && <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-err">{error ?? loadError}</p>}
 		{topic && (!activeComposer || drawer || historyOnly) && <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
 			{latest?.answer && <Button size="sm" variant="ghost" icon={<Copy />} disabled={busy} onClick={copy}>{t(copied ? "btw.copied" : "btw.copy")}</Button>}
-			{!historyOnly && actions.includes(TSP_ACTIONS.btwStop) && <Button size="sm" variant="secondary" icon={<Stop />} disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:stop", hostId, topicRef!, scope!)); }}>{t("btw.stop")}</Button>}
-			{!historyOnly && actions.includes(TSP_ACTIONS.btwInject) && <Button size="sm" variant="secondary" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:inject", hostId, topicRef!, scope!)); }}>{t("btw.inject")}</Button>}
+			{!historyOnly && actions.includes(TSP_ACTIONS.btwStop) && <Button size="sm" variant="secondary" icon={<Stop />} disabled={disabled} onClick={() => { void performNative(() => window.vomp.invoke("btw:stop", hostId, topicRef!, scope!)); }}>{t("btw.stop")}</Button>}
+			{!historyOnly && actions.includes(TSP_ACTIONS.btwInject) && <Button size="sm" variant="secondary" disabled={disabled} onClick={() => { void performNative(() => window.vomp.invoke("btw:inject", hostId, topicRef!, scope!)); }}>{t("btw.inject")}</Button>}
 			{!historyOnly && !drawer && actions.includes(TSP_ACTIONS.btwFollowUp) && <Button size="sm" variant="secondary" className="ml-auto" disabled={disabled || running || !!overlay?.followUp} onClick={() => startComposer("followUp")}>{t("btw.followUp")}</Button>}
 		</div>}
 		{!historyOnly && activeComposer && <form className="flex shrink-0 flex-col gap-3 border-t border-border p-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
@@ -488,7 +515,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 			<div className="flex flex-wrap items-center justify-end gap-2">
 				{topics.length > 0 && !drawer && <Button size="sm" variant="ghost" disabled={busy} onClick={() => {
 					const cancel = (current: PaneContext) => current.activeComposer === composerKey && current.overlayKey === overlayKey ? { ...current, activeComposer: null, error: null } : current;
-					if (overlay?.followUp && displayingOverlay) void perform(() => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!), cancel);
+					if (overlay?.followUp && displayingOverlay) void performNative(() => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!), cancel);
 					else update(cancel);
 				}}>{t("btw.cancel")}</Button>}
 				<Button type="submit" size="sm" variant="primary" icon={busy ? <Spinner /> : <ArrowUp />} disabled={disabled || !draft.trim() || mode === "followUp" && !displayingOverlay}>{t(mode === "followUp" ? "btw.sendFollowUp" : "btw.ask")}</Button>

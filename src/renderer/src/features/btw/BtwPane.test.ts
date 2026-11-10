@@ -11,6 +11,7 @@ import { BtwDrawerContent, BtwDrawer, BtwPane } from "./BtwPane";
 import { BtwPaneContent } from "./BtwPaneContent";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
+import { screenActivity } from "../../state/tsp/screen-activity";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => undefined } }); });
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
@@ -470,4 +471,47 @@ describe("BTW presentation ownership", () => {
 		expect(invoke).not.toHaveBeenCalled();
 		expect(presentationClaims.getSnapshot()).toEqual([]);
 	});
+});
+
+it.each(["Stop side answer", "Inject into main"] as const)("holds drive only during the native %s operation", async label => {
+	const state = initial(); state.overlay!.actions.push("stop", "inject");
+	const pending = Promise.withResolvers<void>(); invoke.mockReturnValue(pending.promise);
+	const h = mountContent(state);
+	expect(screenActivity.has(state, "drive")).toBe(false);
+	act(() => button(h.container, label).click());
+	expect(screenActivity.has(state, "drive")).toBe(true);
+	expect(screenActivity.has(state, "request")).toBe(false);
+	await act(async () => pending.resolve());
+	expect(screenActivity.has(state, "drive")).toBe(false);
+});
+
+it("releases a pending native operation when its pane scope changes", async () => {
+	const state = initial(); state.topics = []; state.overlay = null;
+	const pending = Promise.withResolvers<void>(); invoke.mockReturnValue(pending.promise);
+	const h = mountContent(state);
+	fill(h.container, "A scoped question");
+	act(() => button(h.container, "Ask question").click());
+	expect(screenActivity.has(state, "drive")).toBe(true);
+	h.render({ ...state, epoch: state.epoch + 1, revision: state.revision + 1 });
+	expect(screenActivity.has(state, "drive")).toBe(false);
+	await act(async () => pending.resolve());
+});
+
+it("releases failed native follow-up intent and keeps clipboard operations outside drive", async () => {
+	const state = initial();
+	const pending = Promise.withResolvers<void>(); invoke.mockReturnValue(pending.promise);
+	const h = mountContent(state);
+	act(() => button(h.container, "Follow up").click());
+	fill(h.container, "Keep this question");
+	act(() => button(h.container, "Send follow-up").click());
+	expect(screenActivity.has(state, "drive")).toBe(true);
+	await act(async () => pending.reject(new Error("Follow-up refused")));
+	expect(screenActivity.has(state, "drive")).toBe(false);
+	expect(h.container.querySelector("textarea")?.value).toBe("Keep this question");
+	const copied = Promise.withResolvers<void>();
+	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => copied.promise } });
+	act(() => button(h.container, "Cancel").click());
+	act(() => button(h.container, "Copy answers").click());
+	expect(screenActivity.has(state, "drive")).toBe(false);
+	await act(async () => copied.resolve());
 });

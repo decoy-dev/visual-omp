@@ -368,6 +368,75 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		}
 	});
 
+	it.each((["layer", "dock"] as const).flatMap(placement => (["transient", "driven", "leftover", "requested", "persistent"] as const).map(mode => ({ placement, mode }))))("replays recorded model-picker $placement policy $mode without a screen flash", async ({ placement, mode }) => {
+		const recording = loadFixtureRecording(mode === "persistent" || mode === "requested" ? "model-picker" : "model-switch");
+		const documents = new FixtureDocuments();
+		const frames: TspHostSnapshot[] = [];
+		for (const message of recording.messages) {
+			documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			if (message.verb === "f") frames.push(fixtureSnapshot(documents));
+		}
+		const hasPicker = (frame: TspHostSnapshot) => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "picker" && node.p?.noun === "models"));
+		const index = frames.findIndex(hasPicker);
+		expect(index).toBeGreaterThan(0);
+		const idle = frames[index - 1]!;
+		const shown = structuredClone(frames[index]!);
+		const closed = frames.slice(index + 1).find(frame => !hasPicker(frame))!;
+		expect(closed).toBeDefined();
+		if (placement === "dock") {
+			const surface = shown.surfaces.find(surface => [...walkNodes(surface.document)].some(node => node.k === "picker" && node.p?.noun === "models"))!;
+			const layer = surface.document.c!.find(node => node.id === "layer")!;
+			const picker = layer.c!.find(node => node.k === "picker" && node.p?.noun === "models")!;
+			expect(picker).toBeDefined();
+			layer.c = layer.c!.filter(node => node !== picker);
+			const dock = surface.document.c!.find(node => node.id === "dock")!;
+			const slot = dock.c!.find(node => node.k === "col" && !node.p?.role)!;
+			expect(slot).toBeDefined();
+			slot.c = [...(slot.c ?? []), picker];
+		}
+		await page.evaluate(`document.documentElement.dataset.motion='reduced'; window.gate.showAutomatic(${JSON.stringify(idle)})`);
+		if (mode === "driven" || mode === "leftover" || mode === "requested") await page.evaluate(`window.gate.beginScreenActivity(${JSON.stringify(mode === "requested" ? "request" : "drive")})`);
+		const shownAt = await page.evaluate<number>(`(() => { const at=performance.now(); window.gate.update(${JSON.stringify(shown)}); return at; })()`);
+		let releaseAt: number | null = null;
+		if (mode === "transient") {
+			await delay(150);
+			await page.evaluate(`window.gate.update(${JSON.stringify(closed)})`);
+			await delay(450);
+		} else if (mode === "driven" || mode === "leftover") {
+			await delay(650);
+			expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
+			if (mode === "driven") await page.evaluate(`window.gate.update(${JSON.stringify(closed)})`);
+			releaseAt = await page.evaluate<number>("(() => { const at=performance.now(); window.gate.endScreenActivity(); return at; })()");
+			if (mode === "driven") await delay(400);
+			else {
+				await delay(200);
+				expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
+				await page.until("!!document.querySelector('.tsp-screen')");
+			}
+		} else if (mode === "persistent") {
+			// Continuous unrelated publications must not postpone the original 300 ms deadline.
+			for (let repaint = 0; repaint < 4; repaint++) {
+				await delay(100);
+				for (const surface of shown.surfaces) surface.sequence++;
+				await page.evaluate(`window.gate.update(${JSON.stringify(shown)})`);
+			}
+			expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null).length")).toBe(1);
+			await page.until("!!document.querySelector('.tsp-screen')");
+		} else await page.until("!!document.querySelector('.tsp-screen')");
+		const openings = await page.evaluate<{ at: number; terminalTabId: string }[]>("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)");
+		if (mode === "transient" || mode === "driven") expect(openings).toEqual([]);
+		else {
+			expect(openings).toHaveLength(1);
+			if (mode === "requested") expect(openings[0]!.at - shownAt).toBeLessThan(250);
+			else expect(openings[0]!.at - (releaseAt ?? shownAt)).toBeGreaterThanOrEqual(290);
+		}
+		await page.evaluate(`window.gate.endScreenActivity(); window.gate.update(${JSON.stringify(closed)})`);
+		await page.until("!document.querySelector('.tsp-screen')");
+		const events = await page.evaluate("window.gate.formPresentationEvents");
+		expect(await page.evaluate("window.gate.calls")).toEqual([]);
+		await writeFile(join(shots, `model-picker-${placement}-${mode}.json`), JSON.stringify({ recording: mode === "persistent" || mode === "requested" ? "model-picker" : "model-switch", placement, mode, shownAt, releaseAt, events, seam: "Production OverlayWatcher, exact-scope interaction registry and semantic sheet; recorded picker frames, with dock placement matching the owner's live layout." }, null, 2));
+	}, 30_000);
+
 	it.each(feedbackCases.flatMap(([name, command, expected]) => (["light", "dark"] as const).map(theme => ({ name, command, expected, theme }))))("renders command Result $name in $theme without an omp screen", async ({ name, command, expected, theme }) => {
 		const rows = feedbackResults(name, command);
 		expect(rows.some(row => row.lines.join("\n").includes(expected) || row.locations?.some(location => location.value === expected))).toBe(true);

@@ -9,6 +9,7 @@ import { i18n } from "../../i18n";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { OmpBusyError, press, readScreen, readyEditor, waitForScreen } from "./drive";
 import { parseStatusLine } from "./screen";
 import { parseSessionTree, rowProbe, type SelectorMode, selectorRows, type SessionTree } from "./tree";
@@ -69,47 +70,57 @@ export async function navigateTo(session: SessionController, entryId: string): P
 	const mode: SelectorMode = entry.userTurn ? "user" : "all";
 	const rows = selectorRows(tree, mode);
 
-	await session.command("/tree");
-	if (!(await waitForScreen(session, lines => lines.some(line => line.includes(TREE_TITLE)), 4000))) {
-		throw new OmpBusyError();
-	}
-	await press(session, mode === "user" ? "M-u" : "M-a");
-	const found = await focusRow(
-		session,
-		Math.max(0, rows.findIndex(row => row.id === entryId)),
-		rows.length,
-		probe,
-	);
-	if (!found) {
-		await press(session, "escape");
-		throw new NavigationError(i18n.t("session:navigate.notFound"));
-	}
-	await press(session, "enter");
-	const outcome = (lines: readonly string[]) =>
-		lines.some(line => /Navigated to selected point|Already at this point|Summarize branch\?/.test(line));
-	let lines = await waitForScreen(session, outcome, 8000);
-	if (lines?.some(line => line.includes("Summarize branch?"))) {
-		// First option is "No summary": the conversation moves without an extra model call.
+	const host = session.getSnapshot().host;
+	if (!host) throw new OmpBusyError();
+	const { hostId, generation } = host;
+	const releaseDrive = screenActivity.hold({ hostId, generation, epoch: null }, "drive");
+	const off = session.subscribe(() => {
+		const current = session.getSnapshot().host;
+		if (!current || current.hostId !== hostId || current.generation !== generation || current.phase === "exited") releaseDrive();
+	});
+	try {
+		await session.command("/tree");
+		if (!(await waitForScreen(session, lines => lines.some(line => line.includes(TREE_TITLE)), 4000))) {
+			throw new OmpBusyError();
+		}
+		await press(session, mode === "user" ? "M-u" : "M-a");
+		const found = await focusRow(
+			session,
+			Math.max(0, rows.findIndex(row => row.id === entryId)),
+			rows.length,
+			probe,
+		);
+		if (!found) {
+			await press(session, "escape");
+			throw new NavigationError(i18n.t("session:navigate.notFound"));
+		}
 		await press(session, "enter");
-		lines = await waitForScreen(session, candidate => /Navigated to selected point|Already at this point/.test(candidate.join("\n")), 8000);
-	}
-	if (!lines) throw new NavigationError(i18n.t("session:navigate.unconfirmed"));
-	// omp moved the leaf in-process without a collab frame; show the new branch until the next entry.
-	// (Rewinding the very first message leaves no leaf to show; the transcript corrects on the next entry.)
-	const leaf = entry.userTurn ? entry.parentId : entry.id;
-	if (leaf) session.setDisplayLeaf(leaf);
+		const outcome = (lines: readonly string[]) =>
+			lines.some(line => /Navigated to selected point|Already at this point|Summarize branch\?/.test(line));
+		let lines = await waitForScreen(session, outcome, 8000);
+		if (lines?.some(line => line.includes("Summarize branch?"))) {
+			// First option is "No summary": the conversation moves without an extra model call.
+			await press(session, "enter");
+			lines = await waitForScreen(session, candidate => /Navigated to selected point|Already at this point/.test(candidate.join("\n")), 8000);
+		}
+		if (!lines) throw new NavigationError(i18n.t("session:navigate.unconfirmed"));
+		// omp moved the leaf in-process without a collab frame; show the new branch until the next entry.
+		// (Rewinding the very first message leaves no leaf to show; the transcript corrects on the next entry.)
+		const leaf = entry.userTurn ? entry.parentId : entry.id;
+		if (leaf) session.setDisplayLeaf(leaf);
 
-	let draft: string | null = null;
-	if (entry.userTurn && entry.text) {
-		// omp put the message back into its own editor; the app's composer owns drafts, so clear omp's
-		// (one Ctrl+C clears the editor; never press it twice — two within 500 ms quit omp).
-		await waitForScreen(session, screen => parseStatusLine(screen) !== null, 3000);
-		await press(session, "C-c");
-		draft = entry.text;
-		useComposerDrafts.getState().setDraft(session.tabId, draft);
-		useComposerDrafts.getState().focus(session.tabId);
-	}
-	return { draft };
+		let draft: string | null = null;
+		if (entry.userTurn && entry.text) {
+			// omp put the message back into its own editor; the app's composer owns drafts, so clear omp's
+			// (one Ctrl+C clears the editor; never press it twice, two within 500 ms quit omp).
+			await waitForScreen(session, screen => parseStatusLine(screen) !== null, 3000);
+			await press(session, "C-c");
+			draft = entry.text;
+			useComposerDrafts.getState().setDraft(session.tabId, draft);
+			useComposerDrafts.getState().focus(session.tabId);
+		}
+		return { draft };
+	} finally { off(); releaseDrive(); }
 }
 
 /** Copy this chat, optionally cut at a message, without moving or typing into its live host. */

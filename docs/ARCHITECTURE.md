@@ -790,7 +790,10 @@ changes and protocol epochs end the old hold. An unchanged sendable editor settl
 allowing omp to publish a command's overlay after submission. Unrelated updates do not restart this
 timer. It releases input ownership without asserting command success or answer completion.
 Readiness waits up to eight seconds for a sendable editor and preserves main's refusal reason.
-An editor-back hold also ends if its initial snapshot is unavailable. OverlayWatcher opens the omp screen.
+An editor-back hold also ends if its initial snapshot is unavailable. Typed pass-through keeps
+explicit screen-request intent while its editor interaction runs, so required native UI opens
+without the unattended settle. Internal app command submission holds a drive lease only while
+writing; editor-back and result watchers cannot hide UI the user must operate.
 Known command feedback uses `src/shared/tsp/command-result.ts`: a local transaction pins host,
 room generation, protocol epoch and each surface's sequence before semantic submission, then
 accepts only semantic content changes in status toasts, error notices and completed compaction
@@ -908,7 +911,10 @@ The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
 
-Other semantic overlays, dock panels and screen surfaces open the sheet without a painting delay.
+Other semantic overlays, dock panels and screen surfaces must retain the same unpresented
+identity for 300 ms before automatically opening the sheet. Identity includes host, room
+generation, protocol epoch and actual candidate surface/node ids; permanent dock slots,
+selection, progress, labels and repaint sequences do not define a new candidate.
 Supported hook dialogs are claimed while a mounted visible native `OmpDialogCard` presents them,
 with the same public props and presentation as classic. Matched hooks use the visible collab
 question card's exact request ownership. Without an active presentation claim, the generic omp
@@ -941,6 +947,28 @@ That availability remains stable while a sheet covers a hook or plan card, so au
 cannot release the very ownership that decides whether to open it. The watcher re-reads current
 registrations at the passive-effect decision, after sibling layout effects register consumers.
 Dock rows and ANSI fallbacks still open the generic sheet; ordinary HUD status does not trigger automatic opening.
+`state/tsp/screen-activity.ts` records exact-scope app-drive leases and explicit screen-request
+intent. Model selection, thinking cycles, internal navigation, advisor configuration and native
+app operations hold leases before their first write and release on completion, failure or scope
+invalidation, including while IPC or advisor finalization is still pending. Nested leases
+suppress new automatic openings until the last releases. A persistent
+leftover starts a fresh settle after release. Long command watches do not hold drive leases;
+generic command writers release after submission, and model selection releases its picker lease
+before prolonged background-compaction observation.
+Explicit View actions and Cmd+J remain immediate. Typed native commands, Plan Review Save's
+path handoff and explicitly requested live boards retain immediate opening after native layout
+claims register. A lease never closes an existing sheet or grants input authority.
+Short explicit handoffs queue an exact candidate and minimum native revision. Only the watcher
+consumes that request after the same current frame has rendered and sibling layout claims
+registered. An overlapping drive postpones it; a changed scope, candidate or visibility cancels
+it and releases its subscriptions. This preserves explicit startup handoffs without enabling
+unattended startup opening. No animation-frame timing assumption opens a sheet directly.
+`features/palette/auto-screen.ts` tracks semantic continuity independently of visual rendering,
+including a disappearance hidden by visual batching. The watcher observes current documents,
+consumer availability, pane/window visibility and lease changes, then re-reads them at the final
+opening decision. Hidden windows cannot accumulate an automatic opening before their native
+consumers render again. Native departure closes only an automatic sheet immediately; manual
+sheets retain their existing ownership.
 Other overlays and focused raw fallbacks keep their guarded Escape handling.
 With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
 Closing the sheet itself does not answer omp, and focus returns to that chat's composer.

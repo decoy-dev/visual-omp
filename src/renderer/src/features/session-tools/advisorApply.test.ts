@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type PropsWithChildren, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdvisorScope } from "@shared/contracts/advisor";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
@@ -10,6 +10,7 @@ import { composer, openOverlay, screenSurface, unclaimed } from "@shared/tsp/vie
 import type { SessionController } from "../../state/session";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";
 import { presentationClaims } from "../../state/tsp/presentation-claims";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { applyAdvisorConfig } from "./advisorApply";
 import { AdvisorEditor } from "./AdvisorSheet";
 import "../../i18n";
@@ -35,15 +36,16 @@ class Replay {
 	readonly recording;
 	readonly docs = new FixtureDocuments();
 	readonly listeners = new Set<() => void>();
-	readonly guest = {};
+	guest = {};
 	readonly events: TspRendererEvent[] = [];
 	index = 0; message = 0; revision = 0; generation = 1;
+	readOnly = false;
 	defer = false;
 	refuse: Error | null = null;
 	refuseClose = false;
 	mutate: ((snapshot: TspHostSnapshot) => void) | null = null;
 	view = this.readView();
-	readView() { return { mode: "live", working: false, readOnly: false, host: { hostId: "host", sessionId: "session", generation: this.generation, transport: "tsp" }, guest: { phase: "live", entries: [], state: {} } }; }
+	readView() { return { mode: "live", working: false, readOnly: this.readOnly, host: { hostId: "host", sessionId: "session", generation: this.generation, transport: "tsp" }, guest: { phase: "live", entries: [], state: {} } }; }
 	constructor(scope: AdvisorScope = "user") {
 		this.recording = loadFixtureRecording(scope === "user" ? "advisor-apply" : "advisor-apply-project");
 		// DA1 responses are protocol housekeeping rather than application input.
@@ -55,6 +57,7 @@ class Replay {
 			if (channel === "advisor:beginApply") return "preservation-token";
 			if (channel === "host:tsp-advisor") {
 				expect(generation).toBe(1); expect(epoch).toBe(1);
+				expect(screenActivity.has(this.snapshot(), "drive")).toBe(true);
 				if (action.act === "close" && this.refuseClose) throw new Error("omp refused Close");
 				if (this.refuse) throw this.refuse;
 				const target = advisorOverlay(this.snapshot().surfaces)!;
@@ -87,6 +90,7 @@ class Replay {
 		for (const listener of this.listeners) listener();
 	}
 	consume(event: TspRendererEvent) {
+		expect(screenActivity.has(this.snapshot(), "drive")).toBe(true);
 		expect(event).toEqual((this.recording.inputs[this.index] as Extract<FixtureInput, { verb: "e" }>).body);
 		this.events.push(event); this.index++;
 		if (!this.defer || event.ev !== "action" || event.act !== "close") this.advance();
@@ -102,7 +106,11 @@ beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	Object.assign(window, { vomp: { invoke: bridge.invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") bridge.listeners.add(listener); return () => bridge.listeners.delete(listener); } } });
 });
-afterEach(async () => { await act(async () => {}); vi.useRealTimers(); });
+afterEach(async () => {
+	await act(async () => {});
+	expect(screenActivity.has({ hostId: "host", generation: 1, epoch: 1 }, "drive")).toBe(false);
+	vi.useRealTimers();
+});
 
 it.each(["user", "project"] as const)("replays %s advisor apply by declared ids and finishes preservation after departure", async scope => {
 	const replay = new Replay(scope); replay.defer = true;
@@ -118,6 +126,7 @@ it.each(["user", "project"] as const)("replays %s advisor apply by declared ids 
 	expect(bridge.invoke).toHaveBeenCalledWith("advisor:finishApply", "preservation-token");
 	expect(presentationClaims.getSnapshot()).toEqual([]);
 	expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	expect(bridge.invoke.mock.calls.some(([channel]) => ["host:screen", "host:buffer", "host:keys", "host:tui-focus"].includes(channel))).toBe(false);
 });
 
@@ -126,10 +135,12 @@ it("restores the preservation transaction once when the writer refuses an adviso
 	await expect(applyAdvisorConfig(replay.session, "user")).rejects.toThrow("scope changed");
 	expect(bridge.invoke.mock.calls.filter(([channel]) => channel === "advisor:finishApply")).toEqual([["advisor:finishApply", "preservation-token"]]);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
+	expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 });
 
 it("cancels advisor completion on room rotation and releases its exact claim", async () => {
 	const replay = new Replay(); replay.defer = true;
+	const scope = replay.snapshot();
 	const applying = applyAdvisorConfig(replay.session, "user");
 	const rejected = expect(applying).rejects.toThrow("chat changed");
 	await vi.advanceTimersByTimeAsync(10);
@@ -137,6 +148,57 @@ it("cancels advisor completion on room rotation and releases its exact claim", a
 	await rejected;
 	expect(bridge.invoke.mock.calls.filter(([channel]) => channel === "advisor:finishApply")).toHaveLength(1);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+});
+
+describe.each(["command", "scope", "apply", "finish", "cleanup"] as const)("pending advisor %s", stage => {
+	it.each(["generation", "epoch", "guest", "lifecycle", "readOnly", "closing"] as const)("releases its drive immediately on %s invalidation", async change => {
+		const replay = new Replay();
+		const pending = Promise.withResolvers<void>();
+		const invoke = bridge.invoke.getMockImplementation()!;
+		if (stage === "command") vi.spyOn(replay.session, "command").mockImplementation(() => pending.promise);
+		else bridge.invoke.mockImplementation((channel: string, ...args: unknown[]) => {
+			if ((stage === "finish" || stage === "cleanup") && channel === "advisor:finishApply") return pending.promise.then(() => structuredClone(file));
+			const action = args[2] as TspAdvisorAction | undefined;
+			if (channel === "host:tsp-advisor" && (stage === "scope" && action?.act === "scope" || stage === "apply" && action?.act === "apply")) return pending.promise;
+			return invoke(channel, ...args);
+		});
+		if (stage === "cleanup") replay.refuse = new Error("Advisor action refused");
+		const scope = replay.snapshot();
+		let finished = false;
+		const applying = applyAdvisorConfig(replay.session, "user").then(
+			result => { finished = true; return result; },
+			error => { finished = true; return error; },
+		);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(screenActivity.has(scope, "drive")).toBe(true);
+		if (stage === "command") expect(replay.session.command).toHaveBeenCalledWith("/advisor configure");
+		else if (stage === "finish" || stage === "cleanup") expect(bridge.invoke.mock.calls.some(([channel]) => channel === "advisor:finishApply")).toBe(true);
+		else {
+			expect(bridge.invoke.mock.calls.some(([channel, , , action]) => channel === "host:tsp-advisor" && action.act === stage)).toBe(true);
+			expect(presentationClaims.getSnapshot()).toHaveLength(1);
+		}
+		if (change === "generation") replay.generation++;
+		else if (change === "guest") replay.guest = {};
+		else if (change === "readOnly") replay.readOnly = true;
+		else replay.mutate = snapshot => {
+			if (change === "epoch") snapshot.epoch++;
+			else if (change === "lifecycle") snapshot.lifecycle = "transitioning";
+			else snapshot.closing = true;
+		};
+		replay.publish();
+		expect(finished).toBe(false);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		expect(presentationClaims.getSnapshot()).toEqual([]);
+		if (stage === "finish" || stage === "cleanup") pending.resolve();
+		else pending.reject(new Error("Pending native write refused"));
+		const result = await applying;
+		if (stage === "finish") expect(result).toEqual(file);
+		else expect(result).toBeInstanceOf(Error);
+		expect(bridge.invoke.mock.calls.filter(([channel]) => channel === "advisor:finishApply")).toHaveLength(1);
+		expect(presentationClaims.getSnapshot()).toEqual([]);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
 });
 
 it("does not mistake overlay closure without a fresh saved confirmation for successful application", async () => {

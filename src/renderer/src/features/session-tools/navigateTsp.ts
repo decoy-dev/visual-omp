@@ -5,6 +5,7 @@ import { TSP_ACTIONS, TSP_TREE } from "@shared/tsp/roles";
 import { assertTreeEntry, treeSelector } from "@shared/tsp/tree-navigation";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { SessionController } from "../../state/session";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { TspEditorWatch } from "./drive";
 import type { TreeEntry } from "./tree";
 
@@ -34,9 +35,14 @@ async function send(watch: TspEditorWatch, event: TspRendererEvent): Promise<voi
 /** Go here consumes omp's entry keys and transfers only the text its editor restores. */
 export async function navigateSemantic(session: SessionController, entry: TreeEntry): Promise<{ draft: string | null }> {
 	const watch = new TspEditorWatch(session);
+	let releaseDrive = () => {};
+	const offDrive = watch.subscribe(() => {
+		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) releaseDrive();
+	});
 	try {
 		await watch.ready();
 		const before = current(watch);
+		releaseDrive = screenActivity.hold(before, "drive");
 		await session.command("/tree");
 		await waitFor(watch, () => !!treeSelector(current(watch).surfaces), "omp did not open its session tree selector.");
 		let target = treeSelector(current(watch).surfaces)!;
@@ -91,5 +97,5 @@ export async function navigateSemantic(session: SessionController, entry: TreeEn
 		await window.vomp.invoke("host:take-editor-restore", restored.hostId, restored.generation, restored.epoch, editor.surfaceId, editor.editorId, editor.text);
 		useComposerDrafts.getState().focus(session.tabId);
 		return { draft: editor.text };
-	} finally { watch.dispose(); }
+	} finally { offDrive(); releaseDrive(); watch.dispose(); }
 }

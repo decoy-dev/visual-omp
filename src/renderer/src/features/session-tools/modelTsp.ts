@@ -1,11 +1,13 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ModelInfo } from "@shared/contracts/config";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { nodeHasLeft } from "@shared/tsp/dialogs";
 import { TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { walkNodes } from "@shared/tsp/view-state";
 import { displayedEntries } from "../../chat/branch";
 import { i18n } from "../../i18n";
 import { isApprovalRequest, type SessionController } from "../../state/session";
+import { screenActivity } from "../../state/tsp/screen-activity";
 import { OmpBusyError, TspEditorWatch } from "./drive";
 import { THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { configuredThinking } from "./thinking";
@@ -84,6 +86,10 @@ function sessionPicker(snapshot: TspHostSnapshot | null) {
 /** A missing picker route falls back to omp's documented session-only slash command. */
 export async function switchModelSemantic(session: SessionController, model: ModelInfo): Promise<boolean> {
 	const watch = new TspEditorWatch(session);
+	let releaseDrive: (() => void) | undefined;
+	const offDrive = watch.subscribe(() => {
+		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) releaseDrive?.();
+	});
 	try {
 		refuseApproval(session);
 		await watch.ready();
@@ -91,13 +97,16 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		const composer = composerNodes(watch.snapshot);
 		const modelNode = composer?.nodes.find(node => node.p?.role === TSP_ROLES.composerModel && node.p.actions?.click === TSP_ACTIONS.model);
 		let pickerId: string | null = null;
+		let pickerSurfaceId: string | null = null;
 		let usedPicker = false;
 		if (modelNode && composer) {
+			releaseDrive = screenActivity.hold(watch.snapshot!, "drive");
 			await send(watch, { ev: "action", sf: composer.sf, id: modelNode.id, act: TSP_ACTIONS.model });
 			await waitFor(watch, () => sessionPicker(watch.snapshot) !== null, 2500);
 			const picker = sessionPicker(watch.snapshot);
 			if (picker) {
 				pickerId = picker.node.id;
+				pickerSurfaceId = picker.sf;
 				const item = picker.node.p?.items?.find(item => item.id === `${model.provider}/${model.id}`);
 				if (item?.disabled) throw new Error(typeof item.disabled === "string" ? item.disabled : i18n.t("session:model.unavailable"));
 				if (item && !item.disabled) {
@@ -113,6 +122,7 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		if (!usedPicker) {
 			refuseApproval(session);
 			if (!watch.available) throw new OmpBusyError();
+			releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
 			await session.command(`/switch ${model.selector}`);
 		}
 		const confirmed = () => {
@@ -125,6 +135,9 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			!surface.closed && !surface.suspended && surface.documentGeneration === watch.snapshot?.generation
 			&& [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.working && node.c?.some(child => child.k === "progress"))) ?? false;
 		const outcome = () => {
+			// Once the internal picker leaves, compaction can wait without hiding unrelated native UI.
+			if (watch.snapshot && pickerId && pickerSurfaceId && nodeHasLeft(watch.snapshot.surfaces, pickerSurfaceId, pickerId)) releaseDrive?.();
+			else if (!usedPicker && compactionActive() && !sessionPicker(watch.snapshot)) releaseDrive?.();
 			for (const surface of watch.snapshot?.surfaces ?? []) for (const node of walkNodes(surface.document)) {
 				if (node.p?.role === TSP_ROLES.noticeError && !beforeErrors.has(`${node.id}:${JSON.stringify(node.p)}`)) failed = true;
 			}
@@ -138,11 +151,15 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			// Its progress row has gone; allow collab one bounded confirmation interval.
 		}
 		return !failed && confirmed();
-	} finally { watch.dispose(); }
+	} finally { offDrive(); releaseDrive?.(); watch.dispose(); }
 }
 
 export async function setThinkingSemantic(session: SessionController, target: ThinkingLevel): Promise<boolean> {
 	const watch = new TspEditorWatch(session);
+	let releaseDrive: (() => void) | undefined;
+	const offDrive = watch.subscribe(() => {
+		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) releaseDrive?.();
+	});
 	try {
 		refuseApproval(session);
 		await watch.ready();
@@ -160,8 +177,9 @@ export async function setThinkingSemantic(session: SessionController, target: Th
 			const composer = composerNodes(watch.snapshot);
 			const effort = composer?.nodes.find(node => node.p?.actions?.click === TSP_ACTIONS.thinkingCycle);
 			if (!effort || !composer || !watch.available) throw new OmpBusyError();
+			releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
 			await send(watch, { ev: "action", sf: composer.sf, id: effort.id, act: TSP_ACTIONS.thinkingCycle });
 			if (!await waitFor(watch, () => read() !== current, 2500)) throw new Error(i18n.t("session:thinking.failed"));
 		}
-	} finally { watch.dispose(); }
+	} finally { offDrive(); releaseDrive?.(); watch.dispose(); }
 }

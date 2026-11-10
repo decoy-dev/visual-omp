@@ -9,6 +9,7 @@ import type { SessionController, SessionView } from "../../state/session";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { CommandPanelOwnership, startCommandPanels } from "./command-panels";
 import { commandResults, dismissCommandResult, type CommandResultRecord } from "./results";
+import { screenActivity } from "../../state/tsp/screen-activity";
 
 const fake = vi.hoisted(() => ({ snapshot: null as TspHostSnapshot | null, listeners: new Set<() => void>(), invoke: vi.fn(async () => undefined) }));
 vi.mock("../../state/tsp/hosts", () => ({ tspHost: (hostId: string) => ({ hostId, getSnapshot: () => fake.snapshot, subscribe: (listener: () => void) => { fake.listeners.add(listener); return () => fake.listeners.delete(listener); } }) }));
@@ -107,4 +108,33 @@ it("does not attribute a cleanse panel to a command with a matching prefix", () 
 	stops.push(startCommandPanels(session, "/cleanse-extra", frames[0]!, null, "room"));
 	for (const frame of frames.slice(1)) publish(frame);
 	expect(commandResults(session)).toEqual([]);
+});
+
+it.each(["success", "failure"] as const)("holds drive only for its automatic report Close write through %s", async end => {
+	const frames = commandPanelFrames("advisor-status"); const { session } = chat(); fake.snapshot = frames[0]!;
+	stops.push(startCommandPanels(session, "/advisor status", frames[0]!, null, "room"));
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(false);
+	publish(frames.at(-1)!);
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(false);
+	const pending = Promise.withResolvers<undefined>();
+	fake.invoke.mockReturnValue(pending.promise);
+	const release = vi.fn();
+	await render(commandResults(session)[0]!, true, release);
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(true);
+	expect(screenActivity.has(frames[0]!, "request")).toBe(false);
+	await act(async () => { if (end === "success") pending.resolve(undefined); else pending.reject(new Error("Close refused")); });
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(false);
+	expect(release).toHaveBeenCalledTimes(end === "failure" ? 1 : 0);
+});
+
+it("releases automatic Close drive when its native scope changes before the write returns", async () => {
+	const frames = commandPanelFrames("advisor-status"); const { session } = chat(); fake.snapshot = frames[0]!;
+	stops.push(startCommandPanels(session, "/advisor status", frames[0]!, null, "room"));
+	publish(frames.at(-1)!);
+	const pending = Promise.withResolvers<undefined>(); fake.invoke.mockReturnValue(pending.promise);
+	await render(commandResults(session)[0]!);
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(true);
+	publish({ ...frames.at(-1)!, epoch: frames[0]!.epoch + 1, revision: frames.at(-1)!.revision + 1 });
+	expect(screenActivity.has(frames[0]!, "drive")).toBe(false);
+	await act(async () => pending.resolve(undefined));
 });

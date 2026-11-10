@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TspNode } from "../tsp";
 import { commandReport } from "./reports";
 import { settledCommandPanel } from "./command-panels";
-import { hasUnclaimedDockPanel } from "./dock-panels";
+import { unclaimedDockPanels } from "./dock-panels";
 import { isClaimable, TSP_ROLES } from "./roles";
 import { commandOutcome, commandOutcomeSpec } from "./command-result";
 import { openOverlay, unclaimed, walkNodes } from "./view-state";
@@ -59,7 +59,7 @@ describe("read-only command reports", () => {
 describe("settled command panels", () => {
 	it("keeps active panels and settled failures discoverable after questions close", () => {
 		for (const name of ["cleanse", "omfg-error-panel"] as const) {
-			for (const frame of commandPanelFrames(name).filter(snapshot => snapshot.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.cleanse || node.p?.role === TSP_ROLES.omfg)))) expect(hasUnclaimedDockPanel(frame.surfaces, new Map())).toBe(true);
+			for (const frame of commandPanelFrames(name).filter(snapshot => snapshot.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.cleanse || node.p?.role === TSP_ROLES.omfg)))) expect(unclaimedDockPanels(frame.surfaces, new Map()).length > 0).toBe(true);
 		}
 	});
 	it("reads the recorded unsupported cleanse outcome rather than an unrelated toast", () => {
@@ -85,14 +85,14 @@ describe("settled command panels", () => {
 		expect(settledCommandPanel(panel)).toBeNull(); expect(isClaimable(panel)).toBe(false);
 		const frame = commandPanelFrames("cleanse").at(-1)!; const surface = structuredClone(frame.surfaces[0]!);
 		surface.document.c = [{ id: "dock", k: "col", c: ["omp.hud", TSP_ROLES.editor, TSP_ROLES.activity, TSP_ROLES.loader].map((role, index): TspNode => ({ id: `${index}`, k: "col", p: { role }, c: [{ id: `${index}-button`, k: "button", p: { text: "Routine action" } }] })) }];
-		expect(hasUnclaimedDockPanel([surface], new Map())).toBe(false);
+		expect(unclaimedDockPanels([surface], new Map())).toEqual([]);
 	});
 	it("releases an exact panel claim when its Result row is no longer mounted", () => {
 		const snapshot = commandPanelFrames("cleanse").at(-1)!; const surface = snapshot.surfaces[0]!;
 		const panel = [...walkNodes(surface.document)].find(node => node.p?.role === TSP_ROLES.cleanse)!;
 		expect(unclaimed(surface, "dock", new Set([panel.id])).some(node => JSON.stringify(node).includes("No runnable checker"))).toBe(false);
-		expect(hasUnclaimedDockPanel(snapshot.surfaces, new Map([[surface.open.id, new Set([panel.id])]]))).toBe(false);
-		expect(hasUnclaimedDockPanel(snapshot.surfaces, new Map())).toBe(true);
+		expect(unclaimedDockPanels(snapshot.surfaces, new Map([[surface.open.id, new Set([panel.id])]]))).toEqual([]);
+		expect(unclaimedDockPanels(snapshot.surfaces, new Map()).length > 0).toBe(true);
 	});
 });
 
@@ -118,16 +118,16 @@ it("keeps unsupported ask content out of automatic screens without hiding it fro
 		form, { id: "ask-actions", k: "row", c: [{ id: "ask-submit", k: "button", p: { text: "Submit", actions: { click: "submit" } } }] },
 	] };
 	surface.document.c = [{ id: "dock", k: "col", c: [ask] }];
-	expect(hasUnclaimedDockPanel([surface], new Map())).toBe(false);
-	expect(hasUnclaimedDockPanel([surface], new Map([[surface.open.id, new Set([ask.id])]]))).toBe(false);
+	expect(unclaimedDockPanels([surface], new Map())).toEqual([]);
+	expect(unclaimedDockPanels([surface], new Map([[surface.open.id, new Set([ask.id])]]))).toEqual([]);
 	expect(unclaimed(surface, "dock").flatMap(node => [...walkNodes(node)]).some(node => node.id === ask.id)).toBe(true);
 	ask.p = { ...ask.p, hidden: true };
-	expect(hasUnclaimedDockPanel([surface], new Map())).toBe(false);
+	expect(unclaimedDockPanels([surface], new Map())).toEqual([]);
 });
 
 it.each([...formStages183.stages, ...formStages185.stages].filter(stage => stage.request))("never auto-opens the recorded ask presentation at $stage", stage => {
 	const surfaces = stage.surfaces as unknown as TspSurfaceSnapshot[];
-	expect(hasUnclaimedDockPanel(surfaces, new Map())).toBe(false);
+	expect(unclaimedDockPanels(surfaces, new Map())).toEqual([]);
 	for (const surface of surfaces) {
 		expect(unclaimed(surface, "dock").flatMap(node => [...walkNodes(node)]).some(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden)).toBe(true);
 	}
