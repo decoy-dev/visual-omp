@@ -63,15 +63,17 @@ export function groupModelsByProvider(models: readonly ModelInfo[], accepts: rea
 		.map(([provider, list]) => [provider, list.sort((a, b) => a.name.localeCompare(b.name))]);
 }
 
-export type ModelValueStatus = "auto" | "alias" | "available" | "missing";
+export type ModelValueStatus = "auto" | "alias" | "unknown" | "available" | "missing";
 
 /**
  * How a stored role value resolves against the usable models: unassigned, a `@role` alias, a model
- * in the list (by `provider/id`, or a bare id), or something omp cannot use right now.
+ * in the list (by `provider/id`, or a bare id), or something omp cannot use right now. A null
+ * catalog has not finished loading successfully, so availability remains unknown.
  */
-export function modelValueStatus(value: string | null, models: readonly ModelInfo[]): ModelValueStatus {
+export function modelValueStatus(value: string | null, models: readonly ModelInfo[] | null): ModelValueStatus {
 	if (value === null || value === "") return "auto";
 	if (value.startsWith("@")) return "alias";
+	if (models === null) return "unknown";
 	return models.some(model => model.selector === value || model.id === value) ? "available" : "missing";
 }
 

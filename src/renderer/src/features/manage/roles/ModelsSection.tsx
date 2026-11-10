@@ -169,6 +169,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 	};
 
 	const loadError = roles.error ?? models.error;
+	const catalog = models.loading || models.error ? null : models.data;
 
 	return (
 		<>
@@ -232,7 +233,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 									role={role}
 									draft={draftFor(role)}
 									unsaved={changed.includes(role.id)}
-									models={models.data}
+									models={catalog}
 									scope={scope}
 									onChange={draft => setDrafts(all => ({ ...all, [role.id]: draft }))}
 									fallbacks={<FallbackModels
@@ -240,7 +241,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 										value={Object.hasOwn(fallbackDrafts, role.id)
 											? fallbackDrafts[role.id] === null ? [] : fallbackDrafts[role.id]?.length ? fallbackDrafts[role.id] : undefined
 											: targetChains?.[role.id]}
-										models={models.data}
+										models={catalog}
 										disabled={saving || !chainsSetting || targetChains === null}
 										effectiveValue={chains?.[role.id]}
 										scope={scope}
@@ -275,7 +276,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 				onDelete={preset => void deletePreset(preset)}
 				onSaveNew={() => setSavePresetOpen(true)}
 			/>
-			<CompactionLimits models={models.data} omp={omp} onSaved={() => void models.reload()} />
+			<CompactionLimits models={models.data} catalogReady={catalog !== null} omp={omp} onSaved={() => void models.reload()} />
 			<SavePresetDialog
 				open={savePresetOpen}
 				onOpenChange={setSavePresetOpen}
@@ -315,7 +316,7 @@ function RoleRow({
 }) {
 	const { t } = useDeferredTranslation("settings");
 	const list = models ?? [];
-	const status = modelValueStatus(draft.model, list);
+	const status = modelValueStatus(draft.model, models);
 	const model = findModel(draft.model, list);
 	const choices = thinkingChoices(model, status === "available");
 	const name = role.name || role.id;
@@ -348,7 +349,7 @@ function RoleRow({
 				<ModelSelect
 					className="min-w-0 flex-[2_1_16rem]"
 					aria-label={t("roles.modelFor", { role: name })}
-					models={list}
+					models={models}
 					accepts={role.acceptsKinds}
 					value={draft.model}
 					onChange={value => onChange({ model: value, thinking: value === null ? null : draft.thinking })}

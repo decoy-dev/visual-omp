@@ -9,20 +9,20 @@ import { matchingCompactionEntry, planCompaction, thresholdMap, type CompactionP
 
 const format = (tokens: number) => tokens.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
-export function CompactionLimits({ models, omp, onSaved }: { models: ModelInfo[] | null; omp: OmpSettings; onSaved(): void }) {
+export function CompactionLimits({ models, catalogReady = models !== null, omp, onSaved }: { models: ModelInfo[] | null; catalogReady?: boolean; omp: OmpSettings; onSaved(): void }) {
 	const { t } = useDeferredTranslation("settings");
 	const [selector, setSelector] = useState<string | null>(null);
 	const model = models?.find(entry => entry.selector === selector);
 	return (
 		<section className="mt-8" aria-labelledby="model-compaction-title">
 			<SectionHeader id="model-compaction-title" title={t("compaction.title")} description={t("compaction.description")} />
-			<ModelSelect models={models ?? []} accepts={["chat", "tiny"]} value={selector} onChange={next => void whenLeaving(() => setSelector(next))} autoLabel={t("compaction.choose")} aria-label={t("compaction.model")} className="w-full" disabled={!models} />
-			{model && <CompactionEditor key={`${model.selector}:${omp.scope}`} model={model} omp={omp} onSaved={onSaved} />}
+			<ModelSelect models={catalogReady ? models : null} accepts={["chat", "tiny"]} value={selector} onChange={next => void whenLeaving(() => setSelector(next))} autoLabel={t("compaction.choose")} aria-label={t("compaction.model")} className="w-full" disabled={!models} />
+			{model && <CompactionEditor key={`${model.selector}:${omp.scope}`} model={model} catalogReady={catalogReady} omp={omp} onSaved={onSaved} />}
 		</section>
 	);
 }
 
-function CompactionEditor({ model, omp, onSaved }: { model: ModelInfo; omp: OmpSettings; onSaved(): void }) {
+function CompactionEditor({ model, catalogReady, omp, onSaved }: { model: ModelInfo; catalogReady: boolean; omp: OmpSettings; onSaved(): void }) {
 	const { t } = useDeferredTranslation("settings");
 	const setting = omp.byKey.get("compaction.modelThresholds");
 	const own = thresholdMap(omp.scope === "global" ? setting?.globalValue : setting?.projectValue);
@@ -55,7 +55,7 @@ function CompactionEditor({ model, omp, onSaved }: { model: ModelInfo; omp: OmpS
 	const plan = planCompaction(model, input, policy, inherited?.entry ?? null);
 	const shadowed = omp.scope === "global" && Object.hasOwn(thresholdMap(setting?.projectValue), model.selector);
 	const save = async (confirmed = false) => {
-		if (plan.error || shadowed) return;
+		if (!catalogReady || plan.error || shadowed) return;
 		if (plan.opensExtended && !confirmed) { setConfirm(true); return; }
 		setConfirm(false);
 		setBusy(true);
@@ -74,20 +74,20 @@ function CompactionEditor({ model, omp, onSaved }: { model: ModelInfo; omp: OmpS
 	return (
 		<div className="mt-3 space-y-3">
 			<form onSubmit={event => { event.preventDefault(); void save(); }} className="flex flex-wrap items-end gap-2">
-				<Input className="min-w-0 flex-1" label={t("compaction.limit")} placeholder={t("compaction.placeholder")} spellCheck={false} value={input} disabled={shadowed} onChange={event => setInput(event.currentTarget.value)} error={plan.error ? t(`compaction.errors.${plan.error}`, values) : undefined} />
-				<Button type="submit" disabled={!setting || !dirty || Boolean(plan.error) || shadowed} loading={busy}>{t("compaction.save")}</Button>
+				<Input className="min-w-0 flex-1" label={t("compaction.limit")} placeholder={t("compaction.placeholder")} spellCheck={false} value={input} disabled={shadowed || !catalogReady} onChange={event => setInput(event.currentTarget.value)} error={catalogReady && plan.error ? t(`compaction.errors.${plan.error}`, values) : undefined} />
+				<Button type="submit" disabled={!catalogReady || !setting || !dirty || Boolean(plan.error) || shadowed} loading={busy}>{t("compaction.save")}</Button>
 				<Button variant="ghost" disabled={!dirty || busy} onClick={() => setInput(saved)}>{t("roles.revert")}</Button>
 			</form>
 			<p className="text-sm text-fg-muted">{t("compaction.forms")}</p>
 			<p className="text-sm text-fg-muted" role="status">
-				{plan.error ? null : !policy.enabled ? t("compaction.off") : plan.tokens === null ? t("compaction.unknownWindow") : t(plan.appliesWhenEnabled ? "compaction.previewWhenEnabled" : "compaction.preview", { tokens: format(plan.tokens) })}
-				{plan.tokens !== null && !plan.error && <span> {t(`compaction.basis.${plan.basis}`, { percent: Number(plan.percent?.toFixed(1)), base: format(plan.base ?? 0) })}</span>}
+				{!catalogReady || plan.error ? null : !policy.enabled ? t("compaction.off") : plan.tokens === null ? t("compaction.unknownWindow") : t(plan.appliesWhenEnabled ? "compaction.previewWhenEnabled" : "compaction.preview", { tokens: format(plan.tokens) })}
+				{catalogReady && plan.tokens !== null && !plan.error && <span> {t(`compaction.basis.${plan.basis}`, { percent: Number(plan.percent?.toFixed(1)), base: format(plan.base ?? 0) })}</span>}
 			</p>
 			{input.trim() === "" && inherited && <p className="text-sm text-fg-muted">{t("compaction.inherited", { selector: inherited.key })}</p>}
 			{shadowed && <Notice tone="warn">{t("compaction.shadowed")}</Notice>}
 			{omp.byKey.get("compaction.modelThresholdsEnabled")?.value === false && <Notice tone="warn">{t("compaction.disabled")}</Notice>}
 			<Dialog open={confirm} onOpenChange={setConfirm}>
-				<DialogContent size="sm" title={t(plan.appliesWhenEnabled ? "compaction.extendedTitleWhenEnabled" : "compaction.extendedTitle")} description={t(plan.appliesWhenEnabled ? "compaction.extendedHelpWhenEnabled" : "compaction.extendedHelp", { window: format(plan.window ?? 0) })} footer={<><Button variant="ghost" onClick={() => setConfirm(false)}>{t("common.cancel")}</Button><Button variant="primary" onClick={() => void save(true)}>{t(plan.appliesWhenEnabled ? "compaction.confirmWhenEnabled" : "compaction.confirm")}</Button></>}>
+				<DialogContent size="sm" title={t(plan.appliesWhenEnabled ? "compaction.extendedTitleWhenEnabled" : "compaction.extendedTitle")} description={t(plan.appliesWhenEnabled ? "compaction.extendedHelpWhenEnabled" : "compaction.extendedHelp", { window: format(plan.window ?? 0) })} footer={<><Button variant="ghost" onClick={() => setConfirm(false)}>{t("common.cancel")}</Button><Button variant="primary" disabled={!catalogReady} onClick={() => void save(true)}>{t(plan.appliesWhenEnabled ? "compaction.confirmWhenEnabled" : "compaction.confirm")}</Button></>}>
 					{plan.premiumFrom !== null && <Notice tone="warn">{t(plan.appliesWhenEnabled ? "compaction.premiumWhenEnabled" : "compaction.premium", { tokens: format(plan.premiumFrom) })}</Notice>}
 				</DialogContent>
 			</Dialog>

@@ -84,7 +84,7 @@ export function FallbackModels({ role, value, models, disabled, effectiveValue, 
 									<span className="w-4 text-xs tabular-nums text-fg-faint" aria-hidden>{index + 1}.</span>
 									<ModelSelect
 										className="min-w-0 flex-[2_1_12rem]"
-										models={list} accepts={role.acceptsKinds} value={entry.model.selector}
+										models={models} accepts={role.acceptsKinds} value={entry.model.selector}
 										autoLabel={t("fallbacks.choose")}
 										aria-label={t("fallbacks.modelFor", { role: name, index: index + 1 })}
 										disabled={disabled}
@@ -116,7 +116,7 @@ export function FallbackModels({ role, value, models, disabled, effectiveValue, 
 					</ol>
 					<div data-add-fallback className="mt-2">
 						<ModelSelect
-							className="w-full" models={list} accepts={role.acceptsKinds} value={null}
+							className="w-full" models={models} accepts={role.acceptsKinds} value={null}
 							autoLabel={t("fallbacks.add")} aria-label={t("fallbacks.addFor", { role: name })}
 							disabled={disabled || !models}
 							onChange={value => { if (value && !chain.includes(value)) onChange([...(chain as string[]), value]); }}

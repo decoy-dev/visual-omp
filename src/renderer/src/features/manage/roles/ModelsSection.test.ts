@@ -26,7 +26,7 @@ vi.mock("@/ui", async () => {
 	const actual = await vi.importActual<typeof Ui>("@/ui");
 	return {
 		...actual,
-		Select: ({ children, value, onValueChange, disabled, "aria-label": label }: PropsWithChildren<{ value: string; onValueChange(value: string): void; disabled?: boolean; "aria-label"?: string }>) => e("select", { value, disabled, "aria-label": label, onChange: (event: { currentTarget: HTMLSelectElement }) => onValueChange(event.currentTarget.value) }, children),
+		Select: ({ children, value, onValueChange, disabled, invalid, "aria-label": label }: PropsWithChildren<{ value: string; onValueChange(value: string): void; disabled?: boolean; invalid?: boolean; "aria-label"?: string }>) => e("select", { value, disabled, "aria-invalid": invalid || undefined, "aria-label": label, onChange: (event: { currentTarget: HTMLSelectElement }) => onValueChange(event.currentTarget.value) }, children),
 		SelectItem: ({ children, value }: PropsWithChildren<{ value: string }>) => e("option", { value }, children),
 		SelectGroup: ({ children }: PropsWithChildren) => e("optgroup", { label: "Models" }, children),
 		SelectLabel: () => null, SelectSeparator: () => null,
@@ -35,7 +35,6 @@ vi.mock("@/ui", async () => {
 	};
 });
 vi.mock("./Presets", () => ({ PresetList: () => null, SavePresetDialog: () => null }));
-vi.mock("./CompactionLimits", () => ({ CompactionLimits: () => null }));
 
 const models: ModelInfo[] = ["openai-codex/gpt-6-luna", "test/second", "test/third"].map(selector => ({ selector, provider: selector.split("/")[0]!, id: selector.split("/")[1]!, name: selector.split("/")[1]!, kind: "chat", contextWindow: 200_000, maxOutputTokens: null, reasoning: true, thinkingLevels: ["low", "high"], vision: false, cost: null }));
 const roles: ModelRolesState = { cwd: "/fixture/project", storage: "project", storageSource: "global", defaultThinkingLevel: "high", roles: ["default", "plan", "image"].map(id => ({ id, name: id === "default" ? "Default" : id, builtIn: true, section: id === "image" ? "kind" : "chat", acceptsKinds: id === "image" ? ["image"] : ["chat"], color: null, hidden: false, inCycle: false, value: "test/third:high", model: "test/third", thinking: "high", source: "global", globalValue: "test/third:high", projectValue: null })) };
@@ -254,5 +253,85 @@ describe("Settings model fallback editor", () => {
 		});
 		expect(chosen()).toBe("Updated gpt-6-luna");
 		expect(element.textContent).not.toContain("Obsolete model refresh failed");
+	});
+});
+
+describe("catalog availability", () => {
+	it.each([true, false])("waits for the catalog before judging an existing role (available: %s)", async available => {
+		const pending = Promise.withResolvers<ModelInfo[]>();
+		const invoke = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation((channel: string, ...args: unknown[]) =>
+			channel === "config:models" ? pending.promise : invoke(channel, ...args));
+		await render();
+		expect(element.textContent).not.toContain("This model isn't available.");
+		expect(element.querySelector('[aria-invalid="true"]')).toBeNull();
+		expect(element.querySelector<HTMLSelectElement>('select[aria-label="Model for Default"]')?.value).toBe("test/third");
+		await act(async () => pending.resolve(available ? models : []));
+		expect(element.textContent?.includes("This model isn't available.")).toBe(!available);
+		expect(element.querySelector('select[aria-label="Model for Default"]')?.getAttribute("aria-invalid")).toBe(available ? null : "true");
+	});
+
+	it("keeps catalog read errors separate from a missing model", async () => {
+		const invoke = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation((channel: string, ...args: unknown[]) =>
+			channel === "config:models" ? Promise.reject(new Error("Model list could not be read")) : invoke(channel, ...args));
+		await render();
+		expect(element.textContent).toContain("Model list could not be read");
+		expect(element.textContent).not.toContain("This model isn't available.");
+		expect(element.querySelector('[aria-invalid="true"]')).toBeNull();
+	});
+
+	it.each(["resolve", "reject"] as const)("withholds an old missing-model warning while the installed catalog refreshes and %ss", async outcome => {
+		fake.catalog = [];
+		await render();
+		expect(element.textContent).toContain("This model isn't available.");
+		const pending = Promise.withResolvers<ModelInfo[]>();
+		const invoke = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation((channel: string, ...args: unknown[]) =>
+			channel === "config:models" ? pending.promise : invoke(channel, ...args));
+		await act(async () => { for (const listener of fake.listeners.get("omp:status") ?? []) listener(); });
+		expect(element.textContent).not.toContain("This model isn't available.");
+		expect(element.querySelector('[aria-invalid="true"]')).toBeNull();
+		await act(async () => {
+			if (outcome === "resolve") pending.resolve(models);
+			else pending.reject(new Error("Updated model list could not be read"));
+		});
+		expect(element.textContent).not.toContain("This model isn't available.");
+		expect(element.querySelector('[aria-invalid="true"]')).toBeNull();
+		if (outcome === "reject") expect(element.textContent).toContain("Updated model list could not be read");
+	});
+	it.each(["resolve", "reject"] as const)("preserves a dirty compaction limit while catalog refresh %ss", async outcome => {
+		const invoke = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+			if (channel === "config:list") {
+				const config = snapshot();
+				config.settings.push(setting("compaction.modelThresholds", {}));
+				return config;
+			}
+			return invoke(channel, ...args);
+		});
+		await render();
+		await select("Model for compaction limit", "test/third");
+		const input = element.querySelector<HTMLInputElement>('input[placeholder="90k, 80% or f400k"]')!;
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "90k");
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect([...element.querySelectorAll("button")].find(button => button.textContent === "Save limit")?.disabled).toBe(false);
+		const pending = Promise.withResolvers<ModelInfo[]>();
+		const read = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation((channel: string, ...args: unknown[]) =>
+			channel === "config:models" ? pending.promise : read(channel, ...args));
+		await act(async () => { for (const listener of fake.listeners.get("omp:status") ?? []) listener(); });
+		expect(element.contains(input)).toBe(true);
+		expect(input.value).toBe("90k");
+		expect(input.disabled).toBe(true);
+		await act(async () => {
+			if (outcome === "resolve") pending.resolve(models.map(model => ({ ...model, contextWindow: 1_000_000 })));
+			else pending.reject(new Error("Compaction catalog could not be read"));
+		});
+		expect(element.contains(input)).toBe(true);
+		expect(input.value).toBe("90k");
+		expect(input.disabled).toBe(outcome === "reject");
 	});
 });

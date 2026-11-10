@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInfo, ModelPresetInfo, ModelRolesState } from "@shared/contracts/config";
-import { activeModelPreset, modelPriceBadge, orderRoles } from "./rolesModel";
+import { activeModelPreset, modelPriceBadge, modelValueStatus, orderRoles } from "./rolesModel";
 
 const model: ModelInfo = { selector: "local/test", provider: "local", id: "test", name: "Test", kind: "chat", contextWindow: 200_000, maxOutputTokens: 10_000, reasoning: false, thinkingLevels: [], vision: false, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, longContext: null } };
 const state = (values: Record<string, string | null>, thinking: ModelRolesState["defaultThinkingLevel"] = "high"): ModelRolesState => ({
@@ -8,6 +8,19 @@ const state = (values: Record<string, string | null>, thinking: ModelRolesState[
 	roles: Object.entries(values).map(([id, value]) => ({ id, name: id, builtIn: true, section: "chat", acceptsKinds: ["chat"], color: null, hidden: false, inCycle: false, value, model: value, thinking: null, source: value ? "global" : "default", globalValue: value, projectValue: null })),
 });
 const preset = (name: string, modelRoles: Record<string, string>, thinking: ModelPresetInfo["defaultThinkingLevel"] = null): ModelPresetInfo => ({ name, modelRoles, defaultThinkingLevel: thinking, source: "global", problem: null });
+
+describe("model catalog availability", () => {
+	it("distinguishes an unread catalog from a loaded empty catalog", () => {
+		expect(modelValueStatus(model.selector, null)).toBe("unknown");
+		expect(modelValueStatus(model.selector, [])).toBe("missing");
+		expect(modelValueStatus(model.selector, [model])).toBe("available");
+		expect(modelValueStatus(model.id, [model])).toBe("available");
+	});
+	it("recognizes automatic and alias assignments without a catalog", () => {
+		expect(modelValueStatus(null, null)).toBe("auto");
+		expect(modelValueStatus("@default", null)).toBe("alias");
+	});
+});
 
 describe("active model presets", () => {
 	it("matches identical role values and picks the first alphabetical preset", () => {

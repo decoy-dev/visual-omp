@@ -42,7 +42,8 @@ export function ModelCapabilities({ model }: { model: ModelInfo }) {
 }
 
 export interface ModelSelectProps {
-	models: readonly ModelInfo[];
+	/** null until the current catalog has loaded successfully; [] is a loaded, empty catalog. */
+	models: readonly ModelInfo[] | null;
 	accepts: readonly ModelKind[];
 	/** Stored selector; null = automatic. */
 	value: string | null;
@@ -57,10 +58,11 @@ export interface ModelSelectProps {
 /** Model picker grouped by provider with capability icons and context size. */
 export function ModelSelect({ models, accepts, value, onChange, autoLabel, disabled, className, ...aria }: ModelSelectProps) {
 	const { t } = useDeferredTranslation("settings");
-	const groups = groupModelsByProvider(models, accepts);
+	const list = models ?? [];
+	const groups = groupModelsByProvider(list, accepts);
 	const status = modelValueStatus(value, models);
 	// Aliases, patterns and unavailable models are kept selectable so the current value shows.
-	const unlisted = value !== null && !models.some(model => model.selector === value) ? value : null;
+	const unlisted = value !== null && !list.some(model => model.selector === value) ? value : null;
 	return (
 		<Select
 			value={value ?? AUTO}
@@ -69,14 +71,14 @@ export function ModelSelect({ models, accepts, value, onChange, autoLabel, disab
 				else onChange(next === AUTO ? null : next);
 			}}
 			invalid={status === "missing"}
-			disabled={disabled}
+			disabled={disabled || models === null}
 			className={className}
 			aria-label={aria["aria-label"]}
 			contentClassName="max-w-105"
 		>
 			<SelectItem value={AUTO}>{autoLabel}</SelectItem>
 			{unlisted && (
-				<SelectItem value={unlisted} hint={t(status === "alias" ? "models.alias" : status === "missing" ? "models.unavailable" : "models.custom")}>
+				<SelectItem value={unlisted} hint={status === "unknown" ? undefined : t(status === "alias" ? "models.alias" : status === "missing" ? "models.unavailable" : "models.custom")}>
 					{unlisted}
 				</SelectItem>
 			)}

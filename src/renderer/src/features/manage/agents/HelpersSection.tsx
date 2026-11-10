@@ -247,7 +247,7 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 					target={editor}
 					cwd={cwd}
 					dirs={snapshot?.dirs ?? null}
-					models={models.data}
+					models={models.loading || models.error ? null : models.data}
 					takenNames={takenNames}
 					// A new helper starts in the place the list shows (This project or All projects), else all projects.
 					initialScope={filter === "project" && projectAvailable ? "project" : "user"}

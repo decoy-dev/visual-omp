@@ -204,6 +204,9 @@ Each SessionHost:
    external updates refresh through the existing network-independent minute check or another
    explicit status read. Running hosts retain the context and usage facts their own omp reports,
    and recorded costs are never recalculated from a newer catalog.
+   Model availability warnings require a successfully loaded current catalog. While the catalog
+   loads or after a read failure, Settings preserves saved selectors without marking them
+   unavailable. A successfully loaded empty catalog still identifies missing assignments.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
    link's room id, and hands the control link to the renderer. The registry pid is not always the

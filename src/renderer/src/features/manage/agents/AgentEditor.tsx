@@ -239,7 +239,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					<ModelSelect
 						className="w-full"
 						aria-label={t("agents.editor.model")}
-						models={models ?? []}
+						models={models}
 						accepts={CHAT_KINDS}
 						value={form.modelOverride}
 						onChange={modelOverride => update({ modelOverride })}

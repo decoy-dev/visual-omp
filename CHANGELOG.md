@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
+
 ## [0.7.12] - 2026-11-09
 
 visual-omp 0.7.12 shows what slash commands and handoffs are doing, supports the question forms in omp 18.18.3 and later and opens large local files. It requires omp 18.15.0 or later.
