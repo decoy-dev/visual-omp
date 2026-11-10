@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Fixed
+
+- The first model switch in a chat now waits up to 30 seconds for omp's model picker, giving slow machines more time before the app tries /switch.
+
 ## [0.7.14] - 2026-11-10
 
 visual-omp 0.7.14 supports omp 18.18.7's way of keeping busy chats connected and fixes a false error after switching models. It requires omp 18.15.0 or later.
