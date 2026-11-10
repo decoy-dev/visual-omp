@@ -14,6 +14,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
 - File rows show project-relative paths for files inside the chat's folder, including projects opened through symlinks or macOS folder aliases, while files elsewhere keep their absolute paths.
 - Stats results omit the redundant Open dashboard line when the dashboard URL is already available.
+- Choosing a thinking level in a new chat no longer reports a switching error when omp first initializes the setting to Off before selecting the requested level.
 
 ## [0.7.12] - 2026-11-09
 
