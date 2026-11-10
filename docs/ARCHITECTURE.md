@@ -995,6 +995,9 @@ before prolonged background-compaction observation.
 Explicit View actions and Cmd+J remain immediate. Typed native commands, Plan Review Save's
 path handoff and explicitly requested live boards retain immediate opening after native layout
 claims register. A lease never closes an existing sheet or grants input authority.
+A request lease authorizes one opening. The watcher consumes that permission before
+opening, while retaining its lifecycle until the command finishes. Dismissing a sheet
+does not let a later patch reuse the same request; a new explicit request can reopen it.
 Short explicit handoffs queue an exact candidate and minimum native revision. Only the watcher
 consumes that request after the same current frame has rendered and sibling layout claims
 registered. An overlapping drive postpones it; a changed scope, candidate or visibility cancels

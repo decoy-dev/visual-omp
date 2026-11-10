@@ -88,7 +88,11 @@ function TabWatch({ tabId }: { tabId: string }) {
 				if (key !== semanticKey || screenActivity.has(scope, "drive")) return;
 				const explicit = screenActivity.allowsRequest(scope, scope.revision, key);
 				screenActivity.consumeRequests(scope, scope.revision);
-				if (!explicit || useApp.getState().terminalTabId) return;
+				if (!explicit) return;
+				const openTab = useApp.getState().terminalTabId;
+				if (openTab && openTab !== tabId) return;
+				screenActivity.markOpened(scope);
+				if (openTab) return;
 				autoOpened.tabId = tabId;
 				useApp.getState().openTerminal(tabId);
 			};
@@ -102,15 +106,20 @@ function TabWatch({ tabId }: { tabId: string }) {
 			}
 			return;
 		}
-		if (!activityScope || !screenActivity.has(activityScope, "request") || screenActivity.has(activityScope, "drive")) return;
-		if (useApp.getState().terminalTabId) return;
+		if (!activityScope || !screenActivity.allowsRequest(activityScope, 0, "") || screenActivity.has(activityScope, "drive")) return;
+		const openTab = useApp.getState().terminalTabId;
+		if (openTab) {
+			if (openTab === tabId) screenActivity.markOpened(activityScope);
+			return;
+		}
 		let cancelled = false;
 		void window.vomp
 			.invoke("host:screen", hostId)
 			.then(lines => {
-				if (cancelled || !currentTabPresentationVisible(tabId) || useApp.getState().terminalTabId || !screenActivity.has(activityScope, "request") || screenActivity.has(activityScope, "drive") || isNativeOverlay(lines)) return;
+				if (cancelled || !currentTabPresentationVisible(tabId) || useApp.getState().terminalTabId || !screenActivity.allowsRequest(activityScope, 0, "") || screenActivity.has(activityScope, "drive") || isNativeOverlay(lines)) return;
 				// An in-place dialog only counts when we recognise it; focus moves for other reasons too.
 				if (overlays === 0 && screenName(lines) === null) return;
+				screenActivity.markOpened(activityScope);
 				autoOpened.tabId = tabId;
 				useApp.getState().openTerminal(tabId);
 			})

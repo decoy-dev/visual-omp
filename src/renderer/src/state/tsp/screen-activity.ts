@@ -10,7 +10,7 @@ function sameScope(left: ScreenActivityScope, right: ScreenActivityScope): boole
 
 /** Presentation intent only. Leases never claim native content or grant input authority. */
 export class ScreenActivityRegistry {
-	readonly #leases = new Set<ScreenActivityScope & { kind: ScreenActivityKind; id: number }>();
+	readonly #leases = new Set<ScreenActivityScope & { kind: ScreenActivityKind; id: number; opened: boolean }>();
 	readonly #requests = new Set<PendingRequest>();
 	#next = 0;
 	readonly #listeners = new Set<() => void>();
@@ -19,7 +19,7 @@ export class ScreenActivityRegistry {
 		return () => { this.#listeners.delete(listener); };
 	};
 	hold(scope: ScreenActivityScope, kind: ScreenActivityKind): () => void {
-		const lease = { hostId: scope.hostId, generation: scope.generation, epoch: scope.epoch, kind, id: ++this.#next };
+		const lease = { hostId: scope.hostId, generation: scope.generation, epoch: scope.epoch, kind, id: ++this.#next, opened: false };
 		this.#leases.add(lease);
 		this.#notify();
 		return () => {
@@ -41,9 +41,13 @@ export class ScreenActivityRegistry {
 	}
 	has(scope: ScreenActivityScope | null, kind: ScreenActivityKind): boolean { return this.version(scope, kind) !== 0; }
 	allowsRequest(scope: ScreenActivityScope, revision: number, key: string): boolean {
-		for (const lease of this.#leases) if (lease.kind === "request" && sameScope(lease, scope)) return true;
+		for (const lease of this.#leases) if (lease.kind === "request" && !lease.opened && sameScope(lease, scope)) return true;
 		for (const request of this.#requests) if (sameScope(request, scope) && request.revision <= revision && request.key === key) return true;
 		return false;
+	}
+	/** A command may remain active after its screen closes; that is not a new opening request. */
+	markOpened(scope: ScreenActivityScope): void {
+		for (const lease of this.#leases) if (lease.kind === "request" && sameScope(lease, scope)) lease.opened = true;
 	}
 	/** Called only after the renderer's current native frame has completed layout registration. */
 	consumeRequests(scope: ScreenActivityScope, revision: number): void {

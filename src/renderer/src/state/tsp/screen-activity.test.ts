@@ -63,4 +63,22 @@ describe("screen interaction leases", () => {
 		request.cancel(); request.cancel(); await request.done;
 		expect(done).toHaveBeenCalledOnce(); expect(registry.has(scope, "request")).toBe(false);
 	});
+	it("consumes opening permission without changing lease lifetime or another scope", async () => {
+		const registry = new ScreenActivityRegistry();
+		const release = registry.hold(scope, "request");
+		const other = { ...scope, generation: 2 };
+		const releaseOther = registry.hold(other, "request");
+		const version = registry.version(scope, "request");
+		registry.markOpened(scope);
+		expect(registry.has(scope, "request")).toBe(true);
+		expect(registry.version(scope, "request")).toBe(version);
+		expect(registry.allowsRequest(scope, 1, "candidate")).toBe(false);
+		expect(registry.allowsRequest(other, 1, "candidate")).toBe(true);
+		const queued = registry.requestOnce(scope, 2, "next");
+		expect(registry.allowsRequest(scope, 1, "next")).toBe(false);
+		expect(registry.allowsRequest(scope, 2, "next")).toBe(true);
+		registry.consumeRequests(scope, 2); await queued.done;
+		expect(registry.allowsRequest(scope, 2, "next")).toBe(false);
+		release(); releaseOther();
+	});
 });

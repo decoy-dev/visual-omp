@@ -166,6 +166,27 @@ it("rejects an explicit request from a previous epoch", async () => {
 	expect(fake.open).not.toHaveBeenCalled();
 });
 
+it.each(["tsp", "classic"] as const)("does not reuse a %s command's opening request after dismissal", async transport => {
+	fake.transport = transport; fake.overlays = 1;
+	fake.snapshot = snapshot(true);
+	fake.invoke.mockResolvedValue(["Unrecognized omp UI"]);
+	const scope = { hostId: "host", generation: 1, epoch: transport === "tsp" ? 1 : null };
+	releaseClaims.push(screenActivity.hold(scope, "request"));
+	await render(false);
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+	expect(screenActivity.has(scope, "request")).toBe(true);
+	fake.terminal = null; autoOpened.tabId = null;
+	fake.snapshot = { ...fake.snapshot!, revision: 2 };
+	if (transport === "classic") fake.overlays = 2;
+	await render(); await advance(60_000);
+	expect(fake.open).toHaveBeenCalledTimes(1);
+	expect(fake.terminal).toBeNull();
+	await act(async () => { releaseClaims.push(screenActivity.hold(scope, "request")); });
+	await render(false);
+	expect(fake.open).toHaveBeenCalledTimes(2);
+	expect(fake.terminal).toBe("tab");
+});
+
 it("keeps classic overlays closed until requested", async () => {
 	fake.transport = "classic"; fake.overlays = 1;
 	fake.invoke.mockResolvedValue(["Unrecognized omp UI"]);
