@@ -9,7 +9,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { OPENABLE_EXT } from "../../features/panes/derive";
 import { grantFileSource } from "../../features/panes/file-source";
-import { relativePath } from "../../features/panes/common";
+import { relativePath } from "@shared/outputPaths";
 import { fileRefOf, textRefs } from "./fileRefs";
 
 /** Links, code blocks and their headers, math and links already made hold no references. */
@@ -154,6 +154,7 @@ export interface LinkText {
 	/** The row's accessible name: the file name and displayed path. */
 	row(name: string, path: string): string;
 	projectPath: string | null;
+	canonicalProjectPath?: string | null;
 }
 
 /**
@@ -184,7 +185,7 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 			const name = baseName(occurrence.ref).includes("…")
 				? written
 				: baseName(resolved.path) + (written.startsWith(occurrence.ref) ? written.slice(occurrence.ref.length) : "");
-			const path = text.projectPath ? relativePath(text.projectPath, resolved.path) : resolved.path;
+			const path = text.projectPath ? relativePath(text.projectPath, resolved.path, text.canonicalProjectPath, window.vomp?.platform) : resolved.path;
 			const tile = span("tr-file-tile", icon(kind, "tr-file-icon"));
 			if (OPENABLE_EXT.test(resolved.path) || SVG_EXT.test(resolved.path)) tile.dataset.thumb = resolved.path;
 			const row = linkElement(resolved, "tr-file-row");

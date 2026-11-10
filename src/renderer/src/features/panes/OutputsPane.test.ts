@@ -5,7 +5,6 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController } from "../../state/session";
 import type { ChatOutput } from "./derive";
 import type * as Media from "./media";
-import type * as Common from "./common";
 import { openFile } from "../../ui/contextActions";
 import copy from "../../i18n/en/panes.json";
 const fixture = vi.hoisted(() => {
@@ -23,8 +22,7 @@ vi.mock("../live-preview/loader", () => ({ TrackerLoadNotice: () => null }));
 vi.mock("./outputs-store", () => ({ countOutputsMount: () => 1, useChatOutputs: () => ({ outputs: fixture.outputs }) }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: ({ children }: { children: ReactNode }) => children }));
 vi.mock("../../ui/contextActions", () => ({ copyText: vi.fn(), openFile: vi.fn(), openWithDefaultApp: vi.fn(), revealLabel: () => "Reveal" }));
-vi.mock("./common", async importOriginal => ({
-	relativePath: (await importOriginal<typeof Common>()).relativePath,
+vi.mock("./common", () => ({
 	FileName: ({ name }: { name: string }) => name,
 	PaneToolbar: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 	Section: ({ children }: { children: ReactNode }) => createElement("section", null, children),
@@ -113,5 +111,21 @@ it.each([
 	expect(row.getAttribute("data-context-path")).toBe(path);
 	vi.mocked(openFile).mockClear();
 	await act(async () => row.click());
+	expect(openFile).toHaveBeenCalledExactlyOnceWith(path, projectPath);
+});
+
+it.each([
+	["/var/folders/tour/project", "/private/var/folders/tour/project", "/private/var/folders/tour/project/Large Media Files/Large video.mp4"],
+	["/opened-output-project", "/real/output-project", "/real/output-project/Large Media Files/Large video.mp4"],
+] as const)("uses canonical project identity for Outputs opened under %s", async (projectPath, canonicalProjectPath, path) => {
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke: vi.fn(async (channel: string) => channel === "fs:resolveRefs" ? [{ path: canonicalProjectPath, kind: "folder" }] : null), on: () => () => {} } });
+	fixture.outputs = [{ ...image, key: path, path, kind: "file" }];
+	await show(projectPath);
+	const row = tile(path);
+	await until(() => row.textContent?.includes("Large Media Files/Large video.mp4") === true);
+	expect(row.textContent).not.toContain(canonicalProjectPath);
+	expect(row.title).toBe(path); expect(row.getAttribute("data-context-path")).toBe(path);
+	expect(window.vomp.invoke).toHaveBeenCalledWith("fs:resolveRefs", { refs: [projectPath], bases: [] });
+	vi.mocked(openFile).mockClear(); await act(async () => row.click());
 	expect(openFile).toHaveBeenCalledExactlyOnceWith(path, projectPath);
 });

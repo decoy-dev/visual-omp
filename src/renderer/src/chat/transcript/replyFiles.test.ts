@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderMarkdown } from "../../transcript/render";
 import { linkHtml, occurrences, parse } from "./fileLinkMarkup";
 
@@ -7,6 +7,7 @@ const directory = "ReadyCloud Files/ReadyReturns Chat Demos/Videos/";
 const names = ["FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"];
 const source = `I've rendered both videos. They're in \`${directory}\`:\n\n- \`${names[0]}\`\n- \`${names[1]}\``;
 const labels = { projectPath: "/project", row: (name: string, path: string) => `Open ${name}, ${path}` };
+afterEach(() => vi.unstubAllGlobals());
 
 describe("reply file markup", () => {
 	it("keeps the owner's exact spaced directory and bare names as whole references and file rows", () => {
@@ -37,6 +38,19 @@ describe("reply file markup", () => {
 		expect(row.getAttribute("aria-label")).toContain(shown);
 		expect(row.title).toBe(path);
 		expect(row.dataset.filePath).toBe(path);
+	});
+
+	it.each([
+		["/var/folders/tour/project", "/private/var/folders/tour/project/Large video.mp4", null, "Large video.mp4"],
+		["/opened/project", "/real/project/Media/Large video.mp4", "/real/project", "Media/Large video.mp4"],
+		["/opened/project", "/real/project-other/Large video.mp4", "/real/project", "/real/project-other/Large video.mp4"],
+		["/opened/project", "/real/project/Large video.mp4", null, "/real/project/Large video.mp4"],
+	] as const)("uses verified project identity for %s while keeping absolute targets", (projectPath, path, canonicalProjectPath, shown) => {
+		vi.stubGlobal("vomp", { platform: "darwin" });
+		const linked = parse(linkHtml(renderMarkdown("- `Large video.mp4`"), [{ path, kind: "file" }], { ...labels, projectPath, canonicalProjectPath }));
+		const row = linked.querySelector<HTMLElement>(".tr-file-row")!;
+		expect(row.querySelector(".tr-file-folder")?.textContent).toBe(shown);
+		expect(row.title).toBe(path); expect(row.dataset.filePath).toBe(path);
 	});
 
 	it("leaves ambiguous and missing names as literal code when main returns no target", () => {

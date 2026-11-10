@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
@@ -458,11 +458,14 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 		await writeFile(join(shots, `command-${name}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
 	}, 30_000);
-	it.each(["light", "dark"])("links spaced reply files through the checked Files viewer path in %s", async theme => {
+	it.each((process.platform === "darwin" ? ["mac-alias", "symlink"] : ["symlink"]).flatMap(kind => ["light", "dark"].map(theme => ({ kind, theme }))))("links spaced reply files through canonical project identity in $theme for $kind", async ({ theme, kind }) => {
 		const root = realpathSync(await mkdtemp(join(tmpdir(), "vomp-reply-files-")));
 		try {
-			const project = root;
-			const folder = join(root, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
+			const canonicalProject = kind === "symlink" ? join(root, "real-project") : root;
+			if (kind === "symlink") await mkdir(canonicalProject);
+			const project = kind === "symlink" ? join(root, "opened-project") : root.replace(/^\/private(?=\/var\/)/, "");
+			if (kind === "symlink") await symlink(canonicalProject, project, process.platform === "win32" ? "junction" : "dir");
+			const folder = join(canonicalProject, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
 			await mkdir(folder, { recursive: true });
 			const names = ["FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"];
 			const paths = names.map(name => join(folder, name));
@@ -478,15 +481,22 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			paths.forEach((path, index) => entries.push({ id: `file-result-${index}`, parentId: null, timestamp: "2026-11-09T20:00:02Z", type: "message", message: { role: "toolResult", toolCallId: `file-${index}`, toolName: "write", content: [{ type: "text", text: "Written." }], details: { resolvedPath: path }, isError: false, timestamp: 3 + index } }));
 			entries.push({ id: "file-reply", parentId: null, timestamp: "2026-11-09T20:00:03Z", type: "message", message: { role: "assistant", content: [{ type: "text", text }], model: "fixture", usage, stopReason: "stop", timestamp: 10 } });
 			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showReplyFiles(${JSON.stringify(entries)}, ${JSON.stringify(project)});`);
-			await page.until("window.gate.fileRequests.length === 1");
-			const request = await page.evaluate<FileRefRequest>("window.gate.fileRequests[0].request");
+			await page.until("window.gate.fileRequests.length === 2");
+			const requests = await page.evaluate<FileRefRequest[]>("window.gate.fileRequests.map(item => item.request)");
+			const rootRequests = requests.filter(request => request.refs.length === 1 && request.refs[0] === project && request.bases.length === 0);
+			expect(rootRequests).toHaveLength(1);
+			const request = requests.find(request => request.refs[0] === "ReadyCloud Files/ReadyReturns Chat Demos/Videos/")!;
 			expect(request.refs).toEqual(["ReadyCloud Files/ReadyReturns Chat Demos/Videos/", ...names, "Shared Return Chat.mp4", "Missing Return Chat.mp4"]);
-			expect(new Set(request.files)).toEqual(new Set(paths));
-			const resolved = await resolveFileRefs(request, root);
-			await page.evaluate(`window.gate.resolveFiles(0, ${JSON.stringify(resolved)});`);
-			await page.until("document.querySelectorAll('section[aria-label=\"Reply file references\"] .tr-file-row').length === 2");
+			expect(new Set((request.files ?? []).map(path => realpathSync(path)))).toEqual(new Set(paths));
+			for (const [index, request] of requests.entries()) {
+				const resolved = await resolveFileRefs(request, root);
+				if (request === rootRequests[0]) expect(resolved).toEqual([{ path: canonicalProject, kind: "folder" }]);
+				await page.evaluate(`window.gate.resolveFiles(${index}, ${JSON.stringify(resolved)});`);
+			}
+			const expectedLabels = names.map(name => `ReadyCloud Files/ReadyReturns Chat Demos/Videos/${name}`);
+			await page.until(`JSON.stringify([...document.querySelectorAll('.tr-file-row .tr-file-folder')].map(row => row.textContent)) === ${JSON.stringify(JSON.stringify(expectedLabels))}`);
 			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row')].map(row => row.dataset.filePath)")).toEqual(paths.slice(0, 2));
-			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row .tr-file-folder')].map(row => row.textContent)")).toEqual(names.map(name => `ReadyCloud Files/ReadyReturns Chat Demos/Videos/${name}`));
+			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row .tr-file-folder')].map(row => row.textContent)")).toEqual(expectedLabels);
 			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row')].map(row => row.title)")).toEqual(paths.slice(0, 2));
 			expect(await page.evaluate("!!document.querySelector('.tr-file-list') && !!document.querySelector('.tr-file-chip[data-file-kind=\"folder\"]')")).toBe(true);
 			expect(await page.evaluate("[...document.querySelectorAll('.tr-md code')].filter(code => /^(Shared|Missing) Return Chat\\.mp4$/.test(code.textContent)).length")).toBe(2);
@@ -502,14 +512,20 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			expect(await page.evaluate("window.pathCopied")).toBe(paths[0]);
 			await page.until("!document.querySelector('[role=\"menu\"]')");
 			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-			await writeFile(join(shots, `reply-files-${theme}.png`), Buffer.from(capture.data, "base64"));
+			await writeFile(join(shots, `reply-files-${kind}-${theme}.png`), Buffer.from(capture.data, "base64"));
 			await page.clickElement("[...document.querySelectorAll('button')].find(button => button.textContent.startsWith('Changed 4 files'))");
 			await page.until("document.querySelectorAll('button[data-context-path][data-context-changes]').length === 4");
 			const summary = await page.evaluate<{ path: string; label: string; title: string }[]>("[...document.querySelectorAll('button[data-context-path][data-context-changes]')].map(button => ({ path: button.dataset.contextPath, label: button.textContent, title: button.title }))");
-			for (const file of summary) { expect(file.title).toBe(file.path); expect(file.label).toContain(file.path.slice(project.length + 1)); expect(file.label).not.toContain(project); }
+			for (const file of summary) {
+				expect(file.title).toBe(file.path);
+				const canonicalPath = realpathSync(file.path);
+				const inside = canonicalPath.startsWith(`${canonicalProject}${process.platform === "win32" ? "\\" : "/"}`);
+				expect(file.label).toContain(inside ? canonicalPath.slice(canonicalProject.length + 1).replace(/\\/g, "/") : file.path);
+				if (inside) expect(file.label).not.toContain(canonicalProject);
+			}
 			await page.until("window.gate.buttonVisible([...document.querySelectorAll('button[data-context-path][data-context-changes]')].at(-1))");
 			const summaryCapture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-			await writeFile(join(shots, `reply-files-summary-${theme}.png`), Buffer.from(summaryCapture.data, "base64"));
+			await writeFile(join(shots, `reply-files-summary-${kind}-${theme}.png`), Buffer.from(summaryCapture.data, "base64"));
 		} finally { await rm(root, { recursive: true, force: true }); }
 	}, 60_000);
 	it.each([360, 1400].flatMap(width => ["light", "dark"].map(theme => ({ width, theme }))))("keeps table tokens readable at $width pixels in $theme", async ({ width, theme }) => {

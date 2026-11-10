@@ -18,6 +18,7 @@ export interface FileRefScope {
 	chat: string;
 	/** The chat's folder. Other candidates come from this reply's directory spans and known turn files. */
 	bases: readonly string[];
+	canonicalProjectPath?: string | null;
 }
 
 export const FileRefContext = createContext<FileRefScope | null>(null);
@@ -56,12 +57,14 @@ export function useFileRefs(reply: number | string | null, texts: readonly strin
  */
 export const LinkedMarkdown = memo(function LinkedMarkdown({ text, refs }: { text: string; refs: readonly (FileRef | null)[] | undefined }): ReactNode {
 	const { t } = useTranslation("chat");
-	const projectPath = useContext(FileRefContext)?.bases[0] ?? null;
+	const scope = useContext(FileRefContext);
+	const projectPath = scope?.bases[0] ?? null;
+	const canonicalProjectPath = scope?.canonicalProjectPath ?? null;
 	const ref = useRef<HTMLDivElement | null>(null);
 	const html = useMarkdownHtml(text);
 	const linked = useMemo(
-		() => (refs?.some(Boolean) ? linkHtml(html, refs, { projectPath, row: (name, path) => t("fileRow", { name, path }) }) : html),
-		[html, refs, projectPath, t],
+		() => (refs?.some(Boolean) ? linkHtml(html, refs, { projectPath, canonicalProjectPath, row: (name, path) => t("fileRow", { name, path }) }) : html),
+		[html, refs, projectPath, canonicalProjectPath, t],
 	);
 	useLayoutEffect(() => (ref.current ? fillThumbnails(ref.current) : undefined), [linked]);
 	useRichContent(ref, linked);

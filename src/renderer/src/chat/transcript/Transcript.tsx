@@ -31,6 +31,7 @@ import { openHelper } from "../../features/panes/helperFocus";
 import { openInFiles } from "../../features/panes/files-store";
 import { useChatOutputs } from "../../features/panes/outputs-store";
 import { useHomeDir } from "../../features/projects/folders/homeDir";
+import { useCanonicalProjectPath } from "../../features/projects/folders/canonical";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";
@@ -1020,9 +1021,10 @@ export function TranscriptBody({
 
 	// Other lookup candidates belong to the reply itself: named directories and its turn's known Outputs.
 	const home = useHomeDir();
+	const canonicalProjectPath = useCanonicalProjectPath(scope.projectPath);
 	const fileRefScope = useMemo(
-		() => ({ chat: scope.tabId, bases: [scope.projectPath] }),
-		[scope.tabId, scope.projectPath],
+		() => ({ chat: scope.tabId, bases: [scope.projectPath], canonicalProjectPath }),
+		[scope.tabId, scope.projectPath, canonicalProjectPath],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.

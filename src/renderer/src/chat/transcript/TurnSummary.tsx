@@ -6,7 +6,8 @@
 import { CaretRight, GitDiff } from "@phosphor-icons/react";
 import { memo, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { relativePath } from "../../features/panes/common";
+import { relativePath } from "@shared/outputPaths";
+import { useCanonicalProjectPath } from "../../features/projects/folders/canonical";
 import type { EditTotals, FileEditTotal } from "../../features/panes/derive";
 import { useApp } from "../../state/app";
 import { Button, cn, Definition, Expand } from "../../ui";
@@ -39,9 +40,9 @@ function Counts({ added, removed }: { added: number; removed: number }): ReactNo
 	);
 }
 
-function FileRow({ file, projectPath, scale, onOpen }: { file: FileEditTotal; projectPath: string; scale: number; onOpen(path: string): void }): ReactNode {
+function FileRow({ file, projectPath, canonicalProjectPath, scale, onOpen }: { file: FileEditTotal; projectPath: string; canonicalProjectPath: string | null; scale: number; onOpen(path: string): void }): ReactNode {
 	const { t } = useTranslation("panes");
-	const shown = relativePath(projectPath, file.path);
+	const shown = relativePath(projectPath, file.path, canonicalProjectPath, window.vomp?.platform);
 	const slash = shown.lastIndexOf("/");
 	const total = (file.added ?? 0) + (file.removed ?? 0);
 	return (
@@ -73,6 +74,7 @@ function FileRow({ file, projectPath, scale, onOpen }: { file: FileEditTotal; pr
 export const TurnSummary = memo(function TurnSummary({ totals, projectPath, tabId, onOpen }: { totals: EditTotals; projectPath: string; tabId: string; onOpen(path: string): void }): ReactNode {
 	const { t } = useTranslation("panes");
 	const [open, setOpen] = useState(false);
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const counted = totals.files.some(file => file.added !== null);
 	const scale = Math.max(1, ...totals.files.map(file => (file.added ?? 0) + (file.removed ?? 0)));
 	const definition = totals.partial ? t("work.summary.totalsHintPartial") : t("work.summary.totalsHint");
@@ -109,7 +111,7 @@ export const TurnSummary = memo(function TurnSummary({ totals, projectPath, tabI
 					</div>
 					<ul className="flex flex-col">
 						{totals.files.map(file => (
-							<FileRow key={file.path} file={file} projectPath={projectPath} scale={scale} onOpen={onOpen} />
+							<FileRow key={file.path} file={file} projectPath={projectPath} canonicalProjectPath={canonicalProjectPath} scale={scale} onOpen={onOpen} />
 						))}
 					</ul>
 				</div>

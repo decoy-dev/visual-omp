@@ -12,7 +12,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - The omp screen no longer opens automatically during app actions such as switching models or rewinding a chat. Other automatic openings wait 300 ms so brief screens do not interrupt the chat. Screens you explicitly request still open immediately.
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
-- File rows show project-relative paths for files inside the chat's folder, while files elsewhere keep their absolute paths.
+- File rows show project-relative paths for files inside the chat's folder, including projects opened through symlinks or macOS folder aliases, while files elsewhere keep their absolute paths.
 - Stats results omit the redundant Open dashboard line when the dashboard URL is already available.
 
 ## [0.7.12] - 2026-11-09

@@ -17,7 +17,9 @@ import { cn, EmptyState, IconButton, PresenceSwap } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { copyText, openFile, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
-import { FileName, listRowMotion, PaneToolbar, relativePath, Section, SectionCount } from "./common";
+import { FileName, listRowMotion, PaneToolbar, Section, SectionCount } from "./common";
+import { relativePath } from "@shared/outputPaths";
+import { useCanonicalProjectPath } from "../projects/folders/canonical";
 import { type ChatOutput, IMAGE_EXT, isIntactBase64, OPENABLE_EXT, type OutputRelation } from "./derive";
 import { languageFor } from "./highlight";
 import { ExpandPreview, type ImageSource, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
@@ -117,13 +119,14 @@ function OutputImage({
 // ── list ────────────────────────────────────────────────────────────────────────────────────────
 
 /** The path as the pane shows it: project-relative inside the project, else as given; the name for images without one. */
-function displayPath(output: ChatOutput, name: string, projectPath: string | null): string {
+function displayPath(output: ChatOutput, name: string, projectPath: string | null, canonicalProjectPath: string | null): string {
 	if (!output.path) return name;
-	return projectPath ? relativePath(projectPath, output.path) : output.path;
+	return projectPath ? relativePath(projectPath, output.path, canonicalProjectPath, window.vomp?.platform) : output.path;
 }
 
 function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutput; mount: number; projectPath: string | null; onOpen(key: string): void }) {
 	const { t } = useTranslation("panes");
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const name = useOutputName(output);
 	const when = useWhen(output);
 	const [ref, near] = useNearView<HTMLButtonElement>();
@@ -136,7 +139,7 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 					data-context-path={output.path ?? undefined}
 					data-context-no-image={output.kind === "pdf" ? "" : undefined}
 					onClick={() => onOpen(output.key)}
-					aria-label={t("outputs.openImage", { name: displayPath(output, name, projectPath), when })}
+					aria-label={t("outputs.openImage", { name: displayPath(output, name, projectPath, canonicalProjectPath), when })}
 					title={output.path ?? name}
 					className={cn("flex w-full flex-col gap-1.5 rounded-md p-1 text-left hover:bg-hover", focusRingInset)}
 				>
@@ -151,9 +154,10 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 
 function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: string | null }) {
 	const { t } = useTranslation("panes");
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const path = output.path ?? "";
 	const name = baseName(path);
-	const shownPath = displayPath(output, name, projectPath);
+	const shownPath = displayPath(output, name, projectPath, canonicalProjectPath);
 	const when = useWhen(output);
 	const Icon = languageFor(name) ? FileCode : FileIcon;
 	return (
@@ -163,7 +167,7 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 					data-output={output.key}
 					data-context-path={path}
 					onClick={() => openFile(path, projectPath)}
-					aria-label={t("outputs.openFile", { path: displayPath(output, name, projectPath), when })}
+					aria-label={t("outputs.openFile", { path: displayPath(output, name, projectPath, canonicalProjectPath), when })}
 					title={path}
 					className={cn("flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-hover", focusRingInset)}
 				>
@@ -276,6 +280,7 @@ function OutputList({
 
 function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutput; mount: number; projectPath: string | null; onBack(): void }) {
 	const { t } = useTranslation("panes");
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const name = useOutputName(output);
 	const when = useWhen(output);
 	const rootRef = useRef<HTMLDivElement>(null);
@@ -333,7 +338,7 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 				<span className="shrink-0">{when}</span>
 				{path && (
 					<span className="min-w-0 flex-1 truncate font-mono" title={path}>
-						{projectPath ? relativePath(projectPath, path) : path}
+						{projectPath ? relativePath(projectPath, path, canonicalProjectPath, window.vomp?.platform) : path}
 					</span>
 				)}
 			</p>

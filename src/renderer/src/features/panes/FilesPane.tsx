@@ -32,7 +32,9 @@ import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { errorText } from "../extensions/format";
 import { useHomeDir } from "../projects/folders/homeDir";
 import { tildePath } from "../projects/folders/paths";
-import { PaneToolbar, relativePath, Section, SectionCount, TabStrip, usePaneVisible } from "./common";
+import { PaneToolbar, Section, SectionCount, TabStrip, usePaneVisible } from "./common";
+import { relativePath } from "@shared/outputPaths";
+import { useCanonicalProjectPath } from "../projects/folders/canonical";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { EMPTY_VIEW, filesView, useFiles } from "./files-store";
 import { useGit } from "./git-store";
@@ -49,8 +51,8 @@ const HtmlPreview = lazyView(() => import("../live-preview/formats/html").then(m
 const HTML_EXT = /\.html?$/i;
 
 /** The viewer's path label: project-relative inside the project, else `~/…` under the home folder, else absolute. */
-function viewerPath(projectPath: string, path: string, home: string | null): string {
-	const rel = relativePath(projectPath, path);
+function viewerPath(projectPath: string, path: string, home: string | null, canonicalProjectPath: string | null): string {
+	const rel = relativePath(projectPath, path, canonicalProjectPath, window.vomp?.platform);
 	return rel === path ? tildePath(path, home) : rel;
 }
 
@@ -337,6 +339,7 @@ type Shown = PaneFilePreview | { kind: "folder" };
 
 function Viewer({ path, projectPath, viewKey, home, version }: { path: string; projectPath: string; viewKey: string; home: string | null; version: number }) {
 	const { t } = useTranslation("panes");
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const [content, setContent] = useState<Shown | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [reload, setReload] = useState(0);
@@ -384,13 +387,13 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	const imageUrl = imageSource.src;
 	const html = file && !error && HTML_EXT.test(path);
 	// Inside the project the tree's menu has Show in folder; outside it, the viewer offers it.
-	const outside = relativePath(projectPath, path) === path;
+	const outside = relativePath(projectPath, path, canonicalProjectPath, window.vomp?.platform) === path;
 	const reveal = () => void window.vomp.invoke("app:showItem", path);
 	return (
 		<div className="@container/viewer flex min-h-0 flex-1 flex-col" data-context-path={path} data-context-kind={folder ? "folder" : "file"} data-context-surface="" tabIndex={0}>
 			<PaneToolbar>
 				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={path}>
-					{viewerPath(projectPath, path, home)}
+					{viewerPath(projectPath, path, home, canonicalProjectPath)}
 				</span>
 				{/* Size and item count give way first when the viewer column is narrow. */}
 				{content && content.kind !== "folder" && <span className="hidden shrink-0 text-xs text-fg-faint @min-[16rem]/viewer:inline">{formatSize(content.size)}</span>}
@@ -494,6 +497,7 @@ export function FilesPane({ session, projectPath }: PaneProps) {
 
 function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string | null }) {
 	const { t } = useTranslation("panes");
+	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
 	const viewKey = filesView(tabId, projectPath);
 	const state = useFiles(s => s.byView[viewKey] ?? EMPTY_VIEW);
 	const children = useFiles(s => s.children);
@@ -539,7 +543,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 		[treeWidth, viewKey],
 	);
 
-	const tabs = state.tabs.map(path => ({ id: path, path, kind: Array.isArray(children[path]) ? "folder" as const : "file" as const, label: fileName(path), title: viewerPath(projectPath, path, home) }));
+	const tabs = state.tabs.map(path => ({ id: path, path, kind: Array.isArray(children[path]) ? "folder" as const : "file" as const, label: fileName(path), title: viewerPath(projectPath, path, home, canonicalProjectPath) }));
 	const treeShown = !state.treeHidden || state.tabs.length === 0;
 	return (
 		<TargetContextMenu projectPath={projectPath} tabId={tabId}>

@@ -12,13 +12,6 @@ export function usePaneVisible(id: string): boolean {
 	return useApp(state => currentDock(state).pane === id) && visible;
 }
 
-/** Project-relative path with forward slashes (absolute when outside the project). */
-export function relativePath(projectPath: string, path: string): string {
-	const root = projectPath.replace(/[\\/]+$/, "");
-	if (path === root) return ".";
-	return path.startsWith(`${root}/`) || path.startsWith(`${root}\\`) ? path.slice(root.length + 1).replace(/\\/g, "/") : path;
-}
-
 /**
  * Props for a `motion.li`/`motion.div` row inside `<AnimatePresence initial={false}>` with `layout="position"`:
  * rows present when the list mounts stay at rest, inserted rows rise in, removed rows fade out, and the rest slide

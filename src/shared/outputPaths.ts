@@ -15,3 +15,14 @@ export function outputPathInFolder(path: string, folder: string | null, platform
 	if (!root || !(key === root[0] || key.startsWith(`${root[0]}/`))) return path;
 	return MAC_PRIVATE_FOLDER.test(folder) ? `/private${key}` : key;
 }
+
+/** Project-relative display only; canonical project identity and macOS aliases never rewrite absolute targets. */
+export function relativePath(projectPath: string, path: string, canonicalProjectPath?: string | null, platform?: string): string {
+	const key = outputPathKey(path, platform);
+	for (const folder of canonicalProjectPath && canonicalProjectPath !== projectPath ? [canonicalProjectPath, projectPath] : [projectPath]) {
+		const root = outputPathKey(folder, platform).replace(/[\\/]+$/, "");
+		if (key === root) return ".";
+		if (key.startsWith(`${root}/`) || key.startsWith(`${root}\\`)) return key.slice(root.length + 1).replace(/\\/g, "/");
+	}
+	return path;
+}

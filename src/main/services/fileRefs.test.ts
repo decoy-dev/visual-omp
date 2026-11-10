@@ -22,6 +22,21 @@ describe("resolveFileRefs", () => {
 		expect(await resolveFileRefs({ refs: ["out://report.md", "OUT://report.md"], bases: [dir] }, dir)).toEqual([null, null]);
 	});
 
+	it("supplies canonical project identity and file targets when the opened folder is a symlink", async () => {
+		const real = join(dir, "real-project");
+		const opened = join(dir, "opened-project");
+		await mkdir(join(real, "Large Media Files"), { recursive: true });
+		await writeFile(join(real, "Large Media Files", "Large video.mp4"), "fixture");
+		await symlink(real, opened, process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({ refs: [opened], bases: [] }, dir)).toEqual([{ path: real, kind: "folder" }]);
+		expect(await resolveFileRefs({ refs: ["Large Media Files/Large video.mp4"], bases: [opened] }, dir)).toEqual([{ path: join(real, "Large Media Files", "Large video.mp4"), kind: "file" }]);
+	});
+
+	it.skipIf(process.platform !== "darwin")("resolves a /var project and its /private/var canonical identity consistently", async () => {
+		const opened = dir.replace(/^\/private(?=\/var\/)/, "");
+		expect(await resolveFileRefs({ refs: [opened], bases: [] }, dir)).toEqual([{ path: dir, kind: "folder" }]);
+	});
+
 	it("resolves the owner's spaced directory and bare video names without guessing missing files", async () => {
 		const folder = join(dir, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
 		await mkdir(folder, { recursive: true });

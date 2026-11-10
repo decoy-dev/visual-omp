@@ -7,7 +7,7 @@ import copy from "../../i18n/en/panes.json";
 const env = vi.hoisted(() => {
 	const invoke = vi.fn();
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: () => () => {} } });
-	return { invoke, kind: "text", livePreview: false };
+	return { invoke, kind: "text", livePreview: false, canonical: null as string | null };
 });
 vi.mock("../../state/app", () => ({
 	dockKey: () => "chat",
@@ -42,7 +42,6 @@ vi.mock("./media", () => ({
 vi.mock("./common", () => ({
 	PaneToolbar: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 	TabStrip: () => null, Section: () => null, SectionCount: () => null,
-	relativePath: (root: string, path: string) => path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path,
 	usePaneVisible: () => true,
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => {
@@ -55,9 +54,9 @@ import { EMPTY_VIEW, useFiles } from "./files-store";
 
 let root: Root;
 let host: HTMLDivElement;
-async function show(path: string) {
-	useFiles.setState({ byView: { chat: { ...EMPTY_VIEW, tabs: [path], active: path, treeHidden: true } }, children: { "/project": [] } });
-	await act(async () => { root.render(createElement(FilesPane, { session: { tabId: "chat" }, projectPath: "/project" } as Parameters<typeof FilesPane>[0])); });
+async function show(path: string, projectPath = "/project") {
+	useFiles.setState({ byView: { chat: { ...EMPTY_VIEW, tabs: [path], active: path, treeHidden: true } }, children: { [projectPath]: [] } });
+	await act(async () => { root.render(createElement(FilesPane, { session: { tabId: "chat" }, projectPath } as Parameters<typeof FilesPane>[0])); });
 	await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 }
 function button(text: string) { return [...host.querySelectorAll("button")].find(item => item.textContent === text)!; }
@@ -68,6 +67,7 @@ beforeEach(() => {
 	root = createRoot(host);
 	env.kind = "text";
 	env.livePreview = false;
+	env.canonical = null;
 	env.invoke.mockReset().mockImplementation(async (channel: string) => {
 		if (channel === "panes:inspect") {
 			if (env.kind === "folder") throw new Error("Not a file");
@@ -77,6 +77,7 @@ beforeEach(() => {
 		if (channel === "preview:grant") return { token: "token", url: "vomp-preview://token/page.html", assetRoot: true };
 		if (channel === "preview:prepare") return { ok: true, policy: { scripts: false, network: false } };
 		if (channel === "fs:list") return [];
+		if (channel === "fs:resolveRefs") return env.canonical ? [{ path: env.canonical, kind: "folder" }] : [];
 	});
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke: env.invoke, on: () => () => {} } });
 });
@@ -143,4 +144,17 @@ describe("large local media routing", () => {
 		await act(async () => button(copy.outputs.openDefault).click());
 		expect(env.invoke).toHaveBeenCalledWith("app:openFile", "/project/large.txt", undefined);
 	});
+});
+
+it.each([
+	["/var/folders/viewer/project", "/private/var/folders/viewer/project"],
+	["/opened-viewer-project", "/real/viewer-project"],
+] as const)("uses canonical identity in the Files viewer for %s without rewriting its target", async (projectPath, canonicalProjectPath) => {
+	env.kind = "video"; env.canonical = canonicalProjectPath;
+	const path = `${canonicalProjectPath}/Large Media Files/Large video.mp4`;
+	await show(path, projectPath);
+	const label = [...host.querySelectorAll<HTMLElement>("span[title]")].find(element => element.title === path)!;
+	expect(label.textContent).toBe("Large Media Files/Large video.mp4");
+	expect(env.invoke).toHaveBeenCalledWith("panes:inspect", path);
+	expect(env.invoke).toHaveBeenCalledWith("fs:resolveRefs", { refs: [projectPath], bases: [] });
 });
