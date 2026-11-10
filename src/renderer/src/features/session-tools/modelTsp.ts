@@ -75,7 +75,7 @@ function sessionPicker(snapshot: TspHostSnapshot | null) {
 	for (const surface of snapshot?.surfaces ?? []) {
 		if (surface.closed || surface.suspended || surface.documentGeneration !== snapshot?.generation) continue;
 		for (const node of walkNodes(surface.document)) {
-			if (node.k === "picker" && node.p?.noun === "models" && node.p.actions?.some(action => action.id === TSP_ACTIONS.use)) {
+			if (node.k === "picker" && node.p?.noun === "models") {
 				return { sf: surface.open.id, node };
 			}
 		}
@@ -87,12 +87,31 @@ function sessionPicker(snapshot: TspHostSnapshot | null) {
 export async function switchModelSemantic(session: SessionController, model: ModelInfo): Promise<boolean> {
 	const watch = new TspEditorWatch(session);
 	let releaseDrive: (() => void) | undefined;
+	let offOutcome = () => {};
+	const endDrive = () => { releaseDrive?.(); releaseDrive = undefined; };
+	let openedPickerAction = false;
+	let pickerClosed = false;
+	let closeAttempted = false;
+	const closeOwnedPicker = async (lateMs = 0) => {
+		if (!openedPickerAction || pickerClosed || closeAttempted || watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) return;
+		if (!sessionPicker(watch.snapshot) && lateMs) await waitFor(watch, () => sessionPicker(watch.snapshot) !== null, lateMs);
+		const picker = sessionPicker(watch.snapshot);
+		if (!picker) return;
+		closeAttempted = true;
+		if (!picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.close)) throw new OmpBusyError();
+		releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
+		await send(watch, { ev: "action", sf: picker.sf, id: picker.node.id, act: TSP_ACTIONS.close });
+		if (!await waitFor(watch, () => !sessionPicker(watch.snapshot), 2500)) throw new OmpBusyError();
+		pickerClosed = true;
+	};
 	const offDrive = watch.subscribe(() => {
-		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) releaseDrive?.();
+		if (watch.ended || watch.snapshot?.closing || session.getSnapshot().readOnly) endDrive();
 	});
 	try {
 		refuseApproval(session);
 		await watch.ready();
+		// A picker the user already opened never belongs to this operation.
+		if (sessionPicker(watch.snapshot)) throw new OmpBusyError();
 		const beforeErrors = new Set(watch.snapshot?.surfaces.flatMap(surface => [...walkNodes(surface.document)].filter(node => node.p?.role === TSP_ROLES.noticeError).map(node => `${node.id}:${JSON.stringify(node.p)}`)));
 		const composer = composerNodes(watch.snapshot);
 		const modelNode = composer?.nodes.find(node => node.p?.role === TSP_ROLES.composerModel && node.p.actions?.click === TSP_ACTIONS.model);
@@ -101,6 +120,7 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		let usedPicker = false;
 		if (modelNode && composer) {
 			releaseDrive = screenActivity.hold(watch.snapshot!, "drive");
+			openedPickerAction = true;
 			await send(watch, { ev: "action", sf: composer.sf, id: modelNode.id, act: TSP_ACTIONS.model });
 			await waitFor(watch, () => sessionPicker(watch.snapshot) !== null, 2500);
 			const picker = sessionPicker(watch.snapshot);
@@ -109,13 +129,11 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 				pickerSurfaceId = picker.sf;
 				const item = picker.node.p?.items?.find(item => item.id === `${model.provider}/${model.id}`);
 				if (item?.disabled) throw new Error(typeof item.disabled === "string" ? item.disabled : i18n.t("session:model.unavailable"));
-				if (item && !item.disabled) {
+				if (item && !item.disabled && picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.use)) {
 					usedPicker = true;
 					await send(watch, { ev: "activate", sf: picker.sf, id: picker.node.id, item: item.id });
 				} else {
-					if (!picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.close)) throw new OmpBusyError();
-					await send(watch, { ev: "action", sf: picker.sf, id: picker.node.id, act: TSP_ACTIONS.close });
-					if (!await waitFor(watch, () => !sessionPicker(watch.snapshot), 2500)) throw new OmpBusyError();
+					await closeOwnedPicker();
 				}
 			}
 		}
@@ -125,10 +143,11 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
 			await session.command(`/switch ${model.selector}`);
 		}
+		let watchForLatePicker = openedPickerAction && !usedPicker && !pickerClosed;
+		const latePickerPresent = () => watchForLatePicker && !pickerClosed && !closeAttempted && sessionPicker(watch.snapshot) !== null;
 		const confirmed = () => {
 			const current = session.getSnapshot().guest?.state?.model;
-			return current?.provider === model.provider && current.id === model.id
-				&& (!usedPicker || !watch.snapshot?.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.id === pickerId)));
+			return current?.provider === model.provider && current.id === model.id;
 		};
 		let failed = false;
 		const compactionActive = () => watch.snapshot?.surfaces.some(surface =>
@@ -136,22 +155,37 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			&& [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.working && node.c?.some(child => child.k === "progress"))) ?? false;
 		const outcome = () => {
 			// Once the internal picker leaves, compaction can wait without hiding unrelated native UI.
-			if (watch.snapshot && pickerId && pickerSurfaceId && nodeHasLeft(watch.snapshot.surfaces, pickerSurfaceId, pickerId)) releaseDrive?.();
-			else if (!usedPicker && compactionActive() && !sessionPicker(watch.snapshot)) releaseDrive?.();
+			if (watch.snapshot && pickerId && pickerSurfaceId && nodeHasLeft(watch.snapshot.surfaces, pickerSurfaceId, pickerId)) {
+				pickerClosed = true; endDrive();
+			}
 			for (const surface of watch.snapshot?.surfaces ?? []) for (const node of walkNodes(surface.document)) {
 				if (node.p?.role === TSP_ROLES.noticeError && !beforeErrors.has(`${node.id}:${JSON.stringify(node.p)}`)) failed = true;
 			}
 			return (!compactionActive() && confirmed()) || failed;
 		};
-		while (await waitFor(watch, () => outcome() || compactionActive(), 8000)) {
-			if (outcome()) return !failed && confirmed();
+		offOutcome = watch.subscribe(outcome);
+		while (true) {
+			const changed = await waitFor(watch, () => outcome() || compactionActive() || latePickerPresent(), 8000);
+			if (!changed || outcome()) {
+				await closeOwnedPicker(watchForLatePicker ? 1000 : 0);
+				watchForLatePicker = false;
+				if (outcome() || !compactionActive()) break;
+			}
+			if (latePickerPresent()) await closeOwnedPicker();
+			if (!compactionActive()) continue;
+			// An action that timed out may still open its picker after typed fallback.
+			await closeOwnedPicker(watchForLatePicker ? 1000 : 0);
+			watchForLatePicker = false;
+			if (!sessionPicker(watch.snapshot)) endDrive();
 			// Compaction has no fixed deadline. Scope changes and error rows still end this wait.
 			await waitFor(watch, () => outcome() || !compactionActive());
-			if (outcome()) return !failed && confirmed();
 			// Its progress row has gone; allow collab one bounded confirmation interval.
 		}
 		return !failed && confirmed();
-	} finally { offDrive(); releaseDrive?.(); watch.dispose(); }
+	} finally {
+		try { await closeOwnedPicker(); }
+		finally { offOutcome(); offDrive(); endDrive(); watch.dispose(); }
+	}
 }
 
 export async function setThinkingSemantic(session: SessionController, target: ThinkingLevel): Promise<boolean> {

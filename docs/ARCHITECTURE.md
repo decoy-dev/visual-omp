@@ -612,6 +612,13 @@ items are refused. Ordinary confirmation waits eight seconds. A live `omp.workin
 a progress node holds the operation until compaction ends, reports an error or loses its host,
 room or epoch scope, regardless of duration. After compaction ends, collab has a bounded
 eight-second confirmation interval. New semantic error rows end the wait.
+The driver owns only model pickers opened after its composer action in the same host, room and
+epoch. After typed fallback confirms, it keeps its drive lease for a one-second late-picker grace,
+or until that picker is closed. Before an unbounded compaction watch, the same bounded grace
+finishes first. A picker still present at confirmation is closed through its declared action;
+removal has a 2.5-second bound and a failed close leaves the native screen reachable. Pre-existing
+user pickers are never activated or closed. Error exits also clean up an owned picker when its scope
+remains valid, without retrying a refused or ineffective close.
 Thinking combines the composer's effort `level` with collab's configured selector and sends one
 `thinking.cycle` action at a time until the requested selector is confirmed. omp can show Auto's
 resolved effort in the semantic node. The complete selector from the latest collab thinking event

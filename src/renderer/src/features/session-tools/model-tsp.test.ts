@@ -3,6 +3,7 @@ import type { ModelInfo } from "@shared/contracts/config";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { composer, openOverlay, walkNodes } from "@shared/tsp/view-state";
+import { TSP_ROLES } from "@shared/tsp/roles";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -144,6 +145,28 @@ async function settle<T>(promise: Promise<T>, milliseconds = 10000): Promise<T> 
 	return promise;
 }
 
+/** Keep the recorded picker frames, but delay the action's publication past typed fallback. */
+function delayedModelPicker(delay: number | null, closeDelay: number | null = 200): Replay {
+	const replay = new Replay("model-switch");
+	const advance = replay.advance.bind(replay);
+	replay.consume = event => {
+		replay.events.push(event);
+		if (event.ev === "action" && event.act === "status.model" && delay !== null) {
+			setTimeout(() => { replay.index = 1; advance(); }, delay);
+		} else if (event.ev === "action" && event.act === "close" && closeDelay !== null) {
+			setTimeout(() => { replay.index = 2; advance(); }, closeDelay);
+		}
+	};
+	vi.spyOn(replay.session, "command").mockImplementation(async text => {
+		expect(text).toBe(`/switch ${small.selector}`);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		const editor = composer(replay.docs.snapshot().surfaces)!;
+		replay.events.push({ ev: "send", sf: editor.surface.open.id, id: editor.node.id, text });
+		setTimeout(() => { replay.model = small; replay.publish(); }, replay.confirmDelay);
+	});
+	return replay;
+}
+
 describe("TSP composer model controls", () => {
 	it("replays the exact session picker activation and waits for collab identity", async () => {
 		const replay = new Replay("model-switch"); replay.confirmDelay = 1500;
@@ -160,12 +183,17 @@ describe("TSP composer model controls", () => {
 	it("holds a roleless model picker beyond the automatic screen settle interval", async () => {
 		const replay = new Replay("model-switch");
 		const advance = replay.advance.bind(replay);
+		const consume = replay.consume.bind(replay);
+		replay.consume = event => {
+			if (event.ev === "action" && event.act === "close") replay.events.push(event);
+			else consume(event);
+		};
 		replay.beforeEvent = event => {
 			if (event.ev === "activate") replay.advance = () => { setTimeout(advance, 750); };
 		};
 		const switching = switchModel(replay.session, small);
 		await vi.advanceTimersByTimeAsync(500);
-		expect(replay.events.map(event => event.ev)).toEqual(["action", "activate"]);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "activate", "action"]);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
 		await vi.advanceTimersByTimeAsync(251);
 		await expect(switching).resolves.toBe(true);
@@ -178,16 +206,135 @@ describe("TSP composer model controls", () => {
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "warn", message: expect.stringContaining("Open the omp screen") });
 	});
 
-	it("does not report success from collab identity while the picker remains open", async () => {
+	it("closes its picker when collab confirms the switch before the picker disappears", async () => {
 		const replay = new Replay("model-switch");
-		replay.beforeEvent = event => { if (event.ev === "activate") {
-			replay.advance = () => { replay.model = small; replay.publish(); };
-		} };
-		const switching = switchModel(replay.session, small);
-		await vi.advanceTimersByTimeAsync(500);
+		const advance = replay.advance.bind(replay);
+		const consume = replay.consume.bind(replay);
+		replay.beforeEvent = event => { if (event.ev === "activate") replay.advance = () => { replay.model = small; replay.publish(); }; };
+		replay.consume = event => {
+			if (event.ev === "action" && event.act === "close") { replay.events.push(event); replay.index = 2; advance(); }
+			else consume(event);
+		};
+		await expect(settle(switchModel(replay.session, small))).resolves.toBe(true);
+		expect(replay.events.at(-1)).toEqual({ ev: "action", sf: "s:1", id: "j", act: "close" });
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	it("bounds one declared close attempt when a confirmed model picker never closes", async () => {
+		const replay = new Replay("model-switch");
+		const consume = replay.consume.bind(replay);
+		replay.beforeEvent = event => { if (event.ev === "activate") replay.advance = () => { replay.model = small; replay.publish(); }; };
+		replay.consume = event => {
+			if (event.ev === "action" && event.act === "close") { replay.events.push(event); replay.publish(); }
+			else consume(event);
+		};
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(2499);
+		expect(finished).toBe(false);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
-		await expect(settle(switching)).resolves.toBe(false);
+		await vi.advanceTimersByTimeAsync(2);
+		await expect(switching).resolves.toBe(false);
+		expect(replay.model).toBe(small);
+		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toEqual([{ ev: "action", sf: "s:1", id: "j", act: "close" }]);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each([0, 1000])("closes a late picker under its drive lease with collab delayed %s ms after fallback", async confirmDelay => {
+		const replay = delayedModelPicker(3000); replay.confirmDelay = confirmDelay;
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(2750);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "send"]);
+		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await vi.advanceTimersByTimeAsync(300);
+		expect(replay.events.at(-1)).toEqual({ ev: "action", sf: "s:1", id: "j", act: "close" });
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await expect(settle(switching, 1000)).resolves.toBe(true);
+		expect(bridge.toast).not.toHaveBeenCalled();
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it("ends the bounded late-picker grace when no picker arrives", async () => {
+		const replay = delayedModelPicker(null);
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(3499);
+		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await vi.advanceTimersByTimeAsync(2);
+		await expect(switching).resolves.toBe(true);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "send"]);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each([2700, 3100])("does not claim success when an error arrives at %s ms during picker cleanup", async errorAt => {
+		const replay = delayedModelPicker(3000, 400);
+		let failed = false;
+		replay.mutate = snapshot => {
+			if (!failed) return;
+			const main = snapshot.surfaces[0]!.document.c!.find(node => node.id === "main")!;
+			main.c = [...(main.c ?? []), { id: "late-error", k: "text", p: { role: TSP_ROLES.noticeError, text: "Switch failed during cleanup" } }];
+		};
+		const switching = switchModel(replay.session, small);
+		setTimeout(() => { failed = true; replay.publish(); }, errorAt);
+		await expect(settle(switching, 4000)).resolves.toBe(false);
+		expect(replay.model).toBe(small);
+		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toHaveLength(1);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+	});
+
+	it("finishes late-picker grace before releasing its drive for compaction that starts during cleanup", async () => {
+		const replay = delayedModelPicker(null);
+		let compacting = false;
+		replay.mutate = snapshot => {
+			if (!compacting) return;
+			const main = snapshot.surfaces[0]!.document.c!.find(node => node.id === "main")!;
+			main.c = [...(main.c ?? []), { id: "late-compaction", k: "row", p: { role: TSP_ROLES.working }, c: [{ id: "late-progress", k: "progress" }] }];
+		};
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(2800);
+		compacting = true; replay.model = large; replay.publish();
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await vi.advanceTimersByTimeAsync(701);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+		expect(finished).toBe(false);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(finished).toBe(false);
+		compacting = false; replay.publish();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(finished).toBe(false);
+		replay.model = small; replay.publish();
+		await expect(switching).resolves.toBe(true);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "send"]);
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	it.each(["generation", "epoch"] as const)("never closes a late picker in a replacement %s", async change => {
+		const replay = delayedModelPicker(3000);
+		const scope = replay.snapshot();
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(2700);
+		if (change === "generation") replay.generation++;
+		else replay.mutate = snapshot => { snapshot.epoch++; };
+		replay.publish();
+		await expect(switching).resolves.toBe(false);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "send"]);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it("leaves a model picker that was already open untouched", async () => {
+		const replay = new Replay("model-switch");
+		replay.consume({ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" });
+		replay.events.length = 0;
+		await expect(switchModel(replay.session, small)).resolves.toBe(false);
+		expect(replay.events).toEqual([]);
+		expect(replay.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "picker" && node.p?.noun === "models"))).toBe(true);
 	});
 
 	it("replays documented typed switching when the model action is unavailable", async () => {
@@ -226,8 +373,11 @@ describe("TSP composer model controls", () => {
 				if (node.k === "picker") node.p = { ...node.p, items: node.p?.items?.map(item => item.id === small.selector ? { ...item, disabled: "Fixture model disabled" } : item) };
 			}
 		};
+		const activation = replay.recording.inputs[1]!;
+		if (!("verb" in activation)) throw new Error("Expected semantic activation fixture input");
+		activation.body = { ev: "action", sf: "s:1", id: "j", act: "close" };
 		await expect(switchModel(replay.session, small)).resolves.toBe(false);
-		expect(replay.events).toEqual([{ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" }]);
+		expect(replay.events).toEqual([{ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" }, { ev: "action", sf: "s:1", id: "j", act: "close" }]);
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "Fixture model disabled" });
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 	});
