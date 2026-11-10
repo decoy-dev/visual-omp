@@ -4,7 +4,18 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Fixed
+## [0.7.14] - 2026-11-10
+
+visual-omp 0.7.14 supports omp 18.18.7's way of keeping busy chats connected and fixes a false error after switching models. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** **Busy chats stay connected with omp 18.18.7.** When a chat falls behind during heavy helper activity, it rejoins automatically and keeps its transcript instead of showing an error.
+- **Fixed:** Switching models no longer reports a failure after a switch that succeeded.
+
+### Detailed changes
+
+#### Fixed
 
 - A successful model switch no longer reports a failure when omp has already closed its model picker before the app tries to close it.
 - With omp 18.18.7 and later, a chat that falls behind during frequent helper updates rejoins automatically and keeps its transcript. Question cards close when omp marks their questions unavailable.
