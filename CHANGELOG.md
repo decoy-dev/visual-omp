@@ -4,6 +4,14 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Improved
+
+- Grep steps highlight the parts of a search pattern, leave out a redundant "1 file" when one file was searched, and show an empty search as a single "0 matches" line.
+
+### Fixed
+
+- The notice for a model change in the current chat only shows its keyboard shortcut with the app's key symbols, so it no longer appears as an empty box.
+
 ## [0.7.15] - 2026-11-10
 
 visual-omp 0.7.15 gives omp more time to open its model picker during the first model switch in a chat on slow machines. It requires omp 18.15.0 or later.
