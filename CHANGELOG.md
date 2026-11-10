@@ -12,6 +12,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - The omp screen no longer opens automatically during app actions such as switching models or rewinding a chat. Other automatic openings wait 300 ms so brief screens do not interrupt the chat. Screens you explicitly request still open immediately.
 - Questions from omp with multiline titles, such as the offer to spend a saved rate-limit reset, stay in the chat's question card without also opening the omp screen. Dialogs that could match a chat question no longer open the omp screen automatically; you can still open them on request.
+- Finishing a question form closes it in place, without the chat jumping or scrolling back.
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
 - File rows show project-relative paths for files inside the chat's folder, including projects opened through symlinks or macOS folder aliases, while files elsewhere keep their absolute paths.
 - Stats results omit the redundant Open dashboard line when the dashboard URL is already available.
