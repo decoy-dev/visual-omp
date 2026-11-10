@@ -7,7 +7,7 @@
  */
 import { Square } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { fmtDuration } from "../../collab/lib/format";
@@ -23,15 +23,17 @@ import { usePinnedHelpers } from "./pinnedHelpers";
 import { openHelper } from "./helperFocus";
 import { HelperIdentity } from "./HelperIdentity";
 
-function PinnedRow({ helper, session, onOpen, layoutKey, reduced }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void; layoutKey: string; reduced: boolean }): ReactNode {
+/** Forward the row ref so popLayout removes departing cards from the width budget while they fade. */
+function PinnedRow({ helper, session, onOpen, layoutKey, reduced, ref }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void; layoutKey: string; reduced: boolean; ref?: Ref<HTMLLIElement> }): ReactNode {
 	const { t } = useTranslation("panes");
 	const cardRef = useRef<HTMLLIElement | null>(null);
+	useImperativeHandle(ref, () => cardRef.current!, []);
 	useUpdateCue(cardRef, JSON.stringify([helper.toolCount, helper.activity, helper.currentTool]));
 	const time =
 		helper.durationMs === null ? null : helper.durationAt !== null ? <RunningTime durationMs={helper.durationMs} since={helper.durationAt} /> : fmtDuration(helper.durationMs);
 	const text = <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{helper.name}</span>;
 	return (
-		<motion.li ref={cardRef} layout={reduced ? false : "position"} layoutDependency={layoutKey} {...listRowMotion} data-helper-id={helper.id} className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-panel px-2">
+		<motion.li ref={cardRef} layout={reduced ? false : "position"} layoutDependency={layoutKey} {...listRowMotion} data-helper-id={helper.id} className="flex h-10 min-w-[9.5rem] flex-1 items-center gap-2 rounded-lg border border-border bg-panel px-2">
 			<HelperIdentity helper={helper} compact />
 			<span className="sr-only">{t("tasks.helperStatus.running")}</span>
 			{helper.hasTranscript || helper.messageable ? (
@@ -79,7 +81,7 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 	const [fit, setFit] = useState(4);
 	const shown = pinned.all.slice(0, fit);
 	const more = pinned.all.length - shown.length;
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const list = listRef.current;
 		const action = allRef.current;
 		const overflow = moreRef.current;
@@ -135,9 +137,9 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 						onBlur={event => {
 							if (!event.currentTarget.contains(event.relatedTarget)) focusedRow.current = null;
 						}}
-						className="flex items-center gap-2"
+						className="relative flex items-center gap-2"
 					>
-						<AnimatePresence initial={false}>
+						<AnimatePresence initial={false} mode="popLayout">
 							{shown.map(helper => (
 								<PinnedRow key={helper.id} helper={helper} session={session} onOpen={helper => openHelper(session, helper)} layoutKey={layoutKey} reduced={reduced} />
 							))}

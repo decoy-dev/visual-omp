@@ -198,6 +198,23 @@ describe("helper card fit", () => {
 		expect(helperCardFit(460, 100, 20, 16, 32)).toBe(2);
 		expect(helperCardFit(460, 100, 20, 16, 80)).toBe(1);
 	});
+	it.each([
+		[320, 1, 1], [320, 3, 0], [320, 6, 0],
+		[480, 1, 1], [480, 3, 1], [480, 6, 1],
+		[720, 1, 1], [720, 3, 3], [720, 6, 3],
+		[1200, 1, 1], [1200, 3, 3], [1200, 6, 3],
+	])("fits %s px chats with %s helpers without shrinking their card budget", (chatWidth, total, expected) => {
+		const width = Math.min(chatWidth, 760) - 48;
+		const shown = helperCardFit(width, 100, total, 16, 32);
+		expect(shown).toBe(expected);
+		expect(shown * 160 + 100 + (shown < total ? 40 : 0)).toBeLessThanOrEqual(width);
+	});
+	it("keeps every card until its budget overflows, including the exact boundary", () => {
+		expect(helperCardFit(260, 100, 1, 16, 32)).toBe(1);
+		expect(helperCardFit(259.99, 100, 1, 16, 32)).toBe(0);
+		expect(helperCardFit(580, 100, 3, 16, 32)).toBe(3);
+		expect(helperCardFit(579.99, 100, 3, 16, 32)).toBe(2);
+	});
 });
 
 describe("helper strip updates and keyboard destinations", () => {
