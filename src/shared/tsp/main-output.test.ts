@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TspDocument } from "../../main/omp/tsp/apply";
 import type { TspFrame, TspNode, TspOpen } from "../tsp";
 import type { TspHostSnapshot } from "../tsp-host";
-import { mainOutputNodes, outputLocations } from "./main-output";
+import { mainOutputFingerprint, mainOutputNodes, mainOutputText, outputLocations } from "./main-output";
 
 function snapshot(nodes: readonly TspNode[], revision = 1): TspHostSnapshot {
 	return {
@@ -118,7 +118,7 @@ describe("mainOutputNodes with source-derived synthetic nodes", () => {
 	// These are source-shaped examples, not recorded /stats or OAuth sessions.
 	// omp 18.18.3: packages/tui/src/overlays/stats-notice.ts:18-25 and
 	// packages/tui/src/native/overlay.ts:119-162 (both actionButton presentations).
-	it.each(["button", "row"] as const)("retains the stats URL and %s label", kind => {
+	it.each(["button", "row"] as const)("keeps the stats URL and raw %s label while omitting its redundant Result line", kind => {
 		const url = "http://127.0.0.1:51239/";
 		const message = `Dashboard available at: ${url} (sessions sync in the background)`;
 		const label = "Open dashboard ↗";
@@ -130,7 +130,33 @@ describe("mainOutputNodes with source-derived synthetic nodes", () => {
 		] };
 		const output = mainOutputNodes(snapshot([stats]));
 		expect(output).toHaveLength(1);
-		expect(output[0]).toMatchObject({ nodeId: "stats", text: `${message}\n${label}`, tone: "info", locations: [{ kind: "url", value: url }] });
+		expect(output[0]).toMatchObject({ nodeId: "stats", text: `${message}\n${label}`, resultText: message, tone: "info", locations: [{ kind: "url", value: url }] });
+	});
+
+	it("only replaces a declared dashboard control when the Result offers that exact URL", () => {
+		const url = "http://127.0.0.1:51239/";
+		const label = "Open dashboard ↗";
+		const control: TspNode = { id: "open", k: "button", p: { text: label, href: url, actions: { click: "open" } } };
+		const root: TspNode = { id: "stats", k: "col", c: [text("url", `Dashboard: ${url}`), text("literal-label", label), control, text("note", "Keep this note from omp.")] };
+		const output = mainOutputNodes(snapshot([root]))[0]!;
+		expect(output.text).toBe(`Dashboard: ${url}\n${label}\n${label}\nKeep this note from omp.`);
+		expect(output.resultText).toBe(`Dashboard: ${url}\n${label}\nKeep this note from omp.`);
+		expect(mainOutputText(control, [])).toBe(label);
+		expect(mainOutputText(control, [{ kind: "url", value: "http://127.0.0.1:1/" }])).toBe(label);
+		const other: TspNode = { ...control, p: { ...control.p, text: "Open authorization URL" } };
+		expect(mainOutputNodes(snapshot([other]))[0]!.resultText).toBeUndefined();
+	});
+
+	it("keeps control-related notes and fingerprints changes in the Result presentation", () => {
+		const action = { href: "http://127.0.0.1:51239/", actions: { click: "open" } };
+		const label = text("label", "Open dashboard ↗");
+		const note = text("note", "Authorization is required.");
+		const separate: TspNode = { id: "stats", k: "col", c: [{ id: "open", k: "row", p: action, c: [label] }, note] };
+		const grouped: TspNode = { id: "stats", k: "col", c: [{ id: "open", k: "row", p: action, c: [label, note] }] };
+		expect(mainOutputText(separate)).toBe(mainOutputText(grouped));
+		expect(mainOutputNodes(snapshot([separate]))[0]!.resultText).toBe("Authorization is required.");
+		expect(mainOutputNodes(snapshot([grouped]))[0]!.resultText).toBeUndefined();
+		expect(mainOutputFingerprint(grouped)).not.toBe(mainOutputFingerprint(separate));
 	});
 
 	// omp 18.18.3: mcp-command-controller.ts:168-179,198-205,843-881.

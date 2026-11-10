@@ -42,6 +42,7 @@ input or a host, room or protocol-epoch change. Results keep their arrival posit
 the omp screen or moving focus. Printed paths and URLs offer Copy, and existing local paths offer
 Show in folder through the app's existing reveal action. Dashboard and authorization URLs remain
 selectable and copyable when omp's declared browser action cannot be sent safely.
+The redundant Open dashboard control label is omitted when the Result already presents its URL; omp's other output remains readable.
 Classic chats retain painted-screen result parsing.
 
 Read-only reports from `/tools`, `/changelog`, `/jobs full`, `/advisor status`, memory reports,

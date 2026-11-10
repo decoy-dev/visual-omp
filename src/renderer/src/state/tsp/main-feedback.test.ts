@@ -109,4 +109,23 @@ describe("command feedback ownership", () => {
 		expect(commandResults(chat)).toHaveLength(1);
 		expect(commandResults(chat)[0]?.title).toBe("Connection details");
 	});
+
+	it("stores the compact stats body while keeping URL actions and exact raw-source ownership", () => {
+		const projection = new TspMainFeedback(); const chat = {};
+		const url = "http://127.0.0.1:51239/";
+		const source: TspNode = { id: "stats", k: "col", c: [
+			text("message", `Stats dashboard: ${url}`),
+			{ id: "open", k: "button", p: { text: "Open dashboard ↗", href: url, actions: { click: "open" } } },
+			text("note", "Sessions sync in the background."),
+		] };
+		projection.begin(snapshot([]), mainCommandFeedback(chat, "/stats", () => null, "room"));
+		const after = snapshot([source], 2);
+		projection.apply(after);
+		const row = commandResults(chat)[0]!;
+		expect(row.lines).toEqual([`Stats dashboard: ${url}`, "Sessions sync in the background."]);
+		expect(row.locations).toEqual([{ kind: "url", value: url }]);
+		expect(row.provenance?.[0]?.text).toBe(mainOutputFingerprint(source));
+		expect(row.provenance?.[0]?.text).toContain("Open dashboard");
+		expect(unclaimed(after.surfaces[0]!, "main", undefined, new Map([[source.id, row.provenance![0]!.text]]))).toEqual([]);
+	});
 });

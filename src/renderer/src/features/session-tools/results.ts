@@ -325,7 +325,7 @@ export function mainCommandFeedback(chat: object, command: string, anchor: () =>
 	return (output, snapshot) => {
 		const key = JSON.stringify([output.surfaceId, output.nodeId]);
 		const value = {
-			lines: output.text.split("\n"), tone: output.tone, title: output.title, locations: output.locations,
+			lines: (output.resultText ?? output.text).split("\n"), tone: output.tone, title: output.title, locations: output.locations,
 			provenance: [{ hostId: snapshot.hostId, epoch: snapshot.epoch, generation: snapshot.generation, surfaceId: output.surfaceId, nodeId: output.nodeId, text: output.fingerprint }],
 		};
 		const previousKey = output.previousNodeId === undefined ? key : JSON.stringify([output.surfaceId, output.previousNodeId]);

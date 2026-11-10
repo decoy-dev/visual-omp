@@ -7,6 +7,8 @@ export interface MainOutput {
 	surfaceId: string;
 	nodeId: string;
 	text: string;
+	/** Native Result body when a declared dashboard control is already represented by its offered URL. */
+	resultText?: string;
 	title?: string;
 	/** A same-frame replacement of an unchanged root, rather than a new printed item. */
 	previousNodeId?: string;
@@ -42,15 +44,17 @@ function actionContent(node: TspNode): unknown[] {
 		...(node.c?.flatMap(actionContent) ?? []),
 	];
 }
-/** Preserve literal public output only. Input values and unknown controls are never captured. */
-export function mainOutputText(node: TspNode): string {
+/** Literal public output by default; offered Result locations can replace the redundant dashboard control label. */
+export function mainOutputText(node: TspNode, offered?: readonly OutputLocation[]): string {
 	if (excluded(node)) return "";
+	if (node.p?.actions?.click === "open" && offered?.some(location => location.kind === "url" && location.value === node.p?.href)
+		&& /^Open dashboard(?: ↗)?$/.test(mainOutputText(node).trim())) return "";
 	let own = "";
 	if (node.k === "text") own = visibleSpans(node.p?.spans ?? node.p?.text).map(span => span.t).join("");
 	else if (node.k === "md" || node.k === "toast") own = node.p?.text ?? "";
 	else if (node.k === "rows") own = node.p?.lines.join("\n") ?? "";
 	else if (node.k === "button") own = node.p?.text ?? "";
-	const children = node.c?.map(mainOutputText).filter(Boolean) ?? [];
+	const children = node.c?.map(child => mainOutputText(child, offered)).filter(Boolean) ?? [];
 	return [own, ...children].filter(Boolean).join("\n");
 }
 /** Paths are kept whole when omp prints its move/worktree sentence or a labelled path line. */
@@ -95,7 +99,10 @@ function details(node: TspNode): { tone: MainOutput["tone"]; locations: OutputLo
 /** Eligibility is checked again at fallback suppression, including newly added controls. */
 export function mainOutputFingerprint(node: TspNode): string | null {
 	if (containsForm(node) || !supportedOutput(node)) return null;
-	return JSON.stringify([mainOutputText(node), details(node), node.p?.title?.trim() || null, actionContent(node)]);
+	const detail = details(node);
+	const text = mainOutputText(node);
+	const resultText = mainOutputText(node, detail.locations);
+	return JSON.stringify([text, detail, node.p?.title?.trim() || null, actionContent(node), resultText !== text ? resultText : null]);
 }
 /** Whole readable subtrees give grouped notices one stable identity across progress updates. */
 export function mainOutputNodes(snapshot: TspHostSnapshot): MainOutput[] {
@@ -109,7 +116,8 @@ export function mainOutputNodes(snapshot: TspHostSnapshot): MainOutput[] {
 			const text = mainOutputText(node);
 			if (!text.trim()) return;
 			const detail = details(node);
-			result.push({ surfaceId: surface.open.id, nodeId: node.id, text, ...(node.p?.title?.trim() ? { title: node.p.title } : {}), ...detail, fingerprint: mainOutputFingerprint(node)! });
+			const resultText = mainOutputText(node, detail.locations);
+			result.push({ surfaceId: surface.open.id, nodeId: node.id, text, ...(resultText !== text ? { resultText } : {}), ...(node.p?.title?.trim() ? { title: node.p.title } : {}), ...detail, fingerprint: mainOutputFingerprint(node)! });
 		};
 		surface.document.c?.find(node => node.id === "main")?.c?.forEach(visit);
 	}

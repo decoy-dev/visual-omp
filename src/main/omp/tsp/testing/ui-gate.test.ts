@@ -286,7 +286,7 @@ function feedbackResults(name: string, command: string): GateResultRow[] {
 	const rows = new Map<string, GateResultRow>();
 	const accept = (before: TspHostSnapshot, after: TspHostSnapshot[]) => {
 		collector.begin(before, (output, snapshot) => {
-			rows.set(output.nodeId, { id: output.nodeId, command, lines: output.text.split("\n"), tone: output.tone, locations: output.locations,
+			rows.set(output.nodeId, { id: output.nodeId, command, lines: (output.resultText ?? output.text).split("\n"), tone: output.tone, locations: output.locations,
 				anchor: null, room: "gate", createdAt: Date.UTC(2026, 10, 9, 16),
 				provenance: [{ hostId: snapshot.hostId, epoch: snapshot.epoch, generation: snapshot.generation, surfaceId: output.surfaceId, nodeId: output.nodeId, text: output.fingerprint }] });
 			return true;
@@ -300,6 +300,7 @@ function feedbackResults(name: string, command: string): GateResultRow[] {
 			{ id: "stats", k: "row", c: [
 				{ id: "stats/message", k: "text", p: { role: "omp.stats", text: `Stats dashboard: ${url}` } },
 				{ id: "stats/open", k: "button", p: { text: "Open dashboard ↗", href: url, actions: { click: "open" } } },
+				{ id: "stats/note", k: "text", p: { text: "Sessions sync in the background." } },
 			] },
 		] : [{ id: "oauth", k: "col", c: [
 			{ id: "oauth/wait", k: "text", p: { text: "Waiting for authorization... (Press Esc to cancel, 5 minute timeout)" } },
@@ -446,6 +447,14 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
 		expect(await page.evaluate(`document.querySelector('section[aria-label="Command feedback"]').textContent.split(${JSON.stringify(command)}).length - 1`)).toBe(rows.length);
 		expect(await page.evaluate("[...document.querySelectorAll('section[aria-label=\"Command feedback\"] button')].every(button => button.getBoundingClientRect().right <= innerWidth)")).toBe(true);
+		if (name === "stats-source-shaped") {
+			expect(rows[0]!.lines).toEqual([`Stats dashboard: ${expected}`, "Sessions sync in the background."]);
+			expect(await page.evaluate("document.querySelector('section[aria-label=\"Command feedback\"] pre').textContent")).not.toContain("Open dashboard");
+			expect(await page.evaluate("document.querySelector('section[aria-label=\"Command feedback\"] li code').textContent")).toBe(expected);
+			await page.evaluate("window.statsCopied = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.statsCopied = text; } } });");
+			await page.clickElement("[...document.querySelectorAll('section[aria-label=\"Command feedback\"] button')].find(button => button.textContent === 'Copy URL')");
+			expect(await page.evaluate("window.statsCopied")).toBe(expected);
+		}
 		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 		await writeFile(join(shots, `command-${name}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
 	}, 30_000);
