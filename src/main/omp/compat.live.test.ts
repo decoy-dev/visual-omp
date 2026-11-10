@@ -91,6 +91,12 @@ describe.skipIf(!process.env.OMP_BIN)("live omp compatibility (no sign-in or mod
 		const settings = parseConfigList(JSON.parse(result.stdout));
 		expect(settings.size).toBeGreaterThan(0);
 		for (const key of ["tools.approvalMode", "modelRoles", "collab.autoStart"]) expect(settings.has(key), key).toBe(true);
+		if (version && compareSemver(version, "18.18.7") >= 0) {
+			for (const key of ["codexResets.autoRedeem5h", "codexResets.autoRedeemWeekly", "claudeResets.autoRedeem5h", "claudeResets.autoRedeemWeekly", "claudeResets.autoRedeemFable"]) {
+				expect(settings.get(key), key).toMatchObject({ type: "enum", value: "unset" });
+			}
+			for (const key of ["codexResets.autoRedeem", "claudeResets.autoRedeem"]) expect(settings.has(key), key).toBe(false);
+		}
 		return { settings: settings.size };
 	});
 

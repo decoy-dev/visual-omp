@@ -2,6 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
+import litellmSnapshot from "../../../../../main/features/usage/fixtures/usage-litellm-18.18.7.json";
 import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage, providerSummary, rememberModels, type SeenModels, soonestExpiry, withSeenProviders } from "./planUsage";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
@@ -27,6 +28,19 @@ function snapshot(reports: UsageReport[], capacity: UsageLimitsSnapshot["capacit
 }
 
 const report = (provider: string, limits: UsageLimit[], fetchedAt = 10): UsageReport => ({ provider, fetchedAt, limits });
+
+it("keeps LiteLLM key and user budgets distinct when their window durations match", () => {
+	const limits = planLimits(litellmSnapshot as UsageLimitsSnapshot);
+	expect(limits).toHaveLength(1);
+	expect(limits[0]?.provider).toBe("fixture-budget");
+	expect(limits[0]?.accounts[0]).toMatchObject({
+		name: "fixture@example.invalid",
+		rows: [
+			{ id: "fixture-budget:key:budget", qualifier: "Key budget", fraction: 0.25 },
+			{ id: "fixture-budget:user:budget", qualifier: "User budget", fraction: 0.375 },
+		],
+	});
+});
 
 describe("parseModelSelector", () => {
 	it("splits provider and model, dropping a thinking level and a route", () => {

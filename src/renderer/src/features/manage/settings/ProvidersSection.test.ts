@@ -6,9 +6,9 @@ import type { ConnectedProvider, StoredProviderAccount } from "@shared/contracts
 import { ProvidersSection } from "./ProvidersSection";
 import { i18n } from "../../../i18n";
 
-const fake = vi.hoisted(() => ({ invoke: vi.fn(), on: vi.fn(), toast: vi.fn() }));
+const fake = vi.hoisted(() => ({ invoke: vi.fn(), on: vi.fn(), toast: vi.fn(), login: vi.fn((_props: unknown) => null) }));
 vi.mock("../../../state/app", () => ({ useApp: { getState: () => ({ tabs: [] }) }, controllerFor: () => null }));
-vi.mock("./OmpLoginDialog", () => ({ OmpLoginDialog: () => null }));
+vi.mock("./OmpLoginDialog", () => ({ OmpLoginDialog: fake.login }));
 vi.mock("../listMotion", () => ({ listRowMotion: {} }));
 vi.mock("./parts", () => ({ SettingsSection: ({ title, children }: PropsWithChildren<{ title: string }>) => createElement("section", null, createElement("h2", null, title), children) }));
 vi.mock("motion/react", () => ({
@@ -97,4 +97,24 @@ it("retains the exact target and reports a failed removal for retry", async () =
 	expect(element.querySelector('[role="dialog"]')?.textContent).toContain(personal.detail);
 	expect(fake.toast).toHaveBeenCalledWith(expect.objectContaining({ tone: "err", description: "The selected account changed. Check providers again." }));
 	expect(dialogButton("Sign out").disabled).toBe(false);
+});
+
+it("keeps omp's account-risk name in the sign-in list and dialog target", async () => {
+	const method = { id: "google-antigravity", name: "Google Antigravity (Gemini, Claude, GPT-OSS) (at your own risk)" };
+	fake.invoke.mockResolvedValue({ connected: [], available: [method] });
+	await render();
+	expect(element.textContent).toContain(method.name);
+	await act(async () => buttons().find(button => button.textContent === "Sign in")!.click());
+	expect(fake.login.mock.calls.at(-1)?.[0]).toMatchObject({ target: { methodId: method.id, name: method.name }, cwd: "/project" });
+});
+
+it("does not report a declined or failed login as a successful sign-in", async () => {
+	fake.invoke.mockResolvedValue({ connected: [], available: [{ id: "google-antigravity", name: "Google Antigravity (at your own risk)" }] });
+	await render();
+	await act(async () => buttons().find(button => button.textContent === "Sign in")!.click());
+	const props = fake.login.mock.calls.at(-1)![0] as unknown as { onFinished(code: number): void };
+	await act(async () => props.onFinished(1));
+	expect(fake.toast).not.toHaveBeenCalled();
+	await act(async () => props.onFinished(0));
+	expect(fake.toast).toHaveBeenCalledWith(expect.objectContaining({ tone: "ok" }));
 });

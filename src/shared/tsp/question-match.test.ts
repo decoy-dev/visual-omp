@@ -18,7 +18,20 @@ const resetCases = (["Claude", "Codex"] as const).flatMap(provider => [1, 2].map
 	options: [{ label: "Yes", description: `Redeem now and remember yes for future eligible ${provider} resets.` }, { label: "No", description: `Do not auto-redeem saved ${provider} resets.` }],
 })));
 
-function resetFixture(value: typeof resetCases[number], shape: "picker" | "card") {
+const windowResetCases = [
+	{ provider: "Codex", window: "5h", key: "codexResets.autoRedeem5h", limit: "Codex 5h" },
+	{ provider: "Codex", window: "weekly", key: "codexResets.autoRedeemWeekly", limit: "Codex weekly" },
+	{ provider: "Claude", window: "5h", key: "claudeResets.autoRedeem5h", limit: "Claude 5h" },
+	{ provider: "Claude", window: "weekly", key: "claudeResets.autoRedeemWeekly", limit: "Claude weekly" },
+	{ provider: "Claude", window: "Fable", key: "claudeResets.autoRedeemFable", limit: "Claude Fable weekly" },
+].flatMap(({ provider, window, key, limit }) => [1, 2].map(count => ({
+	provider, window, count,
+	title: count === 1 ? `Spend a saved ${provider} rate-limit reset?` : `Spend ${count} saved ${provider} rate-limit resets?`,
+	lines: Array.from({ length: count }, (_, index) => `${index ? "personal" : "work"}@example.com (Example): a saved reset covers ${limit} with about 1h left.`),
+	options: [{ label: "Yes", description: `Redeem now and set ${key} to yes.` }, { label: "No", description: `Do not redeem, and set ${key} to no.` }],
+})));
+
+function resetFixture(value: Pick<typeof resetCases[number], "title" | "lines" | "options">, shape: "picker" | "card") {
 	const items = value.options.map((option, index) => ({ id: String(index), label: option.label, detail: option.description }));
 	const node: TspNode = shape === "picker"
 		? { id: "hook", k: "picker", p: { title: value.title, subtitle: value.lines.join("\n"), noun: "options", size: "md", layout: "rows", preview: "none", query: null, items, selected: "0", total: 2, empty: "No matching options", actions: [{ id: "confirm", label: "Select", keys: ["enter"], primary: true }, { id: "close", label: "Close", keys: ["esc"], end: true }] } }
@@ -42,6 +55,13 @@ describe("hook-collab question arbitration", () => {
 	it.each(resetCases.flatMap(value => (["picker", "card"] as const).map(shape => ({ ...value, shape }))))("matches $count saved $provider resets in the native $shape with the full collab title", value => {
 		const { surface, request } = resetFixture(value, value.shape);
 		expect(matchQuestions(scope, { ...state, requests: [request] }, hookQuestions([surface], 1))).toMatchObject([{ status: "matched", reqId: 9 }]);
+	});
+	// omp v18.18.7 keeps the same identity contract while descriptions name the governing window keys.
+	it.each(windowResetCases.flatMap(value => (["picker", "card"] as const).map(shape => ({ ...value, shape }))))("matches $count saved $provider $window resets in the native $shape", value => {
+		const { surface, request } = resetFixture(value, value.shape);
+		expect(matchQuestions(scope, { ...state, requests: [request] }, hookQuestions([surface], 1))).toMatchObject([{ status: "matched", reqId: 9 }]);
+		const changedWindow = { ...request, options: request.options.map(option => ({ ...option, description: option.description.replace(/autoRedeem\w+/g, "autoRedeemOther") })) };
+		expect(matchQuestions(scope, { ...state, requests: [changedWindow] }, hookQuestions([surface], 1))).toMatchObject([{ status: "ambiguous" }]);
 	});
 	it.each(["picker", "card"] as const)("distinguishes saved resets from another pending question in a %s", shape => {
 		const { surface, request } = resetFixture(resetCases[0]!, shape);

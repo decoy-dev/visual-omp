@@ -90,6 +90,41 @@ it("shares global discovery between reads and refreshes it only when requested",
 	expect(fake.run.mock.calls.every(([, options]) => options.cwd === "/tmp")).toBe(true);
 });
 
+it.each([false, true])("preserves omp's account-risk label when the provider has models: %s", async hasModels => {
+	const method = { id: "google-antigravity", name: "Google Antigravity (Gemini, Claude, GPT-OSS) (at your own risk)" };
+	fake.rpc.mockResolvedValue({ providers: [{ ...method, available: true, authenticated: false }] });
+	if (hasModels) fake.models.mockResolvedValue([{
+		provider: method.id, kind: "chat", id: "model", selector: `${method.id}/model`,
+		name: "Model", contextWindow: null, maxTokens: null, reasoning: false, thinking: null, input: ["text"],
+	}]);
+	const state = await call("providers:list") as ProvidersState;
+	if (hasModels) {
+		expect(state.connected).toEqual([expect.objectContaining({ id: method.id, name: method.name, login: method, authenticated: false })]);
+		expect(state.available).toEqual([]);
+	} else {
+		expect(state.connected).toEqual([]);
+		expect(state.available).toEqual([method]);
+	}
+	await expect(call("providers:loginCommand", method.id)).resolves.toEqual({ command: process.platform === "win32" ? "& '/omp' login google-antigravity" : "'/omp' login google-antigravity", cwd: "/tmp" });
+});
+
+it("retains older provider names and omits methods omp marks unavailable", async () => {
+	fake.rpc.mockResolvedValue({ providers: [
+		{ id: "google", name: "Google Gemini CLI" },
+		{ id: "unavailable", name: "Unavailable provider", available: false },
+	] });
+	const state = await call("providers:list") as ProvidersState;
+	expect(state.available).toEqual([{ id: "google", name: "Google Gemini CLI" }]);
+});
+
+it("reports failed provider discovery and retries without retaining a failed cache", async () => {
+	fake.rpc.mockRejectedValueOnce(new Error("omp stopped before listing its sign-in providers."));
+	await expect(call("providers:list")).rejects.toThrow("omp stopped before listing its sign-in providers.");
+	fake.rpc.mockResolvedValue({ providers: [{ id: "google", name: "Google Gemini CLI" }] });
+	await expect(call("providers:list")).resolves.toMatchObject({ available: [{ id: "google", name: "Google Gemini CLI" }] });
+	expect(fake.rpc).toHaveBeenCalledTimes(2);
+});
+
 
 describe("individual stored accounts", () => {
 	it("removes one API key through omp RPC, preserving its sibling and refreshing status", async () => {

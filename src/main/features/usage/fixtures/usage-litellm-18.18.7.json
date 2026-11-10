@@ -1,0 +1,73 @@
+{
+  "generatedAt": 0,
+  "reports": [
+    {
+      "provider": "fixture-budget",
+      "fetchedAt": 0,
+      "limits": [
+        {
+          "id": "fixture-budget:key:budget",
+          "label": "Key budget",
+          "scope": {
+            "provider": "fixture-budget",
+            "windowId": "7d",
+            "shared": true
+          },
+          "window": {
+            "id": "7d",
+            "label": "7d",
+            "resetsAt": 1794484800000
+          },
+          "amount": {
+            "used": 25,
+            "limit": 100,
+            "remaining": 75,
+            "usedFraction": 0.25,
+            "remainingFraction": 0.75,
+            "unit": "usd"
+          },
+          "status": "ok"
+        },
+        {
+          "id": "fixture-budget:user:budget",
+          "label": "User budget",
+          "scope": {
+            "provider": "fixture-budget",
+            "windowId": "7d",
+            "shared": true
+          },
+          "window": {
+            "id": "7d",
+            "label": "7d"
+          },
+          "amount": {
+            "used": 75,
+            "limit": 200,
+            "remaining": 125,
+            "usedFraction": 0.375,
+            "remainingFraction": 0.625,
+            "unit": "usd"
+          },
+          "status": "ok"
+        }
+      ],
+      "metadata": {
+        "endpoint": "http://127.0.0.1:12345",
+        "accountId": "fixture-user",
+        "email": "fixture@example.invalid"
+      }
+    }
+  ],
+  "accountsWithoutUsage": [],
+  "disabledCredentials": [],
+  "capacity": {
+    "fixture-budget": [
+      {
+        "window": "7d",
+        "accounts": 1,
+        "usedAccounts": 0.375,
+        "remainingAccounts": 0.625
+      }
+    ]
+  }
+}

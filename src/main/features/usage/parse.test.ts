@@ -52,6 +52,16 @@ describe("omp usage --json", () => {
 		expect(parsed.reports[0]?.policy).toEqual(policy);
 		expect(parsed.accountsWithoutUsage[0]?.policy).toMatchObject({ state: "unknown", priority: 4, reservePct: 15 });
 	});
+
+	it("retains omp 18.18.7 LiteLLM key and user USD budgets from an isolated loopback gateway", () => {
+		const parsed = UsageLimitsSnapshotSchema.parse(fixture("usage-litellm-18.18.7.json"));
+		expect(parsed.reports).toHaveLength(1);
+		expect(parsed.reports[0]).toMatchObject({ provider: "fixture-budget", metadata: { accountId: "fixture-user", email: "fixture@example.invalid" } });
+		expect(parsed.reports[0]?.limits).toMatchObject([
+			{ id: "fixture-budget:key:budget", label: "Key budget", amount: { unit: "usd", used: 25, limit: 100, usedFraction: 0.25 } },
+			{ id: "fixture-budget:user:budget", label: "User budget", amount: { unit: "usd", used: 75, limit: 200, usedFraction: 0.375 } },
+		]);
+	});
 });
 
 describe("omp usage --history / clients --json", () => {
