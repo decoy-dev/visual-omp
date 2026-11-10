@@ -2,7 +2,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from "rea
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
 import { BtwDrawer } from "../features/btw/BtwPane";
-import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
+import { chatActivityKey, chatTitle, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import { questionPresentation, type SessionController, type SessionView } from "../state/session";
 import { type ShownActivity, useOmpActivity } from "../state/tsp/activity";
@@ -13,17 +13,17 @@ import { SessionHeader } from "./SessionHeader";
 import { useHelperFocus, closeHelper } from "../features/panes/helperFocus";
 import { lazyView, LoadFailed } from "../registry/lazy";
 import type { Helper } from "../features/panes/derive";
+import { HelperConversationAnnouncement, HelperConversationBanner } from "../features/panes/HelperConversationBanner";
 
 const Transcript = lazyView(() => import("./transcript/Transcript").then(module => module.Transcript), () => <div data-transcript-frame="loading" aria-busy className="min-h-0 flex-1" />, ({ retry }) => <div data-transcript-frame="error" className="min-h-0 flex-1 overflow-y-auto"><LoadFailed retry={retry} /></div>);
 const HelperFocusView = lazyView(() => import("../features/panes/HelperFocusView").then(module => module.HelperFocusView), HelperFocusPending, HelperFocusPending);
 
 /** Back and Escape remain available while the helper chunk loads or fails. */
-function HelperFocusPending({ session, retry }: { session: SessionController; helper: Helper; retry?: () => void }): ReactNode {
-	const { t } = useTranslation("panes");
-	return <div className="absolute inset-0 z-10 flex flex-col bg-bg" onKeyDown={event => {
+export function HelperFocusPending({ session, helper, parentTitle, retry }: { session: SessionController; helper: Helper; parentTitle: string; retry?: () => void }): ReactNode {
+	return <div className="absolute inset-0 z-10 flex flex-col overflow-y-auto bg-bg" onKeyDown={event => {
 		if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); closeHelper(session); }
 	}}>
-		<Button autoFocus size="sm" variant="ghost" className="m-3 self-start" onClick={() => closeHelper(session)}>{t("tasks.focusBack")}</Button>
+		<HelperConversationBanner helper={helper} parentTitle={parentTitle} autoFocus onBack={() => closeHelper(session)} />
 		{retry && <LoadFailed retry={retry} />}
 	</div>;
 }
@@ -162,6 +162,7 @@ export function WorkingRow({ view, session, activity, stopFocus }: { view: Sessi
 }
 
 export function ChatView({ session, title, focused }: { session: SessionController; title: string | null; focused: boolean }): ReactNode {
+	const { t } = useTranslation("shell");
 	const view = useSessionView(session);
 	const mode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const slots = chatSlots.use();
@@ -180,6 +181,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 		if (current === null || current === document.body || current instanceof HTMLElement && current.dataset.ompStop !== undefined) useComposerDrafts.getState().focus(session.tabId);
 	}, [active, session]);
 	if (!view) return null;
+	const parentTitle = chatTitle(view, title) ?? t("chat.newTitle");
 	const paused = !view.readOnly && view.host?.transport === "tsp" && (requested || view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw");
 	return (
 		<section
@@ -210,7 +212,10 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 				</div>
 				</div>
 				{view.host?.transport === "tsp" && <BtwDrawer session={session} />}
-				{helper && <HelperFocusView session={session} helper={helper} />}
+				{helper && <>
+					<HelperConversationAnnouncement key={helper.id} helper={helper} parentTitle={parentTitle} />
+					<HelperFocusView session={session} helper={helper} parentTitle={parentTitle} />
+				</>}
 			</div>
 			{slots
 				.filter(slot => slot.placement === "watchers")

@@ -29,6 +29,7 @@ import {
 import { SessionTitle } from "../ui/SessionTitle";
 import { useBranchEntries } from "./branch";
 import type { TranscriptMode } from "./transcript/Transcript";
+import { useHelperFocus } from "../features/panes/helperFocus";
 
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
 
@@ -181,6 +182,7 @@ export const SessionHeader = memo(function SessionHeader({ session, fallbackTitl
 	const commands = useCommands();
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const split = useApp(state => state.splitTabId !== null);
+	const helperOpen = useHelperFocus(session.tabId) !== null;
 	// Each half of a split has a header; its toggle reads as pressed only for its own chat's panel.
 	const dockVisible = useDockVisible();
 	const ownDockVisible = useApp(state => dockKey(state) === session.tabId) && dockVisible;
@@ -188,6 +190,7 @@ export const SessionHeader = memo(function SessionHeader({ session, fallbackTitl
 	const sections = menuSections(commands.filter(command => command.when?.(ctx) ?? true));
 	const title = view.title ?? fallbackTitle ?? t("shell:chat.newTitle");
 	const state = view.state;
+	const status = state === "ready" && activity ? activity.label : t(`chat:header.state.${state}`);
 	const reviewLabel = t("chat:header.review");
 	const splitCommand = commands.find(command => command.id === "view.split");
 	const splitLabel = splitCommand?.shortcut ? `${t("palette:cmd.split.title")} (${splitCommand.shortcut})` : t("palette:cmd.split.title");
@@ -197,13 +200,14 @@ export const SessionHeader = memo(function SessionHeader({ session, fallbackTitl
 			<StateMark state={state} status={view.status} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
-					<h1 className="min-w-0 text-base leading-5 font-semibold text-fg">
+					<h1 className="flex min-w-0 items-center text-base leading-5 font-semibold text-fg">
+						{helperOpen && <span className="shrink-0 whitespace-pre">{t("chat:header.parentTitle")} </span>}
 						<SessionTitle title={title} />
 					</h1>
 				</PresenceSwap>
 				<p role="status" className="truncate text-sm text-fg-muted">
-					{/* omp's own work outside a model turn, such as /handoff, would otherwise read as ready. */}
-					{state === "ready" && activity ? activity.label : t(`chat:header.state.${state}`)}
+					{/* Parent-scoped work and commands retain their meaning while a helper covers the chat. */}
+					{status}
 				</p>
 			</div>
 			<div className="flex min-w-0 shrink-0 items-center gap-0.5">

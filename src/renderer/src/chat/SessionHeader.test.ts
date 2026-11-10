@@ -13,6 +13,7 @@ const env = vi.hoisted(() => {
 		buttons: new Map<string, () => void>(),
 		labelledButtons: new Map<string, () => void>(),
 		items: new Map<string, () => void>(),
+		helperTab: null as string | null,
 	};
 });
 vi.mock("../registry/commands", () => ({
@@ -27,6 +28,7 @@ vi.mock("../state/app", () => ({
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null, chatStatus: () => "saved" }));
 vi.mock("../state/tsp/activity", () => ({ useOmpActivity: () => null }));
 vi.mock("../shell/ChatStatusMark", () => ({ ChatStatusMark: () => null }));
+vi.mock("../features/panes/helperFocus", () => ({ useHelperFocus: (tabId: string) => tabId === env.helperTab ? { id: "Atlas" } : null }));
 vi.mock("./branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("../features/palette/run", () => ({ runCommand: vi.fn() }));
 vi.mock("../features/palette/TerminalSheet", () => ({ terminalSheet: {} }));
@@ -65,6 +67,7 @@ beforeEach(() => {
 	env.buttons.clear();
 	env.labelledButtons.clear();
 	env.items.clear();
+	env.helperTab = null;
 });
 
 describe("split header actions", () => {
@@ -107,4 +110,16 @@ describe("split header actions", () => {
 		expect(render()).toContain('aria-label="Close split view (Ctrl+\\)"');
 		window.vomp.platform = "darwin";
 	});
+});
+
+it("identifies parent-scoped title and status only in the column whose helper is open", () => {
+	env.helperTab = "a";
+	const helperParent = render("a");
+	expect(helperParent).toContain("Parent chat:");
+	expect(helperParent).toContain("Saved. omp starts when you send a message.");
+	expect(helperParent).not.toContain("Parent chat: Saved.");
+	expect(helperParent).toContain('aria-label="Close split view');
+	expect(render("b")).not.toContain("Parent chat:");
+	env.helperTab = null;
+	expect(render("a")).not.toContain("Parent chat:");
 });

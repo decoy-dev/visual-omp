@@ -344,7 +344,13 @@
 		"transcriptMessage": "Message",
 		"transcriptMessageFrom": "Message from {{name}}",
 		"transcriptInterrupted": "Interrupted its wait",
-		"focusBack": "Back to chat",
+		"conversation": {
+			"title": "Helper conversation with {{name}}",
+			"parent": "From chat: {{title}}",
+			"back": "Back to",
+			"backNamed": "Back to {{title}}",
+			"announcement": "Helper conversation with {{name}}. {{status}}. Parent chat: {{title}}."
+		},
 		"background": "Background jobs",
 		"jobState": { "running": "Running", "completed": "Finished", "failed": "Failed", "cancelled": "Stopped" },
 		"noOutput": "No output yet.",

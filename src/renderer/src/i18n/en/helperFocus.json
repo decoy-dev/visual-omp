@@ -1,9 +1,9 @@
 {
 	"tasks": {
 		"focus": {
-			"back": "Back to chat",
 			"retry": "Try again",
 			"placeholder": "Message this helper…",
+			"destination": "Message helper {{name}}",
 			"unavailable": "This helper is unavailable for messages.",
 			"waitingForFile": "No conversation yet. You can still send a message.",
 			"hint": "Messages wait until the helper is idle. Shift+Enter adds a line.",

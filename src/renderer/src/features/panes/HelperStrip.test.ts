@@ -11,6 +11,7 @@ import type { Helper } from "./derive";
 import { closeHelper, openHelper, useHelperFocus } from "./helperFocus";
 import { HelperFocusView } from "./HelperFocusView";
 import { helperConversation } from "./helperConversation";
+import { HelperConversationAnnouncement } from "./HelperConversationBanner";
 
 const render = vi.hoisted(() => ({ count: 0 }));
 vi.mock("../../chat/transcript/Transcript", () => ({ TranscriptBody: ({ entries, renderUser }: { entries: SessionEntry[]; renderUser(entry: SessionEntry): ReactNode }) => {
@@ -25,12 +26,14 @@ let session: SessionController;
 let events: Set<(event: SessionEvent) => void>;
 let fileListeners: Set<(event: { file: string; text: string; reset: boolean }) => void>;
 const helper = { id: "Atlas", name: "Atlas", status: "running", messageable: true, hasTranscript: true } as Helper;
+let parentTitle: string;
 
 function FocusHost(): ReactNode {
 	const focus = useHelperFocus(session.tabId);
 	return createElement("section", null,
 		createElement("div", { "data-main-chat": true, inert: !!focus, hidden: !!focus }, createElement("button", { onClick: () => openHelper(session, helper) }, "Open helper")),
-		focus && createElement(HelperFocusView, { session, helper: focus }),
+		focus && createElement(HelperConversationAnnouncement, { key: focus.id, helper: focus, parentTitle }),
+		focus && createElement(HelperFocusView, { session, helper: focus, parentTitle }),
 	);
 }
 beforeEach(async () => {
@@ -38,6 +41,7 @@ beforeEach(async () => {
 	Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 	Object.defineProperty(document, "hidden", { configurable: true, value: false });
 	events = new Set(); fileListeners = new Set(); render.count = 0;
+	parentTitle = "Checkout fixes";
 	const view = { mode: "live", readOnly: false, host: { hostId: "host", generation: 1, phase: "live" }, guest: { phase: "live", readOnly: false, header: { id: "parent" }, agents: [{ id: "Atlas", kind: "sub", status: "running", hasSessionFile: true }], progress: new Map(), lifecycle: new Map(), notices: [] } } as unknown as SessionView;
 	session = { tabId: `tab-${Math.random()}`, projectPath: "/project", sessionFile: "/parent.jsonl", getSnapshot: () => view, subscribe: () => () => {}, guestClient: () => null,
 		onEvent: (listener: (event: SessionEvent) => void) => { events.add(listener); return () => events.delete(listener); },
@@ -66,10 +70,12 @@ const first = `${JSON.stringify({ type: "session", id: "helper", cwd: "/helper/p
 it("focuses the helper inside its chat, keeps the main chat mounted, and Back restores the opener", async () => {
 	const opener = await open();
 	expect(container.querySelector("[data-main-chat]")?.hasAttribute("inert")).toBe(true);
-	expect(container.querySelector("[data-helper-focus]")?.textContent).toContain("Atlas's conversation");
+	expect(container.querySelector("[data-helper-banner]")?.textContent).toContain("Helper conversation with Atlas");
+	expect(container.querySelector("[data-helper-banner]")?.textContent).toContain("From chat: Checkout fixes");
 	expect(document.querySelector("[role=dialog]")).toBeNull();
-	const back = [...container.querySelectorAll("button")].find(button => button.textContent === "Back to chat")!;
+	const back = container.querySelector<HTMLButtonElement>('[data-helper-banner] button[aria-label="Back to Checkout fixes"]')!;
 	expect(document.activeElement).toBe(back);
+	expect(back.classList.contains("[--ring:var(--accent-fg)]")).toBe(true);
 	await act(async () => back.click());
 	const frame = Promise.withResolvers<number>(); requestAnimationFrame(frame.resolve); await frame.promise;
 	expect(container.querySelector("[data-helper-focus]")).toBeNull();
@@ -81,10 +87,40 @@ it("Escape returns to the main chat without sending or aborting, and restores ke
 	const frame = Promise.withResolvers<number>(); requestAnimationFrame(frame.resolve); await frame.promise;
 	expect(container.querySelector("[data-helper-focus]")).toBeNull(); expect(document.activeElement).toBe(opener);
 });
+
+it("labels the message destination visibly and announces entry without repeating parent title or progress updates", async () => {
+	await open();
+	const label = container.querySelector<HTMLLabelElement>("[data-helper-composer] label")!;
+	const textarea = container.querySelector<HTMLTextAreaElement>("[data-helper-composer] textarea")!;
+	expect(label.textContent).toBe("Message helper Atlas");
+	expect(label.classList.contains("sr-only")).toBe(false);
+	expect(label.htmlFor).toBe(textarea.id);
+	const announcement = container.querySelector('[aria-live="polite"][aria-atomic="true"]')!;
+	expect(announcement.getAttribute("role")).toBe("status");
+	expect(announcement.textContent).toBe("Helper conversation with Atlas. Working. Parent chat: Checkout fixes.");
+	parentTitle = "Updated checkout fixes";
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(FocusHost))));
+	expect(container.querySelector("[data-helper-banner]")?.textContent).toContain("From chat: Updated checkout fixes");
+	expect(container.querySelector('[aria-live="polite"][aria-atomic="true"]')).toBe(announcement);
+	expect(announcement.textContent).toBe("Helper conversation with Atlas. Working. Parent chat: Checkout fixes.");
+	expect(container.querySelector("[data-helper-banner]")?.hasAttribute("aria-live")).toBe(false);
+});
+
+it("retains the full return target and helper destination for long names", async () => {
+	parentTitle = "Checkout fixes for customer accounts and subscription renewals";
+	await open();
+	const back = container.querySelector<HTMLButtonElement>("[data-helper-banner] button")!;
+	expect(back.getAttribute("aria-label")).toBe(`Back to ${parentTitle}`);
+	expect(back.title).toBe(`Back to ${parentTitle}`);
+	expect(back.querySelector(".shrink-0")?.textContent).not.toBeNull();
+	expect([...back.querySelectorAll("span")].some(span => span.textContent === "Back to " && span.classList.contains("shrink-0"))).toBe(true);
+	expect(container.querySelector("[data-helper-banner] p")?.getAttribute("title")).toBe(`From chat: ${parentTitle}`);
+});
 it("appends entries live and catches up once when the hidden window becomes visible", async () => {
 	await open();
 	await act(async () => tail(first, true));
 	expect(container.textContent).toContain("Assignment"); expect(container.textContent).toContain("Read the files.");
+	expect(container.querySelector("[data-helper-transcript-viewport]")?.classList.contains("min-h-32")).toBe(true);
 	const before = render.count;
 	Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
 	Object.defineProperty(document, "hidden", { configurable: true, value: true });

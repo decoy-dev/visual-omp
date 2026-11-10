@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../state/session";
 import "../i18n";
+import type { Helper } from "../features/panes/derive";
 
 const actions = vi.hoisted(() => ({ newChat: vi.fn(), ensureLive: vi.fn(), restore: vi.fn(), retryFollowing: vi.fn(async () => {}) }));
 vi.mock("../registry/slots", () => ({ chatSlots: { use: () => [] } }));
@@ -13,7 +14,7 @@ vi.mock("./composer/Composer", () => ({ Composer: () => null }));
 vi.mock("./SessionHeader", () => ({ SessionHeader: () => null }));
 vi.mock("./transcript/Transcript", () => ({ Transcript: () => null }));
 
-import { StateBanner } from "./ChatView";
+import { HelperFocusPending, StateBanner } from "./ChatView";
 
 let element: HTMLDivElement;
 let root: Root;
@@ -92,4 +93,20 @@ it("offers a reader retry while a saved chat remains read-only", async () => {
 	await act(async () => retry.resolve());
 	expect(button.disabled).toBe(false);
 	expect(actions.ensureLive).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("keeps the helper banner and return target while its chunk is loading or failed (failed=%s)", async failed => {
+	const retry = vi.fn();
+	const session = { tabId: "helper-pending" } as unknown as SessionController;
+	const helper = { id: "Atlas", name: "Atlas", status: "running" } as Helper;
+	await act(async () => root.render(createElement(HelperFocusPending, { session, helper, parentTitle: "Checkout fixes", retry: failed ? retry : undefined })));
+	expect(element.querySelector("[data-helper-banner]")?.textContent).toContain("Helper conversation with Atlas");
+	expect(element.textContent).toContain("From chat: Checkout fixes");
+	const back = element.querySelector<HTMLButtonElement>('[aria-label="Back to Checkout fixes"]')!;
+	expect(document.activeElement).toBe(back);
+	if (failed) {
+		const button = [...element.querySelectorAll("button")].find(candidate => candidate.textContent === "Try again")!;
+		await act(async () => button.click());
+		expect(retry).toHaveBeenCalledOnce();
+	}
 });

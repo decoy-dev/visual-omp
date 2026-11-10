@@ -153,6 +153,7 @@
 		}
 	},
 	"header": {
+		"parentTitle": "Parent chat:",
 		"state": {
 			"saved": "Saved. omp starts when you send a message.",
 			"starting": "Starting omp…",
