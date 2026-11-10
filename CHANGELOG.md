@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Fixed
+
+- A successful model switch no longer reports a failure when omp has already closed its model picker before the app tries to close it.
+
 ## [0.7.13] - 2026-11-10
 
 visual-omp 0.7.13 keeps the omp screen closed while the app works with omp, keeps omp's questions in the chat and marks helper conversations clearly. It requires omp 18.15.0 or later.
