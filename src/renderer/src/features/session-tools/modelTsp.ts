@@ -83,6 +83,9 @@ function sessionPicker(snapshot: TspHostSnapshot | null) {
 	return null;
 }
 
+/** Cold omp hosts can publish their model selector long after the action write completes. */
+const MODEL_PICKER_READY_MS = 30_000;
+
 /** A missing picker route falls back to omp's documented session-only slash command. */
 export async function switchModelSemantic(session: SessionController, model: ModelInfo): Promise<boolean> {
 	const watch = new TspEditorWatch(session);
@@ -122,6 +125,13 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		// A picker the user already opened never belongs to this operation.
 		if (sessionPicker(watch.snapshot)) throw new OmpBusyError();
 		const beforeErrors = new Set(watch.snapshot?.surfaces.flatMap(surface => [...walkNodes(surface.document)].filter(node => node.p?.role === TSP_ROLES.noticeError).map(node => `${node.id}:${JSON.stringify(node.p)}`)));
+		let failed = false;
+		const errorShown = () => {
+			for (const surface of watch.snapshot?.surfaces ?? []) for (const node of walkNodes(surface.document)) {
+				if (node.p?.role === TSP_ROLES.noticeError && !beforeErrors.has(`${node.id}:${JSON.stringify(node.p)}`)) failed = true;
+			}
+			return failed;
+		};
 		const composer = composerNodes(watch.snapshot);
 		const modelNode = composer?.nodes.find(node => node.p?.role === TSP_ROLES.composerModel && node.p.actions?.click === TSP_ACTIONS.model);
 		let pickerId: string | null = null;
@@ -131,7 +141,11 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			releaseDrive = screenActivity.hold(watch.snapshot!, "drive");
 			openedPickerAction = true;
 			await send(watch, { ev: "action", sf: composer.sf, id: modelNode.id, act: TSP_ACTIONS.model });
-			await waitFor(watch, () => sessionPicker(watch.snapshot) !== null, 2500);
+			await waitFor(watch, () => {
+				if (session.getSnapshot().readOnly) throw new Error(i18n.t("session:model.sessionChanged"));
+				return sessionPicker(watch.snapshot) !== null || errorShown();
+			}, MODEL_PICKER_READY_MS);
+			if (errorShown()) return false;
 			const picker = sessionPicker(watch.snapshot);
 			if (picker) {
 				pickerId = picker.node.id;
@@ -158,7 +172,6 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			const current = session.getSnapshot().guest?.state?.model;
 			return current?.provider === model.provider && current.id === model.id;
 		};
-		let failed = false;
 		const compactionActive = () => watch.snapshot?.surfaces.some(surface =>
 			!surface.closed && !surface.suspended && surface.documentGeneration === watch.snapshot?.generation
 			&& [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.working && node.c?.some(child => child.k === "progress"))) ?? false;
@@ -167,9 +180,7 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 			if (watch.snapshot && pickerId && pickerSurfaceId && nodeHasLeft(watch.snapshot.surfaces, pickerSurfaceId, pickerId)) {
 				pickerClosed = true; endDrive();
 			}
-			for (const surface of watch.snapshot?.surfaces ?? []) for (const node of walkNodes(surface.document)) {
-				if (node.p?.role === TSP_ROLES.noticeError && !beforeErrors.has(`${node.id}:${JSON.stringify(node.p)}`)) failed = true;
-			}
+			errorShown();
 			return (!compactionActive() && confirmed()) || failed;
 		};
 		offOutcome = watch.subscribe(outcome);

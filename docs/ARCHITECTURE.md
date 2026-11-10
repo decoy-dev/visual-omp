@@ -620,6 +620,10 @@ items are refused. Ordinary confirmation waits eight seconds. A live `omp.workin
 a progress node holds the operation until compaction ends, reports an error or loses its host,
 room or epoch scope, regardless of duration. After compaction ends, collab has a bounded
 eight-second confirmation interval. New semantic error rows end the wait.
+The native selector has a 30-second readiness bound: a cold host can delay its first picker
+publication well beyond the action write, so typed fallback must not compete with that pending
+action after only a short UI settle. New semantic errors and scope/read-only invalidation end this
+readiness wait immediately. The bound applies before activation, not to ordinary model confirmation.
 The driver owns only model pickers opened after its composer action in the same host, room and
 epoch. After typed fallback confirms, it keeps its drive lease for a one-second late-picker grace,
 or until that picker is closed. Before an unbounded compaction watch, the same bounded grace

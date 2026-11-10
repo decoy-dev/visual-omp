@@ -168,6 +168,18 @@ function delayedModelPicker(delay: number | null, closeDelay: number | null = 20
 	return replay;
 }
 
+/** Keep the action pending until the cold host publishes its first native picker frame. */
+function deferredNativePicker(delayMs: number): Replay {
+	const replay = new Replay("model-switch");
+	const advance = replay.advance.bind(replay);
+	replay.beforeEvent = event => {
+		if (event.ev === "action" && event.act === "status.model") replay.advance = () => {
+			setTimeout(() => { replay.advance = advance; advance(); }, delayMs);
+		};
+	};
+	return replay;
+}
+
 /** Model confirmation beats picker removal; main rejects the now-stale close target. */
 function refusedPickerClose(departureMs: number | null): Replay {
 	const replay = new Replay("model-switch");
@@ -200,6 +212,61 @@ describe("TSP composer model controls", () => {
 		expect(finished).toBe(false);
 		await expect(settle(switching)).resolves.toBe(true);
 		expect(bridge.toast).not.toHaveBeenCalled();
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each([20_000, 29_000])("waits for a cold selector published after %s ms without starting a competing typed switch", async delayMs => {
+		const replay = deferredNativePicker(delayMs); replay.confirmDelay = 1200;
+		const command = vi.spyOn(replay.session, "command");
+		let finished = false;
+		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(delayMs - 1);
+		expect(replay.events.map(event => event.ev)).toEqual(["action"]);
+		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		expect(command).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(2);
+		expect(replay.events.map(event => event.ev)).toEqual(["action", "activate"]);
+		expect(finished).toBe(false);
+		await expect(settle(switching, 1500)).resolves.toBe(true);
+		expect(replay.model).toBe(small);
+		expect(command).not.toHaveBeenCalled();
+		expect(bridge.toast).not.toHaveBeenCalled();
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each(["generation", "epoch", "readOnly"] as const)("ends cold selector readiness immediately on %s invalidation", async change => {
+		const replay = deferredNativePicker(20_000);
+		const scope = replay.snapshot();
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(1000);
+		if (change === "generation") replay.generation++;
+		else if (change === "epoch") replay.mutate = snapshot => { snapshot.epoch++; };
+		else replay.readOnly = true;
+		replay.publish();
+		await expect(switching).resolves.toBe(false);
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(replay.events.map(event => event.ev)).toEqual(["action"]);
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it("ends cold selector readiness on a new semantic error without submitting fallback", async () => {
+		const replay = deferredNativePicker(20_000);
+		let failed = false;
+		replay.mutate = snapshot => {
+			if (!failed) return;
+			const main = snapshot.surfaces[0]!.document.c!.find(node => node.id === "main")!;
+			main.c = [...(main.c ?? []), { id: "picker-error", k: "text", p: { role: TSP_ROLES.noticeError, text: "Model selector unavailable" } }];
+		};
+		const command = vi.spyOn(replay.session, "command");
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(500);
+		failed = true; replay.publish();
+		await expect(switching).resolves.toBe(false);
+		expect(command).not.toHaveBeenCalled();
+		expect(replay.events.map(event => event.ev)).toEqual(["action"]);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
 		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
 	});
 
@@ -333,10 +400,10 @@ describe("TSP composer model controls", () => {
 	});
 
 	it.each([0, 1000])("closes a late picker under its drive lease with collab delayed %s ms after fallback", async confirmDelay => {
-		const replay = delayedModelPicker(3000); replay.confirmDelay = confirmDelay;
+		const replay = delayedModelPicker(30_500); replay.confirmDelay = confirmDelay;
 		let finished = false;
 		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
-		await vi.advanceTimersByTimeAsync(2750);
+		await vi.advanceTimersByTimeAsync(30_250);
 		expect(replay.events.map(event => event.ev)).toEqual(["action", "send"]);
 		expect(finished).toBe(false);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
@@ -352,7 +419,7 @@ describe("TSP composer model controls", () => {
 		const replay = delayedModelPicker(null);
 		let finished = false;
 		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
-		await vi.advanceTimersByTimeAsync(3499);
+		await vi.advanceTimersByTimeAsync(30_999);
 		expect(finished).toBe(false);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
 		await vi.advanceTimersByTimeAsync(2);
@@ -361,8 +428,8 @@ describe("TSP composer model controls", () => {
 		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
 	});
 
-	it.each([2700, 3100])("does not claim success when an error arrives at %s ms during picker cleanup", async errorAt => {
-		const replay = delayedModelPicker(3000, 400);
+	it.each([30_200, 30_600])("does not claim success when an error arrives at %s ms during picker cleanup", async errorAt => {
+		const replay = delayedModelPicker(30_500, 400);
 		let failed = false;
 		replay.mutate = snapshot => {
 			if (!failed) return;
@@ -371,7 +438,7 @@ describe("TSP composer model controls", () => {
 		};
 		const switching = switchModel(replay.session, small);
 		setTimeout(() => { failed = true; replay.publish(); }, errorAt);
-		await expect(settle(switching, 4000)).resolves.toBe(false);
+		await expect(settle(switching, 32_000)).resolves.toBe(false);
 		expect(replay.model).toBe(small);
 		expect(replay.events.filter(event => event.ev === "action" && event.act === "close")).toHaveLength(1);
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
@@ -387,7 +454,7 @@ describe("TSP composer model controls", () => {
 		};
 		let finished = false;
 		const switching = switchModel(replay.session, small).then(result => { finished = true; return result; });
-		await vi.advanceTimersByTimeAsync(2800);
+		await vi.advanceTimersByTimeAsync(30_300);
 		compacting = true; replay.model = large; replay.publish();
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
 		await vi.advanceTimersByTimeAsync(701);
@@ -405,10 +472,10 @@ describe("TSP composer model controls", () => {
 	});
 
 	it.each(["generation", "epoch"] as const)("never closes a late picker in a replacement %s", async change => {
-		const replay = delayedModelPicker(3000);
+		const replay = delayedModelPicker(30_500);
 		const scope = replay.snapshot();
 		const switching = switchModel(replay.session, small);
-		await vi.advanceTimersByTimeAsync(2700);
+		await vi.advanceTimersByTimeAsync(30_200);
 		if (change === "generation") replay.generation++;
 		else replay.mutate = snapshot => { snapshot.epoch++; };
 		replay.publish();
