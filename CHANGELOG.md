@@ -4,17 +4,31 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Improved
+## [0.7.13] - 2026-11-10
+
+visual-omp 0.7.13 keeps the omp screen closed while the app works with omp, keeps omp's questions in the chat and marks helper conversations clearly. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Improved:** **Helper conversations are clearly marked.** A teal band names the helper and the chat it came from, with a Back button, and the message box names the helper that receives your message.
+- **Fixed:** **Fewer interruptions from the omp screen.** App actions such as switching models and rewinding no longer open the omp screen automatically, and questions shown in chat stay there.
+- **Fixed:** Choosing a thinking level in a new chat applies it instead of reporting an error, and finishing a question form closes it without the chat jumping.
+- **Fixed:** Links in replies to local files now open in the side panel, including paths with spaces. File rows show paths relative to the chat's folder for files inside it.
+
+### Detailed changes
+
+#### Improved
 
 - A helper's conversation now opens under a teal band that names the helper and its parent chat, with a button to return to that chat. Its message box names the helper receiving the message, and the chat header labels the original chat as Parent chat.
 
-### Fixed
+#### Fixed
 
 - The omp screen no longer opens automatically during app actions such as switching models or rewinding a chat. Other automatic openings wait 300 ms so brief screens do not interrupt the chat. Screens you explicitly request still open immediately.
 - Questions from omp with multiline titles, such as the offer to spend a saved rate-limit reset, stay in the chat's question card without also opening the omp screen. Dialogs that could match a chat question no longer open the omp screen automatically; you can still open them on request.
 - Finishing a question form closes it in place, without the chat jumping or scrolling back.
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
 - File rows show project-relative paths for files inside the chat's folder, including projects opened through symlinks or macOS folder aliases, while files elsewhere keep their absolute paths.
+- Links in replies to existing files in the chat's folder, including paths with spaces, now open the file in the side panel.
 - Stats results omit the redundant Open dashboard line when the dashboard URL is already available.
 - Choosing a thinking level in a new chat no longer reports a switching error when omp first initializes the setting to Off before selecting the requested level.
 
