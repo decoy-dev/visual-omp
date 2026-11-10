@@ -12,11 +12,11 @@ import { grantFileSource } from "../../features/panes/file-source";
 import { relativePath } from "@shared/outputPaths";
 import { fileRefOf, textRefs } from "./fileRefs";
 
-/** Links, code blocks and their headers, math and links already made hold no references. */
+/** Anchor labels, code blocks and their headers, math and links already made hold no text references. */
 const SKIP = "a, pre, .tr-code-head, math, .katex, .tr-file, .vomp-diagram, .vomp-chart, .vomp-remote-image";
 
 export interface Occurrence {
-	/** The text node holding the reference, or the inline `code` element that is all reference. */
+	/** The text node holding the reference, an inline `code` element, or a local Markdown anchor. */
 	node: Text | Element;
 	start: number;
 	end: number;
@@ -27,8 +27,22 @@ export interface Occurrence {
 export function occurrences(root: DocumentFragment): Occurrence[] {
 	const found: Occurrence[] = [];
 	const codes = new Set<Element>();
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
 	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		if (node instanceof Element) {
+			if (node.matches("a[href]") && !node.parentElement?.closest(SKIP)) {
+				const href = node.getAttribute("href")!;
+				// Marked URL-encodes spaces, including CommonMark angle-bracket destinations.
+				// Decode only here; main receives the same literal paths as file chips.
+				if (!/^[#?]/.test(href)) {
+					try {
+						const ref = fileRefOf(decodeURIComponent(href), true);
+						if (ref) found.push({ node, start: 0, end: 0, ref });
+					} catch { /* A malformed escape keeps the original link behavior. */ }
+				}
+			}
+			continue;
+		}
 		const text = node as Text;
 		const parent = text.parentElement;
 		if (!parent || parent.closest(SKIP)) continue;
@@ -177,6 +191,13 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 	const rows = new Set<Element>();
 	// Last first, so splitting a text node keeps the offsets of earlier references in it.
 	for (const { occurrence, resolved } of found.reverse()) {
+		if (occurrence.node instanceof HTMLAnchorElement) {
+			// Preserve the authored label and link presentation; use the file-chip open handler.
+			occurrence.node.dataset.filePath = resolved.path;
+			occurrence.node.dataset.fileKind = resolved.kind;
+			occurrence.node.title = resolved.path;
+			continue;
+		}
 		const kind = kindOf(resolved);
 		const block = blockOf(occurrence);
 		if (block && perBlock.get(block) === 1 && holdsOnly(block, occurrence)) {

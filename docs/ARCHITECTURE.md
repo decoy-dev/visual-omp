@@ -1189,7 +1189,7 @@ The native bridge is not a same-user process isolation boundary. A leaked URL to
 ## Process boundaries
 - **Main** owns every subprocess, file system access and network socket. Renderer is sandboxed,
   context-isolated, and reaches main only through the typed preload API (`window.vomp`).
-- Model/Markdown content is rendered without Node access; links open externally via main.
+- Model/Markdown content is rendered without Node access. Web and mail links open externally via main; existing local reply targets open in the chat's Files pane.
 - One writer per session: a session live in another omp process opens read-only (from its JSONL).
 
 IPC requests are accepted only from the app's configured main-frame document. Browser permission handlers deny all requests except audio capture from that document, and Preview cannot open popup windows. Packaged builds ignore `ELECTRON_RENDERER_URL`. The loopback relay accepts origin-free omp connections and browser connections from the app's exact origin, limits frames to 16 MiB and never reopens an ended room. omp 18.14 normalizes relay URLs to an origin, so it cannot carry a private path token without an upstream protocol change.
@@ -1232,6 +1232,13 @@ matching regular file or folder. Bounded directory handles skip hidden entries a
 oversized or incomplete listings, never recurse and never read file contents. `FILE_REF_LIMITS` caps
 folder entries and total directory reads. The renderer retains the abbreviated label and uses the
 resolved absolute path for opening, its tooltip and Copy path.
+
+Local Markdown anchors join that same reference pass. Their href is percent-decoded once before
+`fs:resolveRefs`, including relative paths and absolute POSIX paths containing spaces. A resolved
+anchor retains its authored label and uses the file-chip click handler and originating chat's
+Files viewer. HTTP(S) and mail links retain external dispatch. Missing local targets retain their
+anchor and external dispatch, which main ignores because the href has no allowed external scheme.
+`file:` URLs remain unsupported by the Markdown renderer.
 
 Git review: `features/panes/git-store.ts` shares live `git:status` between the Changes pane and its uncommitted-only badge. Working diffs follow `git:changed`; `commit-history.ts` retains loaded history across clean/dirty views and commit selection, and refreshes it only when status reports a new HEAD. `git:log` accepts a folder, optional `limit` (default 30, maximum 100), `skip`, and a verified hexadecimal `head` snapshot, returning history with full and short SHAs, subjects, bodies, author names, ISO author dates and first-parent change totals. Every renderer page requests 30 commits against the same immutable SHA, so a commit between requests cannot shift the page boundary. A new HEAD refreshes the previously loaded window through bounded pages; unchanged-HEAD file events reuse existing rows without recomputing statistics. Main uses NUL-framed metadata plus `--shortstat`, preserving separators in commit messages; an unborn HEAD returns an empty list. `git:diff` retains its work-tree behavior unless `commit` is supplied. Main accepts 7-64 hexadecimal characters and verifies the object as a commit with `rev-parse --verify --end-of-options`, supporting SHA-1, SHA-256 and detached HEAD. It compares the commit with its first parent or the repository's empty tree. Historical diffs reuse `GitDiff` and the renderer's existing file viewer, with Discard, comments and Review code unavailable. Commit metadata wraps in a bounded scrolling region while Back remains visible. Initial line tokenization and emphasis use only the displayed line budget; Show all lines expands that budget.
 

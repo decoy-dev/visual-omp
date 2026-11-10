@@ -14,6 +14,24 @@ afterEach(async () => {
 });
 
 describe("resolveFileRefs", () => {
+	it("resolves decoded reply-link paths inside a chat folder containing spaces and an at sign", async () => {
+		const cwd = join(dir, "Drive-example@example.test", "Drive Files", "Ads");
+		const card = join(cwd, "Folder Name", "08-card.png");
+		await mkdir(join(cwd, "Folder Name"), { recursive: true });
+		for (const file of [card, join(cwd, "notes.md"), join(cwd, "literal%20name.md")]) await writeFile(file, "fixture");
+		expect(await resolveFileRefs({
+			refs: ["Folder Name/08-card.png", "./notes.md", card, "literal%20name.md", "missing card.png", "Folder%20Name/08-card.png"],
+			bases: [cwd],
+		}, dir)).toEqual([
+			{ path: card, kind: "file" },
+			{ path: join(cwd, "notes.md"), kind: "file" },
+			{ path: card, kind: "file" },
+			{ path: join(cwd, "literal%20name.md"), kind: "file" },
+			null,
+			null,
+		]);
+	});
+
 	it("never resolves out reply URLs as local files", async () => {
 		if (process.platform !== "win32") {
 			await mkdir(join(dir, "out:"), { recursive: true });
