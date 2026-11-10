@@ -4,6 +4,25 @@ export default {
     { id: "second", name: "Second fixture", reasoning: false },
     { id: "thinker", name: "Thinking fixture", reasoning: true, thinking: { mode: "effort", efforts: ["low", "medium", "high", "max"], defaultLevel: "medium", requiresEffort: false } },
   ],
+  extensions: [{
+    name: "reset-question",
+    source: `export default function (omp) {
+  omp.registerCommand("reset-question", {
+    description: "Show a synthetic saved-reset question for the release tour.",
+    handler: async (_args, ctx) => {
+      const choice = await ctx.ui.select(
+        "Spend a saved Claude rate-limit reset?\\nwork@example.com (Example): a saved reset covers Claude 5h with about 1h45m left.",
+        [
+          { label: "Yes", description: "Redeem now and remember yes for future eligible Claude resets." },
+          { label: "No", description: "Do not auto-redeem saved Claude resets." },
+        ],
+      );
+      ctx.ui.notify("Reset question choice: " + (choice ?? "Cancelled") + ". No reset was redeemed.", "info");
+    },
+  });
+}
+`,
+  }],
   chats: [
     {
       id: "model-switching", title: "01 Switching models keeps the omp screen closed", pane: "files",
@@ -46,11 +65,21 @@ export default {
       id: "form-finish", title: "04 Finishing a form question", pane: "files",
       prompts: [[
         "fixture notes",
-        "This check depends on the in-progress form-close fix and requires omp 18.18.3 or later. Preparation cannot keep a question open, so ask it in the app.",
+        "Check that the question card closes without jumping after the last answer. This check requires omp 18.18.3 or later. Preparation cannot keep a question open, so ask it in the app.",
         "",
         "1. Send fixture form. Answer Release channel, Platforms to check, Release note headline and Review depth in the question card.",
         "2. Watch the card as you send the last answer. It should close without jumping or briefly changing its position or size.",
         "3. Check the ask row records all four answers and the chat accepts another fixture notes message. Repeat fixture form if you need to watch the last answer again.",
+      ].join("\n")],
+    },
+    {
+      id: "omp-question", title: "05 omp questions stay in the chat card", pane: "files",
+      prompts: [[
+        "fixture notes",
+        "Check a multi-line omp question with described options. The tour's /reset-question extension uses a synthetic account and only reports your choice. It redeems no reset and changes no account preference. This check requires omp 18.18.6 or later.",
+        "",
+        "1. Type /reset-question and press Enter. A question card should ask Spend a saved Claude rate-limit reset? with the work@example.com (Example) detail and described Yes and No options. The omp screen should stay closed.",
+        "2. Answer Yes in the card. The card should close and a notice should say Reset question choice: Yes. No reset was redeemed.",
       ].join("\n")],
     },
   ],

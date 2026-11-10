@@ -72,15 +72,15 @@ test("0.7.12 large-media tour checks spaced reply links and files in one spaced 
   assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
 });
 
-test("0.7.13 prepares four focused chats with local model choices and explicit interaction checks", () => {
+test("0.7.13 prepares five focused chats with local model choices and explicit interaction checks", () => {
   assert.equal(latest.version, parseArguments([]).release);
-  assert.deepEqual(latest.chats.map(chat => chat.id), ["model-switching", "helper-conversations", "files-and-commands", "form-finish"]);
+  assert.deepEqual(latest.chats.map(chat => chat.id), ["model-switching", "helper-conversations", "files-and-commands", "form-finish", "omp-question"]);
   assert.deepEqual(latest.models.map(({ id, name, reasoning }) => ({ id, name, reasoning })), [
     { id: "second", name: "Second fixture", reasoning: false },
     { id: "thinker", name: "Thinking fixture", reasoning: true },
   ]);
   assert.deepEqual(latest.models[1].thinking, { mode: "effort", efforts: ["low", "medium", "high", "max"], defaultLevel: "medium", requiresEffort: false });
-  const [models, helpers, files, form] = latest.chats;
+  const [models, helpers, files, form, question] = latest.chats;
   for (const [index, chat] of latest.chats.entries()) {
     assert.ok(chat.title.startsWith(`${String(index + 1).padStart(2, "0")} `));
     for (const prompt of chat.prompts) {
@@ -96,9 +96,10 @@ test("0.7.13 prepares four focused chats with local model choices and explicit i
   assert.deepEqual(files.files, previousMedia.files);
   assert.equal(files.expectedReply, previousMedia.expectedReply);
   assert.match(files.prompts[0], /^fixture bigmedia\n.*Large Media Files\/Large notes\.txt.*No row should show the full scratch path.*Click one file row.*\/stats.*Copy URL.*no duplicate Open dashboard.*Restart omp.*Settings > Models & roles.*While the model list loads.*isn't available.*does not establish this timing/s);
-  assert.match(form.prompts[0], /depends on the in-progress form-close fix.*omp 18\.18\.3.*cannot keep a question open.*fixture form.*Release channel.*Platforms to check.*Release note headline.*Review depth.*last answer.*close without jumping.*all four answers/s);
+  assert.match(form.prompts[0], /question card closes without jumping.*omp 18\.18\.3.*cannot keep a question open.*fixture form.*Release channel.*Platforms to check.*Release note headline.*Review depth.*last answer.*close without jumping.*all four answers/s);
+  assert.match(question.prompts[0], /\/reset-question.*synthetic account.*redeems no reset.*omp 18\.18\.6.*Type \/reset-question.*question card.*work@example\.com.*described Yes and No.*omp screen should stay closed.*Answer Yes.*Reset question choice: Yes\. No reset was redeemed/s);
   const layout = tourLayout(latest.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
-  assert.equal(layout.tabs.length, 4);
+  assert.equal(layout.tabs.length, 5);
   assert.equal(layout.docks["tour-helper-conversations"].pane, "tasks");
 });
 
@@ -253,6 +254,35 @@ test("release configuration adds reasoning, cache metadata and two isolated skil
   assert.equal(models.find(model => model.id === "cache").promptCache.short, 12);
   for (const skill of manifest.skills) assert.match(await readFile(join(env.PI_CODING_AGENT_DIR, "skills", skill.name, "SKILL.md"), "utf8"), new RegExp(`name: ${skill.name}`));
   assert.equal(config.startup.checkUpdate, false);
+});
+
+test("0.7.13 writes only its synthetic reset-question extension into the scratch agent directory", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-extension-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const env = await initializeFixture(root, "http://127.0.0.1:12345/v1");
+  await configureTour(env, latest);
+  assert.deepEqual(latest.extensions.map(extension => extension.name), ["reset-question"]);
+  const path = join(env.PI_CODING_AGENT_DIR, "extensions", "reset-question.ts");
+  const source = await readFile(path, "utf8");
+  assert.equal(source, latest.extensions[0].source);
+  const { default: extension } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const commands = new Map();
+  extension({ registerCommand: (name, options) => commands.set(name, options) });
+  assert.deepEqual([...commands.keys()], ["reset-question"]);
+  const notifications = [];
+  await commands.get("reset-question").handler("", { ui: {
+    select: async (title, options) => {
+      assert.equal(title, "Spend a saved Claude rate-limit reset?\nwork@example.com (Example): a saved reset covers Claude 5h with about 1h45m left.");
+      assert.deepEqual(options, [
+        { label: "Yes", description: "Redeem now and remember yes for future eligible Claude resets." },
+        { label: "No", description: "Do not auto-redeem saved Claude resets." },
+      ]);
+      return "Yes";
+    },
+    notify: (...args) => notifications.push(args),
+  } });
+  assert.deepEqual(notifications, [["Reset question choice: Yes. No reset was redeemed.", "info"]]);
+  await assert.rejects(configureTour(env, { extensions: [{ name: "../escape", source: "" }] }), /Invalid tour extension name/);
 });
 
 test("the scratch update command refuses once, succeeds on retry and never changes the installed version", async t => {

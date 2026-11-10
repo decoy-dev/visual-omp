@@ -18,6 +18,12 @@ export async function configureTour(env, manifest) {
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "SKILL.md"), `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\n---\n\n${skill.body}\n`);
   }
+  for (const extension of manifest.extensions ?? []) {
+    if (!/^[a-z0-9-]+$/.test(extension.name)) throw new Error("Invalid tour extension name.");
+    const folder = join(env.PI_CODING_AGENT_DIR, "extensions");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, `${extension.name}.ts`), extension.source);
+  }
 }
 
 /**
