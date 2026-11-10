@@ -539,7 +539,7 @@ it("returns from narrow drawer Done to the chat composer with keyboard focus", a
 	assertSendableWithoutScreen();
 });
 
-it("releases the claim immediately for an unsupported document layout", async () => {
+it("releases the unsupported layout claim but waits for Open omp screen", async () => {
 	messages = loadFixtureRecording("btw-ask").messages;
 	while (cursor < 4) receive();
 	await act(async () => root.render(createElement(Harness)));
@@ -552,7 +552,15 @@ it("releases the claim immediately for an unsupported document layout", async ()
 		expect(projection?.supported).toBe(false);
 		for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	});
-	await act(async () => { await vi.advanceTimersByTimeAsync(301); });
+	await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+	expect(opened).toEqual([]);
+	expect(useApp.getState().terminalTabId).toBeNull();
+	await act(async () => { for (const listener of btwUpdates) listener(state); });
+	expect(opened).toEqual([]);
+	expect(useApp.getState().terminalTabId).toBeNull();
+	const open = [...element.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open omp screen");
+	expect(open).toBeDefined();
+	await act(async () => open!.click());
 	expect(opened).toEqual([tabId]);
 	expect(useApp.getState().terminalTabId).toBe(tabId);
 	expect(document.querySelector(".tsp-screen")?.textContent).toContain("What is the first fixture side question?");
