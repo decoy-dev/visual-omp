@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Improved
+
+- A helper's conversation now opens under a teal band that names the helper and its parent chat, with a button to return to that chat. Its message box names the helper receiving the message, and the chat header labels the original chat as Parent chat.
+
 ### Fixed
 
 - Settings waits for the model list before warning that an assigned model is unavailable, including after omp updates.
