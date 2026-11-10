@@ -639,6 +639,9 @@ entries report their recorded effort without inventing a classifier marker. Tool
 and optional status item share `ThinkingLabel`, including accessible names and neutral Low emphasis.
 The menu and action confirmation use the configured selector reader, including when leaving Auto
 for the effort it already displays. Repeating a selector ends the cycle with an unsupported-level explanation.
+Before any configured-selector receipt, omp can display Off while its selector is unset. The first
+cycle materializes Off without changing that glyph. Its first matching collab receipt counts as
+progress once; later duplicate receipts do not. The per-step confirmation deadline remains 2.5 seconds.
 Both controls refuse pending approvals with a distinct message, and waits stop after a host,
 room generation or protocol epoch change. Classic model switching and Shift+Tab cycling retain
 their existing paths.

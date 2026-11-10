@@ -468,6 +468,61 @@ describe("TSP composer model controls", () => {
 		expect(replay.events.every(event => event.ev === "action" && event.act === "thinking.cycle")).toBe(true);
 	});
 
+	it.each(["inline", "separate"] as const)("continues from the first Off receipt without a glyph change in a %s effort control", async shape => {
+		const replay = new Replay("thinking-cycle");
+		const original = replay.snapshot().surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.k === "effort")!;
+		const targetId = shape === "separate" ? "h.bar/effort" : original.id;
+		const levels = ["off", "auto", "minimal", "low", "medium", "high"] as const;
+		let displayed: typeof levels[number] = "off";
+		let step = 0;
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.id === original.id && node.k === "effort") node.p = { ...node.p, level: displayed };
+				if (shape === "separate" && node.c) node.c = node.c.map(child => child.id === original.id ? {
+					id: targetId, k: "row", p: { role: "omp.composer.effort", actions: { click: "thinking.cycle" } },
+					c: [{ id: `${targetId}/glyph`, k: "effort", p: { level: displayed } }],
+				} : child);
+			}
+		};
+		replay.consume = event => {
+			expect(event).toEqual({ ev: "action", sf: "s:1", id: targetId, act: "thinking.cycle" });
+			replay.events.push(event);
+			const next = levels[step++]!;
+			setTimeout(() => { displayed = next; replay.thinkingSelector = next; replay.publish(); }, step === 1 ? 1200 : 20);
+		};
+		let finished = false;
+		const changing = setThinking(replay.session, "high", []).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(1199);
+		expect(replay.events).toHaveLength(1);
+		expect(replay.thinkingSelector).toBeNull();
+		await vi.advanceTimersByTimeAsync(2);
+		expect(replay.thinkingSelector).toBe("off");
+		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("off");
+		expect(replay.events).toHaveLength(2);
+		expect(finished).toBe(false);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(true);
+		await expect(settle(changing, 1000)).resolves.toBe(true);
+		expect(replay.events).toHaveLength(6);
+		expect(replay.thinkingSelector).toBe("high");
+		expect(bridge.toast).not.toHaveBeenCalled();
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
+	it.each([null, "off"])("does not keep cycling on duplicate Off receipts after starting with %s", async initial => {
+		const replay = new Replay("thinking-cycle");
+		replay.thinkingSelector = initial; replay.publish();
+		replay.consume = event => {
+			replay.events.push(event);
+			replay.thinkingSelector = "off";
+			replay.thinkingEvent = { thinkingLevel: "off" };
+			replay.publish();
+		};
+		await expect(settle(setThinking(replay.session, "high", []), 3000)).resolves.toBe(false);
+		expect(replay.events).toHaveLength(initial === null ? 2 : 1);
+		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+		expect(bridge.listeners.size).toBe(0); expect(replay.listeners.size).toBe(0);
+	});
+
 	it.each(["timeout", "generation", "epoch", "writer"] as const)("releases a thinking cycle drive after %s failure", async failure => {
 		const replay = new Replay("thinking-cycle");
 		const scope = replay.snapshot();

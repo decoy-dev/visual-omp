@@ -204,6 +204,7 @@ export async function setThinkingSemantic(session: SessionController, target: Th
 		const visited = new Set<ThinkingLevel>();
 		while (true) {
 			const current = read();
+			const beforeSelector = session.getSnapshot().guest?.thinkingSelector ?? null;
 			if (current === target) return true;
 			if (current === null) throw new Error(i18n.t("session:thinking.unavailable"));
 			if (visited.has(current)) throw new Error(i18n.t("session:thinking.unsupportedLevel", { level: i18n.t(`session:thinking.levels.${target}.label`) }));
@@ -213,7 +214,10 @@ export async function setThinkingSemantic(session: SessionController, target: Th
 			if (!effort || !composer || !watch.available) throw new OmpBusyError();
 			releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
 			await send(watch, { ev: "action", sf: composer.sf, id: effort.id, act: TSP_ACTIONS.thinkingCycle });
-			if (!await waitFor(watch, () => read() !== current, 2500)) throw new Error(i18n.t("session:thinking.failed"));
+			// An unset selector can paint Off; its first cycle initializes Off without moving the glyph.
+			const firstReceipt = () => beforeSelector === null && session.getSnapshot().guest?.thinkingSelector === current;
+			if (!await waitFor(watch, () => read() !== current || firstReceipt(), 2500)) throw new Error(i18n.t("session:thinking.failed"));
+			if (firstReceipt()) visited.delete(current);
 		}
 	} finally { offDrive(); releaseDrive?.(); watch.dispose(); }
 }
