@@ -81,6 +81,69 @@ it.each((["unmatched", "ambiguous", "unavailable", "answering"] as const).flatMa
 	expect(autoOpened.tabId).toBeNull();
 	expect(fake.invoke).not.toHaveBeenCalled();
 });
+it.each((["matched", "ambiguous", "unavailable", "settling", "answering"] as const).flatMap(status => (["layer", "dock"] as const).map(place => ({ status, place }))))("never auto-opens a $status hook in $place without a native consumer", async ({ status, place }) => {
+	fake.snapshot = hookSnapshot(status, place);
+	await render();
+	await advance(1_000);
+	expect(fake.open).not.toHaveBeenCalled();
+	expect(autoOpened.tabId).toBeNull();
+});
+function unclaimableHook(shape: "unsupported" | "empty", place: "layer" | "dock", mode: "inline" | "screen"): TspHostSnapshot {
+	const value = hookSnapshot("ambiguous", place);
+	value.surfaces[0]!.open.mode = mode;
+	const hook = value.surfaces[0]!.document.c![0]!.c![0]!;
+	if (shape === "unsupported") hook.p = { ...hook.p, role: "omp.overlay.hook-future" };
+	else hook.c = [{ id: "pick", k: "picker", p: { items: [] } }];
+	return value;
+}
+
+it.each((["unsupported", "empty"] as const).flatMap(shape => (["layer", "dock"] as const).flatMap(place => (["inline", "screen"] as const).map(mode => ({ shape, place, mode })))))("keeps an ambiguous $shape hook in $place closed on a $mode surface while preserving explicit access", async ({ shape, place, mode }) => {
+	fake.snapshot = unclaimableHook(shape, place, mode);
+	await render();
+	await advance(1_000);
+	expect(fake.open).not.toHaveBeenCalled();
+	releaseClaims.push(screenActivity.hold(fake.snapshot, "request"));
+	await render(false);
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
+
+it.each(["layer", "dock"] as const)("allows an explicit request to view an ambiguous %s hook", async place => {
+	fake.snapshot = hookSnapshot("ambiguous", place);
+	releaseClaims.push(screenActivity.hold(fake.snapshot, "request"));
+	await render(false);
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
+
+it("keeps a manually opened ambiguous hook screen open", async () => {
+	fake.terminal = "tab";
+	fake.snapshot = hookSnapshot("ambiguous", "layer");
+	await render();
+	expect(fake.close).not.toHaveBeenCalled();
+	expect(fake.open).not.toHaveBeenCalled();
+});
+
+it("rechecks ambiguity at the settle deadline and settles again after an authoritative unmatched result", async () => {
+	fake.snapshot = hookSnapshot("unmatched", "layer");
+	await render(false);
+	await advance(299);
+	fake.snapshot = { ...fake.snapshot!, revision: 2, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "ambiguous" }] };
+	await render(false);
+	await advance(1_000);
+	expect(fake.open).not.toHaveBeenCalled();
+	fake.snapshot = { ...fake.snapshot!, revision: 3, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }] };
+	await render(false);
+	await advance(299);
+	expect(fake.open).not.toHaveBeenCalled();
+	await advance(1);
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
+
+it("still auto-opens unrelated unclaimed content beside an ambiguous hook", async () => {
+	fake.snapshot = hookSnapshot("ambiguous", "dock");
+	fake.snapshot.surfaces[0]!.document.c = [...fake.snapshot.surfaces[0]!.document.c!, { id: "layer", k: "col", c: [{ id: "unrelated", k: "picker", p: { title: "Models", items: [{ id: "model", label: "Example model" }] } }] }];
+	await render();
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
 
 it("auto-opens the generic hook after the last visible native consumer releases it", async () => {
 	fake.snapshot = hookSnapshot("unmatched", "layer"); claimHook(); await render();

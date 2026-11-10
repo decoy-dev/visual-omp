@@ -927,8 +927,10 @@ generation, protocol epoch and actual candidate surface/node ids; permanent dock
 selection, progress, labels and repaint sequences do not define a new candidate.
 Supported hook dialogs are claimed while a mounted visible native `OmpDialogCard` presents them,
 with the same public props and presentation as classic. Matched hooks use the visible collab
-question card's exact request ownership. Without an active presentation claim, the generic omp
-screen retains the hook and its arbitration restrictions. Disabled options remain inert under
+question card's exact request ownership. Automatic opening also excludes hooks whose arbitration
+status is matched, ambiguous, unavailable, settling or answering, even without a mounted native
+consumer. Only an authoritative unmatched hook can trigger an automatic sheet. Explicit View actions
+and the palette still open the hook with its arbitration restrictions. Disabled options remain inert under
 pointer and double-click input, and keyboard navigation skips them. Other uncertain arbitration
 states remain display-only in the native card. A local answer sends one guarded transaction:
 item-id activation, full-range UTF-16 edit followed by submit, or declared cancel/close with Escape
@@ -995,8 +997,12 @@ exclude requests observed in an earlier scope without clearing the visible colla
 A transient disconnect preserves those visible requests until welcome, following the existing
 collab lifecycle. If a delayed TSP snapshot makes a request's epoch uncertain, diagnostic matching
 stays unavailable while the original collab `reqId` answer path remains available. Matching requires
-mutual uniqueness of title, field and option data. A matched node remains in settling state until
-both its request and node have ended. Snapshots expose `questionMatches`, including diagnostic
+mutual uniqueness of title, field and option data. Select titles include the native picker's subtitle
+or the selector card's detail node, because omp splits a multi-line question across those properties
+while collab retains the complete title string. Whitespace normalization preserves all detail text,
+including account distinctions; option labels and available descriptions must still agree.
+A matched node remains in settling state until both its request and node have ended.
+Snapshots expose `questionMatches`, including diagnostic
 `nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock
 and retain first observations through completion; they do not establish input authority.
 

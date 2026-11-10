@@ -43,15 +43,15 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const requestVersion = useScreenActivity(activityScope, "request");
 	const settle = useRef<ScreenSettle | null>(null);
 	settle.current ??= new ScreenSettle();
-	const currentKey = useRef<() => string | null>(() => null);
-	currentKey.current = () => {
+	const currentKey = useRef<(automatic?: boolean) => string | null>(() => null);
+	currentKey.current = (automatic = false) => {
 		const current = controller?.getSnapshot();
 		const latest = store.getSnapshot();
 		const app = useApp.getState();
 		if (!scope || !current || (current.mode !== "live" && !(current.mode === "starting" && (screenActivity.has(scope, "request") || autoOpened.tabId === tabId))) || current.readOnly || current.host?.hostId !== scope.hostId || current.host.generation !== scope.generation
 			|| !latest || latest.lifecycle !== "live" || latest.closing || latest.hostId !== scope.hostId || latest.generation !== scope.generation || latest.epoch !== scope.epoch
 			|| app.view !== "chat" || app.activeTabId !== tabId && app.splitTabId !== tabId || !currentTabPresentationVisible(tabId)) return null;
-		return screenCandidateKey(latest, currentPresentationConsumers(scope.hostId, scope.epoch));
+		return screenCandidateKey(latest, currentPresentationConsumers(scope.hostId, scope.epoch), automatic);
 	};
 	const asking = Boolean(view?.guest?.uiRequest || view?.guest && [...view.guest.activeTools.values()].some(tool => tool.toolName === "ask"));
 	const overlays = tui?.overlays ?? 0;
@@ -68,7 +68,7 @@ function TabWatch({ tabId }: { tabId: string }) {
 		if (!tsp) return;
 		const observe = () => {
 			const key = currentKey.current();
-			settle.current!.observe(scope && screenActivity.has(scope, "drive") ? null : key, Date.now());
+			settle.current!.observe(scope && screenActivity.has(scope, "drive") ? null : currentKey.current(true), Date.now());
 			if (key === null) closeAutomaticSheet(tabId);
 		};
 		const off = [store.subscribe(observe), ...(controller ? [controller.subscribe(observe)] : []), screenActivity.subscribe(observe), subscribePresentationConsumers(observe), useApp.subscribe(observe)];
@@ -94,7 +94,9 @@ function TabWatch({ tabId }: { tabId: string }) {
 				const explicit = screenActivity.allowsRequest(scope, scope.revision, key);
 				screenActivity.consumeRequests(scope, scope.revision);
 				if (useApp.getState().terminalTabId) return;
-				const remaining = explicit ? 0 : settle.current!.remaining(key, Date.now());
+				const automaticKey = explicit ? key : currentKey.current(true);
+				if (automaticKey === null) { settle.current!.observe(null, Date.now()); return; }
+				const remaining = explicit ? 0 : settle.current!.remaining(automaticKey, Date.now());
 				if (remaining > 0) { timer = window.setTimeout(attempt, remaining); return; }
 				autoOpened.tabId = tabId;
 				useApp.getState().openTerminal(tabId);

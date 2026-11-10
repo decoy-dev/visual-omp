@@ -82,8 +82,12 @@ export function hookQuestions(surfaces: readonly (TspSurfaceSnapshot & { documen
 			const kind = node.k === "picker" || node.p?.role === TSP_ROLES.hookSelect || node.p?.role === TSP_ROLES.hookConfirm ? "select" : node.p?.role === TSP_ROLES.hookEditor ? "editor" : "local";
 			const items = picker?.k === "picker" ? picker.p?.items : children.filter(child => child.k === "item").map(child => child.p!);
 			const titleNode = children.find(child => child.p?.role?.endsWith(".title") || child.p?.role?.endsWith(".eyebrow"));
-			const title = node.k === "overlay" ? questionText(node.p?.head) : node.k === "picker" ? node.p?.title ?? "" : "";
-			result.push({ surfaceId: surface.open.id, nodeId: node.id, kind, title: title || (titleNode?.k === "text" ? questionText(titleNode.p?.spans) : ""), options: items?.map(item => ({ label: questionText(item.label), ...(item.detail ? { description: questionText(item.detail) } : {}) })), field: field?.p?.text });
+			const title = node.k === "overlay" || node.k === "card" ? questionText(node.p?.head) : node.k === "picker" ? node.p?.title ?? "" : "";
+			// Selectors split the original question between their heading and detail.
+			const detailNode = kind === "select" ? node.c?.find(child => child.k === "text" && child.id === `${node.id}.detail`) : undefined;
+			const detail = node.k === "picker" ? questionText(node.p?.subtitle) : detailNode?.k === "text" ? questionText(detailNode.p?.spans) || detailNode.p?.text || "" : "";
+			const fullTitle = [title || (titleNode?.k === "text" ? questionText(titleNode.p?.spans) : ""), detail].filter(Boolean).join("\n");
+			result.push({ surfaceId: surface.open.id, nodeId: node.id, kind, title: fullTitle, options: items?.map(item => ({ label: questionText(item.label), ...(item.detail ? { description: questionText(item.detail) } : {}) })), field: field?.p?.text });
 		}
 	}
 	return result;

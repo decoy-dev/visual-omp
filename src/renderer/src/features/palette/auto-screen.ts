@@ -1,6 +1,7 @@
 import { openOverlay, screenSurface, unclaimed, type TspNodeTarget, type TspPresentationClaims, type TspSurfaces } from "@shared/tsp/view-state";
 import { unclaimedDockPanels } from "@shared/tsp/dock-panels";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { TspNode } from "@shared/tsp";
 
 export const SCREEN_SETTLE_MS = 300;
 
@@ -22,9 +23,37 @@ export function unpresentedScreenKey(surfaces: TspSurfaces, consumers: TspPresen
 	for (const dock of unclaimedDockPanels(surfaces, consumers)) tokens.push(nodeKey("dock", dock));
 	return tokens.length ? JSON.stringify(tokens.sort()) : null;
 }
+/** Arbitration excludes automatic candidates even when no native card can claim them. */
+function withoutQuestions(node: TspNode, excluded: ReadonlySet<string>): TspNode | null {
+	if (excluded.has(node.id)) return null;
+	let children: TspNode[] | undefined;
+	for (const [index, child] of (node.c ?? []).entries()) {
+		const next = withoutQuestions(child, excluded);
+		if (next !== child) children ??= node.c!.slice(0, index);
+		if (children && next) children.push(next);
+	}
+	return children ? { ...node, c: children } as TspNode : node;
+}
 
-export function screenCandidateKey(snapshot: TspHostSnapshot, consumers: TspPresentationClaims): string | null {
-	const key = unpresentedScreenKey(snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation), consumers);
+export function screenCandidateKey(snapshot: TspHostSnapshot, consumers: TspPresentationClaims, automatic = false): string | null {
+	let surfaces = snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation);
+	let presented = consumers;
+	if (automatic && snapshot.questionMatches?.some(match => match.status !== "unmatched")) {
+		const guarded = new Map<string, ReadonlySet<string>>(consumers);
+		for (const match of snapshot.questionMatches) {
+			if (match.status === "unmatched") continue;
+			guarded.set(match.surfaceId, new Set([...(guarded.get(match.surfaceId) ?? []), match.nodeId]));
+		}
+		surfaces = surfaces.flatMap(surface => {
+			const excluded = guarded.get(surface.open.id);
+			if (!excluded) return [surface];
+			const document = withoutQuestions(surface.document, excluded);
+			return document ? [{ ...surface, document }] : [];
+		});
+		// Retain exact ids so screen-mode surfaces project any remaining regions individually.
+		presented = guarded;
+	}
+	const key = unpresentedScreenKey(surfaces, presented);
 	return key === null ? null : JSON.stringify([snapshot.hostId, snapshot.generation, snapshot.epoch, key]);
 }
 

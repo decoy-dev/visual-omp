@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { hookQuestions, matchQuestions, type CollabQuestionState, type HookQuestion } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
+import type { TspNode } from "../tsp";
+import type { TspSurfaceSnapshot } from "../tsp-host";
 
 const scope = { hostId: "host", generation: 1, epoch: 1 };
 const dialog: HookQuestion = { surfaceId: "s", nodeId: "hook", title: "Choose", kind: "select", options: [{ label: "Yes", description: "Continue" }, { label: "No" }] };
 const state: CollabQuestionState = { ...scope, revision: 1, connection: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Choose", options: [{ label: "Yes", description: "Continue" }, "No"] }] };
 
+const resetCases = (["Claude", "Codex"] as const).flatMap(provider => [1, 2].map(count => ({
+	provider,
+	count,
+	title: count === 1 ? `Spend a saved ${provider} rate-limit reset?` : `Spend ${count} saved ${provider} rate-limit resets?`,
+	lines: Array.from({ length: count }, (_, index) => provider === "Claude"
+		? `${index ? "personal" : "work"}@example.com (Example): 5h session-only reset covers Claude 5h with about 1h left.`
+		: `${index ? "personal" : "work"}@example.com (Example) is blocked by the Codex weekly limit for about 1h.`),
+	options: [{ label: "Yes", description: `Redeem now and remember yes for future eligible ${provider} resets.` }, { label: "No", description: `Do not auto-redeem saved ${provider} resets.` }],
+})));
+
+function resetFixture(value: typeof resetCases[number], shape: "picker" | "card") {
+	const items = value.options.map((option, index) => ({ id: String(index), label: option.label, detail: option.description }));
+	const node: TspNode = shape === "picker"
+		? { id: "hook", k: "picker", p: { title: value.title, subtitle: value.lines.join("\n"), noun: "options", size: "md", layout: "rows", preview: "none", query: null, items, selected: "0", total: 2, empty: "No matching options", actions: [{ id: "confirm", label: "Select", keys: ["enter"], primary: true }, { id: "close", label: "Close", keys: ["esc"], end: true }] } }
+		: { id: "hook", k: "card", p: { role: "omp.overlay.hook-select", head: value.title }, c: [
+			{ id: "hook.detail", k: "text", p: { spans: [{ t: value.lines.join("\n"), s: "accent" }], wrap: "word" } },
+			{ id: "hook.list", k: "list", p: { selected: "0" }, c: items.map(item => ({ id: `hook.list/${item.id}`, k: "item", p: { key: item.id, label: [{ t: item.label }], detail: [{ t: item.detail, s: "muted" }] } })) },
+		] };
+	const surface: TspSurfaceSnapshot & { documentGeneration: number } = { open: { id: "s", mode: "inline" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, focus: null, settled: [], document: { id: "s", k: "col", c: [{ id: "layer", k: "col", c: [node] }] } };
+	return { surface, request: { reqId: 9, kind: "select" as const, title: [value.title, ...value.lines].join("\n"), options: value.options } };
+}
 describe("hook-collab question arbitration", () => {
 	it("matches only mutual unique title, field and option data", () => {
 		expect(matchQuestions(scope, state, [dialog])).toMatchObject([{ status: "matched", reqId: 4 }]);
@@ -14,6 +37,22 @@ describe("hook-collab question arbitration", () => {
 		const request = { reqId: 7, kind: "editor" as const, title: "Choose", prefill: "draft" };
 		expect(matchQuestions(scope, { ...state, requests: [request] }, [editor])[0]?.status).toBe("matched");
 		expect(matchQuestions(scope, { ...state, requests: [request] }, [{ ...editor, field: "changed" }])[0]?.status).toBe("ambiguous");
+	});
+	// omp v18.18.6: agent-session.ts #confirmAutoRedeem and hook-selector.ts describe().
+	it.each(resetCases.flatMap(value => (["picker", "card"] as const).map(shape => ({ ...value, shape }))))("matches $count saved $provider resets in the native $shape with the full collab title", value => {
+		const { surface, request } = resetFixture(value, value.shape);
+		expect(matchQuestions(scope, { ...state, requests: [request] }, hookQuestions([surface], 1))).toMatchObject([{ status: "matched", reqId: 9 }]);
+	});
+	it.each(["picker", "card"] as const)("distinguishes saved resets from another pending question in a %s", shape => {
+		const { surface, request } = resetFixture(resetCases[0]!, shape);
+		const dialogs = hookQuestions([surface], 1);
+		const unrelated = { ...request, reqId: 10, title: "Continue with this task?" };
+		const otherAccount = { ...request, reqId: 11, title: request.title.replace("work@example.com", "another@example.com") };
+		expect(matchQuestions(scope, { ...state, requests: [unrelated, otherAccount, request] }, dialogs)).toMatchObject([{ status: "matched", reqId: 9 }]);
+		expect(matchQuestions(scope, { ...state, requests: [unrelated, otherAccount] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
+		expect(matchQuestions(scope, { ...state, requests: [request, { ...request, reqId: 12 }] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
+		const changedDescription = { ...request, options: request.options.map(option => ({ ...option, description: "A different consequence." })) };
+		expect(matchQuestions(scope, { ...state, requests: [changedDescription] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
 	});
 	it("handles collab first and TSP first without treating absence as identity", () => {
 		for (const first of ["collab", "tsp"]) {
