@@ -4,7 +4,17 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Fixed
+## [0.7.15] - 2026-11-10
+
+visual-omp 0.7.15 gives omp more time to open its model picker during the first model switch in a chat on slow machines. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** The first model switch in a chat waits longer for omp's model picker, avoiding a premature fallback on slow machines.
+
+### Detailed changes
+
+#### Fixed
 
 - The first model switch in a chat now waits up to 30 seconds for omp's model picker, giving slow machines more time before the app tries /switch.
 
