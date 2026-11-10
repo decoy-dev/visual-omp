@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### Fixed
 
 - A successful model switch no longer reports a failure when omp has already closed its model picker before the app tries to close it.
+- With omp 18.18.7 and later, a chat that falls behind during frequent helper updates rejoins automatically and keeps its transcript. Question cards close when omp marks their questions unavailable.
 
 ## [0.7.13] - 2026-11-10
 
