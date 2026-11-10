@@ -4,17 +4,31 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### New
+## [0.7.16] - 2026-11-10
+
+visual-omp 0.7.16 keeps the omp screen closed until you request it, adds Continue for main chats and offers Undo after a rewind. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** Main chats offer Continue to resume interrupted work, or to interrupt and continue a running reply, with omp 18.18.2 or later.
+- **Improved:** **Undo a chat rewind.** Undo returns the chat to its previous position and restores the draft the rewind replaced.
+- **Improved:** Grep steps highlight search patterns and show an empty search as a single "0 matches" line.
+- **Fixed:** **Open the omp screen on request.** Errors, task output and leftover menus no longer open the omp screen over the chat.
+- **Fixed:** Helper cards keep a readable width in narrow chats, with additional helpers available through Tasks.
+
+### Detailed changes
+
+#### New
 
 - Main chats offer Continue in the chat menu to resume interrupted work, or to interrupt and continue a running reply. It requires omp 18.18.2 or later.
 
-### Improved
+#### Improved
 
 - Grep steps highlight the parts of a search pattern, leave out a redundant "1 file" when one file was searched, and show an empty search as a single "0 matches" line.
 - After Rewind to here, Undo returns the chat to its previous position and restores the draft the rewind replaced. Undo remains available until you send a message or the chat changes.
 - The omp screen and classic terminal appear without a slide animation.
 
-### Fixed
+#### Fixed
 
 - The notice for a model change in the current chat only shows its keyboard shortcut with the app's key symbols, so it no longer appears as an empty box.
 - Chats no longer update a hidden handoff timer every second while no handoff is in progress.
