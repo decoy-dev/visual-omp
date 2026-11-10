@@ -347,7 +347,7 @@
 		"conversation": {
 			"title": "Helper conversation with {{name}}",
 			"parent": "From chat: {{title}}",
-			"back": "Back to",
+			"back": "Back",
 			"backNamed": "Back to {{title}}",
 			"announcement": "Helper conversation with {{name}}. {{status}}. Parent chat: {{title}}."
 		},

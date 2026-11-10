@@ -112,8 +112,8 @@ it("retains the full return target and helper destination for long names", async
 	const back = container.querySelector<HTMLButtonElement>("[data-helper-banner] button")!;
 	expect(back.getAttribute("aria-label")).toBe(`Back to ${parentTitle}`);
 	expect(back.title).toBe(`Back to ${parentTitle}`);
-	expect(back.querySelector(".shrink-0")?.textContent).not.toBeNull();
-	expect([...back.querySelectorAll("span")].some(span => span.textContent === "Back to " && span.classList.contains("shrink-0"))).toBe(true);
+	// The visible label stays short; the chat name lives in the accessible name and tooltip.
+	expect(back.textContent?.trim()).toBe("Back");
 	expect(container.querySelector("[data-helper-banner] p")?.getAttribute("title")).toBe(`From chat: ${parentTitle}`);
 });
 it("appends entries live and catches up once when the hidden window becomes visible", async () => {
