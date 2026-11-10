@@ -8,11 +8,17 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.13.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.14.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.18.6 or later on PATH for the 0.7.13 tour and Python 3 as `python3`. The 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.18.7 for the 0.7.14 tour and Python 3 as `python3`. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of the tour.
+
+To select a separate omp installation without changing the owner's installation, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. The tour uses that executable for preparation, saves it in `tour.json` and the scratch app profile's omp preference, and prepends its directory to the isolated PATH for generators and the development app. `--resume` reuses the saved executable and PATH selection. Without an absolute executable path, PATH keeps its existing behavior. For the prepared 18.18.7 binary:
+
+```sh
+npm run tour -- --prepare-only --omp /tmp/omp-18.18.7-bin/omp
+```
 
 ### What the command prepares
 
@@ -23,6 +29,15 @@ The command creates a new temporary root and starts the loopback fixture provide
 - `app-profile/preferences.json`, which skips first-run setup in this disposable profile, enables live previews and disables crash reporting.
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
+
+### The 0.7.14 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Switching models reports success | Switch between Second fixture, Live preview fixture and Thinking fixture several times, including immediately after Restart omp from the chat menu. Each switch changes the selected model, shows no error toast, closes the model menu and keeps the omp screen closed. |
+| 02 Busy helpers stay connected on omp 18.18.7 | Send `fixture helpers` and check that the transcript and Tasks stay current and the chat stays live throughout. After the six helpers finish, send `fixture notes` and check that the chat replies and retains its transcript. |
+
+The extra models use the local provider with no model credits. Preparation creates both saved chats; the owner starts helpers and checks interactions in the app. A backlog resync requires the app to fall behind, for example on a slow machine, so there is nothing extra to trigger by hand. The automated live test verified rejoining on omp 18.18.7 with a deliberately paused receiver and a request flood; its evidence is `~/vomp-checks/collab-backlog/live-18.18.7-count.json`. Ordinary helper activity does not establish that a resync occurred.
 
 ### The 0.7.13 tour
 

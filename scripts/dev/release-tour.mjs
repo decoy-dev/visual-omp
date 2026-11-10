@@ -1,7 +1,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile, stat, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { fixtureEnvironment, requireFixture } from "../live-preview-fixture/environment.mjs";
@@ -9,7 +9,7 @@ import { startFixture } from "../live-preview-fixture/server.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.13";
+export const defaultRelease = "0.7.14";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -35,6 +35,12 @@ export function parseArguments(args) {
   if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(options.release)) throw new Error("The tour release must be a version number.");
   if (options.prepareOnly && options.resume) throw new Error("--prepare-only creates a new tour; --resume opens a prepared tour.");
   return options;
+}
+
+export function tourEnvironment(root, binary) {
+  const env = fixtureEnvironment(root);
+  if (isAbsolute(binary ?? "")) env.PATH = [dirname(binary), env.PATH].filter(Boolean).join(delimiter);
+  return env;
 }
 
 export async function readTourSession(file) {
@@ -139,7 +145,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
 }
 
 export async function prepareTour({ root, binary, manifest, signal }) {
-  const env = fixtureEnvironment(root);
+  const env = tourEnvironment(root, binary);
   const version = execFileSync(binary, ["--version"], { env, encoding: "utf8" }).trim();
   const config = execFileSync(binary, ["config", "path"], { cwd: join(root, "work"), env, encoding: "utf8" }).trim();
   if (await realpath(config) !== await realpath(env.PI_CODING_AGENT_DIR)) throw new Error("omp did not select the scratch agent directory.");
@@ -199,7 +205,7 @@ async function main() {
       console.log(`Prepared without Electron. Open later with: npm run tour -- --resume ${JSON.stringify(root)}`);
       return;
     }
-    const env = { ...fixtureEnvironment(root), VOMP_TOUR_CHATS: summary.seed, ...(summary.updateFeed ? { VOMP_UPDATE_FEED: summary.updateFeed } : {}) };
+    const env = { ...tourEnvironment(root, summary.binary), VOMP_TOUR_CHATS: summary.seed, ...(summary.updateFeed ? { VOMP_UPDATE_FEED: summary.updateFeed } : {}) };
     // The app consumes this record on launch to show its successful-update notice, so each launch writes it again.
     if (summary.pendingUpdate) await seedPendingUpdate(env.VOMP_DEV_PROFILE, summary.pendingUpdate);
     const npmCli = process.env.npm_execpath;

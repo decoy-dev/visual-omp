@@ -2,28 +2,58 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, stat, symlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { generateChat, parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
+import { generateChat, parseArguments, readTourSession, tourEnvironment, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
 import next from "./tours/0.7.12.mjs";
 import latest from "./tours/0.7.13.mjs";
+import release0714 from "./tours/0.7.14.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
-import { initializeFixture } from "../live-preview-fixture/environment.mjs";
+import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.13");
+  assert.equal(parseArguments([]).release, "0.7.14");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
   assert.throws(() => parseArguments(["--unknown"]));
   assert.throws(() => parseArguments(["--prepare-only", "--resume", "/tmp/example"]));
+});
+
+test("an absolute omp selection precedes inherited PATH without changing fixture isolation", () => {
+  const root = join(tmpdir(), "tour-environment");
+  const binary = join(tmpdir(), "omp-18.18.7-bin", process.platform === "win32" ? "omp.exe" : "omp");
+  const base = fixtureEnvironment(root);
+  assert.deepEqual(tourEnvironment(root, "omp"), base);
+  assert.deepEqual(tourEnvironment(root), base);
+  assert.deepEqual(tourEnvironment(root, binary), { ...base, PATH: [dirname(binary), base.PATH].filter(Boolean).join(delimiter) });
+});
+
+test("0.7.14 prepares both patch checks and states the backlog resync evidence limit", () => {
+  assert.equal(release0714.version, parseArguments([]).release);
+  assert.deepEqual(release0714.chats.map(chat => chat.id), ["model-switching", "busy-helpers"]);
+  assert.deepEqual(release0714.models, latest.models);
+  const [models, helpers] = release0714.chats;
+  assert.equal(models.title, "01 Switching models reports success");
+  assert.equal(helpers.title, "02 Busy helpers stay connected on omp 18.18.7");
+  for (const chat of release0714.chats) {
+    assert.match(chat.prompts[0], /^fixture notes\nUse omp 18\.18\.7/);
+    assert.match(chat.prompts[0], /\n1\. .*\n2\. /s);
+    assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
+  }
+  assert.match(models.prompts[0], /Second fixture, then Live preview fixture, then Thinking fixture.*selected model should change.*no error toast.*model menu should close.*omp screen should stay closed.*Restart omp from the chat menu.*Immediately.*Second fixture.*Switch to Live preview fixture, then Thinking fixture again/s);
+  assert.match(helpers.prompts[0], /Preparation cannot keep helpers running.*Send fixture helpers.*transcript and Tasks stay current.*stay live throughout.*After the helpers finish, send fixture notes.*retains its earlier transcript/s);
+  assert.match(helpers.prompts[0], /only when the app falls behind.*slow machine.*nothing extra to trigger by hand.*automated live test.*paused receiver and a request flood.*~\/vomp-checks\/collab-backlog\/live-18\.18\.7-count\.json.*does not establish that a resync occurred/s);
+  const layout = tourLayout(release0714.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
+  assert.equal(layout.tabs.length, 2);
+  assert.equal(layout.docks["tour-busy-helpers"].pane, "tasks");
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
@@ -73,7 +103,7 @@ test("0.7.12 large-media tour checks spaced reply links and files in one spaced 
 });
 
 test("0.7.13 prepares five focused chats with local model choices and explicit interaction checks", () => {
-  assert.equal(latest.version, parseArguments([]).release);
+  assert.equal(latest.version, "0.7.13");
   assert.deepEqual(latest.chats.map(chat => chat.id), ["model-switching", "helper-conversations", "files-and-commands", "form-finish", "omp-question"]);
   assert.deepEqual(latest.models.map(({ id, name, reasoning }) => ({ id, name, reasoning })), [
     { id: "second", name: "Second fixture", reasoning: false },
