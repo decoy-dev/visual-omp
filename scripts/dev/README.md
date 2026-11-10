@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.14.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.16.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.18.7 for the 0.7.14 tour and Python 3 as `python3`. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.18.7 for the 0.7.16 and 0.7.14 tours and Python 3 as `python3`. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of the tour.
 
 To select a separate omp installation without changing the owner's installation, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. The tour uses that executable for preparation, saves it in `tour.json` and the scratch app profile's omp preference, and prepends its directory to the isolated PATH for generators and the development app. `--resume` reuses the saved executable and PATH selection. Without an absolute executable path, PATH keeps its existing behavior. For the prepared 18.18.7 binary:
 
@@ -29,6 +29,18 @@ The command creates a new temporary root and starts the loopback fixture provide
 - `app-profile/preferences.json`, which skips first-run setup in this disposable profile, enables live previews and disables crash reporting.
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
+
+### The 0.7.16 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Grep patterns | The prepared `fixture grep-patterns` writes two files and searches them with character classes, groups, quantifiers and alternation. Patterns are highlighted, the single-file search does not repeat 1 file and the empty search has one 0 matches line. |
+| 02 Undo a rewind | Send two marked `fixture notes` messages, rewind to the first and choose Undo in the toast. Undo requires a restorable prior tree leaf. The second message returns and the omp screen stays closed. Rewind again and begin a new message; Undo disappears when the input or chat state changes. |
+| 03 Continue | Send `fixture timestamps`, stop its first foreground bash call and choose Continue from the main chat's header menu. The turn resumes without adding a user message. Continue requires omp 18.18.2 or later. |
+| 04 Helper cards in narrow chats | Open the side panel, narrow the window and send `fixture helpers`. Visible cards keep their width; extra cards move into the overflow control, which opens Tasks. |
+| 05 Shortcut glyphs and omp screen | Choose Second fixture for this session only and inspect the notice's shortcut. Its key glyphs are readable without empty boxes. Leave omp errors and other output alone; the omp screen stays closed until you request it. Press Cmd+J and type /extensions to check explicit opening. View question in omp screen opens it when a question offers that action. |
+
+Preparation saves the grep results and creates the remaining chats with replay steps. It does not establish interaction, timing or rendering acceptance. Both fixture models use the local provider. The explicit-only omp screen policy also applies to classic chats; the local fixture does not produce rate-limit errors.
 
 ### The 0.7.14 tour
 

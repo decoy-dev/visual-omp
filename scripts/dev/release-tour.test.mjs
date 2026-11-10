@@ -12,13 +12,14 @@ import current from "./tours/0.7.11.mjs";
 import next from "./tours/0.7.12.mjs";
 import latest from "./tours/0.7.13.mjs";
 import release0714 from "./tours/0.7.14.mjs";
+import release0716 from "./tours/0.7.16.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.14");
+  assert.equal(parseArguments([]).release, "0.7.16");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
@@ -37,7 +38,7 @@ test("an absolute omp selection precedes inherited PATH without changing fixture
 });
 
 test("0.7.14 prepares both patch checks and states the backlog resync evidence limit", () => {
-  assert.equal(release0714.version, parseArguments([]).release);
+  assert.equal(release0714.version, "0.7.14");
   assert.deepEqual(release0714.chats.map(chat => chat.id), ["model-switching", "busy-helpers"]);
   assert.deepEqual(release0714.models, latest.models);
   const [models, helpers] = release0714.chats;
@@ -54,6 +55,29 @@ test("0.7.14 prepares both patch checks and states the backlog resync evidence l
   const layout = tourLayout(release0714.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
   assert.equal(layout.tabs.length, 2);
   assert.equal(layout.docks["tour-busy-helpers"].pane, "tasks");
+});
+
+test("0.7.16 prepares five UI checks without enabling bash visualization", () => {
+  assert.equal(release0716.version, parseArguments([]).release);
+  assert.deepEqual(release0716.chats.map(chat => chat.id), ["grep-patterns", "undo-rewind", "continue", "narrow-helper-cards", "shortcut-glyphs"]);
+  assert.deepEqual(release0716.models, [{ id: "second", name: "Second fixture", reasoning: false }]);
+  assert.equal(release0716.config, undefined);
+  for (const [index, chat] of release0716.chats.entries()) {
+    assert.ok(chat.title.startsWith(`${String(index + 1).padStart(2, "0")} `));
+    assert.match(chat.prompts[0], /^fixture (grep-patterns|notes)\n/);
+    assert.match(chat.prompts[0], /\n1\. .*\n2\. /s);
+    assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
+    assert.ok(!/bash-visualization|VM gate/.test(chat.prompts.join("")));
+  }
+  const [grep, undo, resume, helpers, glyphs] = release0716.chats;
+  assert.deepEqual(grep.files, ["Search samples/alpha.txt", "Search samples/beta.txt"]);
+  assert.match(grep.prompts[0], /omp 18\.18\.7.*three grep tool calls.*character classes, groups, quantifiers and alternation.*highlighted.*single-file search.*does not repeat 1 file.*one 0 matches line/s);
+  assert.match(undo.prompts[0], /restorable prior tree leaf.*First rewind check.*Second rewind check.*Rewind to here on the first.*Undo in the toast.*second marked message returns.*omp screen stays closed.*Rewind.*Undo disappears when the input or chat state changes.*New branch check.*Undo stays gone/s);
+  assert.match(resume.prompts[0], /main chat's header menu.*omp 18\.18\.2 or later.*fixture timestamps.*three separate 45-second waits.*choose Stop.*header menu and choose Continue.*without adding a new user message.*Preparation does not keep a turn running/s);
+  assert.match(helpers.prompts[0], /side panel open, narrow the window.*fixture helpers.*cards keep their width.*overflow control.*opens Tasks with all six helpers/s);
+  assert.match(glyphs.prompts[0], /Second fixture for this session only.*shortcut.*readable key glyphs and no empty boxes.*Live preview fixture for this session only/s);
+  assert.match(glyphs.prompts[0], /omp error, task list, leftover picker or other output.*never open automatically.*rate-limit errors.*classic chats.*does not produce rate-limit errors.*Cmd\+J.*deliberately.*Type \/extensions and press Enter.*requested screen should open.*View question in omp screen/s);
+  assert.equal(tourLayout(release0716.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {

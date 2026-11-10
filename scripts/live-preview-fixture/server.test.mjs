@@ -206,6 +206,21 @@ test("bash trace fixture runs each output shape once and finishes after their re
   assert.deepEqual(followUp, []);
 });
 
+test("grep patterns writes local samples before searches and includes single-file and empty results", async () => {
+  const messages = [{ role: "user", content: "fixture grep-patterns" }];
+  const writes = await callsFor("", messages);
+  assert.deepEqual(writes.map(call => [call.name, call.args.path]), [["write", "Search samples/alpha.txt"], ["write", "Search samples/beta.txt"]]);
+  messages.push({ role: "assistant", tool_calls: writes.map(call => ({ function: { name: call.name, arguments: JSON.stringify(call.args) } })) }, { role: "tool", content: "Saved both files." });
+  const calls = await callsFor("", messages);
+  assert.deepEqual(calls.map(call => [call.name, call.args.path]), [["grep", "Search samples"], ["grep", "Search samples/alpha.txt"], ["grep", "Search samples"]]);
+  assert.equal(calls[0].args.pattern, "^(alpha|beta)[0-9]{2,3}\\s+(ready|waiting)$");
+  const matches = call => writes.filter(write => call.args.path === "Search samples" || call.args.path === write.args.path).flatMap(write => write.args.content.split("\n").filter(line => new RegExp(call.args.pattern).test(line)));
+  assert.deepEqual(calls.map(matches), [["alpha12 ready", "beta345 waiting"], ["alpha12 ready", "alpha7 waiting"], []]);
+  messages.push({ role: "assistant", tool_calls: calls.map(call => ({ function: { name: call.name, arguments: JSON.stringify(call.args) } })) }, { role: "tool", content: "Searches finished." });
+  assert.deepEqual(await callsFor("", messages), []);
+  assert.deepEqual(await callsFor("", [...messages, { role: "user", content: "fixture grep-patterns" }]), writes);
+});
+
 test("bigmedia writes four large local files in a spaced folder and lists bare file names after its result", async () => {
   const calls = await callsFor("fixture bigmedia");
   assert.equal(calls.length, 1);

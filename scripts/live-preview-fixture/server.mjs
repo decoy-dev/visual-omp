@@ -220,6 +220,20 @@ function textOf(message) {
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
 }
 
+function grepPatternCalls(messages) {
+  const prior = messages.flatMap(message => message.tool_calls ?? []);
+  if (!prior.some(call => call.function?.name === "write")) return [
+    { name: "write", args: { path: "Search samples/alpha.txt", content: "alpha12 ready\nalpha7 waiting\nother text\n" }, slow: false },
+    { name: "write", args: { path: "Search samples/beta.txt", content: "beta345 waiting\nother text\n" }, slow: false },
+  ];
+  if (prior.some(call => call.function?.name === "grep")) return [];
+  return [
+    { name: "grep", args: { i: "Matching grouped status patterns", pattern: "^(alpha|beta)[0-9]{2,3}\\s+(ready|waiting)$", path: "Search samples" }, slow: false },
+    { name: "grep", args: { i: "Searching one sample file", pattern: "^alpha[0-9]+\\s+(ready|waiting)$", path: "Search samples/alpha.txt" }, slow: false },
+    { name: "grep", args: { i: "Checking an empty search", pattern: "^(missing|absent)[0-9]{4}$", path: "Search samples" }, slow: false },
+  ];
+}
+
 export async function startFixture({ root, port = 47831, durationMs = 15000, onRequest = () => {}, initializeProfile = true }) {
   let sequence = 0;
   const server = createServer(async (request, response) => {
@@ -245,7 +259,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -344,13 +358,13 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       send({ role: "assistant", content: afterTool ? "The fixture tool result was received." : fixture ? `I will prepare the ${fixture} fixture.` : "The correction was received." });
-      if ((afterTool && !htmlNeedsPage && !["proof", "helper", "helpers", "process"].includes(fixture)) || !fixture) {
+      if ((afterTool && !htmlNeedsPage && !["grep-patterns", "proof", "helper", "helpers", "process"].includes(fixture)) || !fixture) {
         send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },

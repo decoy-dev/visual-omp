@@ -9,7 +9,7 @@ import { startFixture } from "../live-preview-fixture/server.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.14";
+export const defaultRelease = "0.7.16";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -61,7 +61,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
   const cwd = join(root, "chats", chat.folder ?? chat.id);
   await mkdir(cwd, { recursive: true });
   if (chat.sampleHtml) await writeFile(join(cwd, "sample.html"), '<!doctype html><html lang="en"><meta charset="utf-8"><title>Files viewer sample</title><link rel="stylesheet" href="style.css"><h1>Files viewer sample</h1><p>Local styles and the image should render with scripts disabled.</p><img src="image.svg" alt="Local fixture image"></html>\n');
-  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "write,bash,ask,task,wait", "--model", chat.model ?? "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
+  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "write,bash,grep,ask,task,wait", "--model", chat.model ?? "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
   let stderr = "";
   let sequence = 0;
   let failure;
