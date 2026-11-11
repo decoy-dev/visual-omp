@@ -4,18 +4,37 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### New
+## [0.7.17] - 2026-11-11
+
+visual-omp 0.7.17 tells you when omp stops using a provider sign-in, shows omp's setting questions once and supports omp 18.18.8 and 18.18.9. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **Expired sign-in notices.** When omp stops using a provider sign-in, the app tells you once and opens Providers so you can sign in again.
+- **Improved:** Saved ask results show the option notes omp 18.18.8 records.
+- **Fixed:** **Setting questions appear once.** omp's question to save or change a setting shows only in the chat's question card, with the setting name formatted as code.
+
+### Detailed changes
+
+#### New
 
 - When omp stops using a provider sign-in after a failed refresh or an upstream invalidation, such as an expired grant, the app shows a notice with a button that opens Providers. Each sign-in is reported once: a launch reports the sign-ins omp stopped using since the previous check, and the first launch after this update reports any that omp already lists. The notice names the account when omp reports one, and several sign-ins share one notice.
 
-### Improved
+#### Improved
 
 - Saved ask results show the option notes omp 18.18.8 records, beneath their matching answers. The note editor in omp's own form stays display-only in the app.
+- Question cards and saved ask results show code in a question's wording, such as a setting name, formatted as code instead of between backticks.
+- A wait that omp cuts short to deliver a message, steering or a job notice says "interrupted by message", as omp shows it, instead of an empty list of running jobs. With omp 18.18.9, messages between agents always end a wait this way and follow it as their own row.
 
-### Fixed
+#### Fixed
 
 - Helpers created in Settings are saved in the folder omp reads when your shell sets `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` or an omp profile. omp 18.18.8 and later read helpers from `PI_CODING_AGENT_DIR`.
 - omp's question to save or change a setting appears once, in the chat's question card. The question formats the setting name as code, which previously made the chat show a second copy of omp's dialog that could not be answered.
+- Saving an omp setting no longer adds "Changed 1 file" to the turn summary. The summary lists only files on this computer that omp wrote or edited.
+
+#### Removed
+
+- Command suggestions no longer offer `/mcp smithery-search`, `smithery-login` or `smithery-logout`. Smithery shut down its API on October 31, 2026, and omp 18.18.9 removed these commands.
 
 ## [0.7.16] - 2026-11-10
 
