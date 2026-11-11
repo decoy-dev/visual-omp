@@ -14,13 +14,14 @@ import latest from "./tours/0.7.13.mjs";
 import release0714 from "./tours/0.7.14.mjs";
 import release0716 from "./tours/0.7.16.mjs";
 import release0717 from "./tours/0.7.17.mjs";
+import release0718 from "./tours/0.7.18.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.17");
+  assert.equal(parseArguments([]).release, "0.7.18");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -89,14 +90,29 @@ test("0.7.16 prepares five UI checks without enabling bash visualization", () =>
   assert.match(glyphs.prompts[0], /omp error, task list, leftover picker or other output.*never open automatically.*rate-limit errors.*classic chats.*does not produce rate-limit errors.*Cmd\+J.*deliberately.*Type \/extensions and press Enter.*requested screen should open.*View question in omp screen/s);
   assert.equal(tourLayout(release0716.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
-test("0.7.17 covers launch-time expired sign-in, setting approval and omp question notes", () => {
-  assert.equal(release0717.version, defaultRelease);
-  assert.equal(parseArguments([]).release, "0.7.17");
+test("0.7.17 remains available after the default tour advances", () => {
+  assert.equal(release0717.version, "0.7.17");
+  assert.equal(defaultRelease, "0.7.18");
   assert.equal(release0717.expiredSignIn, true);
   assert.deepEqual(release0717.chats.map(chat => chat.id), ["expired-sign-in", "cfg-save-question", "question-form"]);
   assert.ok(release0717.chats.every(chat => chat.prompts[0].startsWith("fixture notes\n")));
   assert.ok(release0717.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release0717.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
+});
+
+test("0.7.18 is the default and declares the many-files output structure", () => {
+  assert.equal(defaultRelease, "0.7.18");
+  assert.equal(parseArguments([]).release, "0.7.18");
+  assert.equal(release0718.version, "0.7.18");
+  assert.deepEqual(release0718.chats.map(chat => chat.id), ["many-files"]);
+  const [chat] = release0718.chats;
+  assert.equal(chat.pane, "outputs");
+  assert.equal(chat.files.length, 2201);
+  assert.equal(chat.files[0], "Many small files/file-0001.txt");
+  assert.equal(chat.files[2199], "Many small files/file-2200.txt");
+  assert.equal(chat.files[2200], "Many small files/preview.svg");
+  assert.equal(chat.prompts.length, 1);
+  assert.equal(chat.prompts[0].split("\n")[0], "fixture many-files");
 });
 
 

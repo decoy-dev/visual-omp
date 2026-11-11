@@ -1,17 +1,18 @@
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COLOR_FORM, RELEASE_FORM, bigMediaCommand, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
+import { COLOR_FORM, RELEASE_FORM, bigMediaCommand, manyFilesCommand, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
 
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
-async function replyFor(prompt, messages = [{ role: "user", content: prompt }]) {
+async function replyFor(prompt, messages = [{ role: "user", content: prompt }], { durationMs = 0, setup } = {}) {
   const root = await mkdtemp(join(tmpdir(), "vomp-video-fixture-")); roots.push(root);
-  const server = await startFixture({ root, port: 0, durationMs: 0 });
+  const server = await startFixture({ root, port: 0, durationMs });
   try {
+    await setup?.(root);
     const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }) });
     assert.equal(response.status, 200);
     const calls = new Map();
@@ -250,6 +251,42 @@ test("bigmedia writes four large local files in a spaced folder and lists bare f
   assert.deepEqual(followUp.calls, []);
   assert.equal(followUp.finishReason, "stop");
   assert.equal(followUp.content, "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`");
+});
+test("many-files verifies the background completion marker before replying", async () => {
+  const calls = await callsFor("fixture many-files");
+  assert.equal(calls.length, 1);
+  const [call] = calls;
+  assert.equal(call.name, "bash");
+  assert.equal(call.args.async, true);
+  assert.ok(call.args.timeout >= 120);
+  assert.equal(call.args.command, manyFilesCommand());
+  assert.match(call.args.command, /range\(0, 2200, 110\)/);
+  assert.match(call.args.command, /path\.resolve\(\), flush=True/);
+  assert.match(call.args.command, /https:\/\/example\.com\/tour\/one/);
+  assert.match(call.args.command, /https:\/\/example\.org\/tour\/two/);
+  assert.match(call.args.command, /preview\.svg/);
+  assert.match(call.args.command, /marker\.write_text\('complete'\)/);
+
+  const messages = [
+    { role: "user", content: "fixture many-files" },
+    { role: "assistant", tool_calls: [{ id: "many-files-bash", function: { name: call.name, arguments: JSON.stringify(call.args) } }] },
+    { role: "tool", content: "Background job started." },
+  ];
+  const failed = await replyFor("", messages);
+  assert.deepEqual(failed.calls, []);
+  assert.equal(failed.finishReason, "stop");
+  assert.match(failed.content, /did not complete/);
+
+  const completed = await replyFor("", messages, {
+    setup: async root => {
+      const folder = join(root, "chats", "many-files");
+      await mkdir(folder, { recursive: true });
+      await writeFile(join(folder, ".many-files-complete"), "complete");
+    },
+  });
+  assert.deepEqual(completed.calls, []);
+  assert.equal(completed.finishReason, "stop");
+  assert.match(completed.content, /finished/);
 });
 
 test("bigmedia stops without claiming creation when the tool fails or its output is unconfirmed", async () => {

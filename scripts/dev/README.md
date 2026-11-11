@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.17.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.18.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.17, 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, and omp 18.18.8 or later for the default 0.7.17 tour; the release tour was prepared with omp 18.18.9 through `--omp`. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The small 0.7.17, 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, and PATH omp 18.18.8 or later for the default 0.7.18 tour. The small 0.7.18 and 0.7.17 tours need neither ffmpeg nor LibreOffice. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of preparation.
 
 To select a separate omp installation without changing the owner's installation, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. The tour uses that executable for preparation, saves it in `tour.json` and the scratch app profile's omp preference, and prepends its directory to the isolated PATH for generators and the development app. `--resume` reuses the saved executable and PATH selection. Without an absolute executable path, PATH keeps its existing behavior. For the 0.7.16 tour with a separate omp 18.18.7 binary:
 
@@ -30,6 +30,12 @@ The command creates a new temporary root and starts the loopback fixture provide
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
+
+### The 0.7.18 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Many changed files | Send `fixture many-files`. While the background bash job writes 2,200 small files and an SVG under `Many small files/`, type in the message box and check that typing stays responsive and the window does not freeze. Open Outputs and confirm the SVG appears as a visual file. Check that the background command stops showing as running after its job ends, and that its three HTTPS addresses are not listed as files. |
 
 ### The 0.7.17 tour
 

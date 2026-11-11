@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { initializeFixture } from "./environment.mjs";
@@ -194,6 +195,42 @@ export function bigMediaCommand() {
   ].join("\n");
   return `mkdir -p 'Large Media Files' && cd 'Large Media Files' && ${video} && python3 - <<'PY'\n${files}\nPY`;
 }
+export function manyFilesCommand() {
+  const script = [
+    "from pathlib import Path",
+    "from time import sleep",
+    "folder = Path('Many small files')",
+    "folder.mkdir(exist_ok=True)",
+    "marker = Path('.many-files-complete')",
+    "marker.unlink(missing_ok=True)",
+    "for start in range(0, 2200, 110):",
+    "    for index in range(start, min(start + 110, 2200)):",
+    "        path = folder / f'file-{index + 1:04d}.txt'",
+    "        path.write_text(f'Fixture file {index + 1}.\\n')",
+    "        print(path.resolve(), flush=True)",
+    "    sleep(0.5)",
+    "svg = folder / 'preview.svg'",
+    "svg.write_text('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\"><rect width=\"160\" height=\"100\" fill=\"#197f86\"/><circle cx=\"80\" cy=\"50\" r=\"30\" fill=\"#f5f4ee\"/></svg>\\n')",
+    "print(svg.resolve(), flush=True)",
+    "for address in ('https://example.com/tour/one', 'https://example.org/tour/two', 'https://www.example.net/tour/three'):",
+    "    print(address, flush=True)",
+    "print('Finished 2,200 small files and one SVG.', flush=True)",
+    "marker.write_text('complete')",
+  ].join("\n");
+  return `mkdir -p 'Many small files' && python3 -u - <<'PY'\n${script}\nPY`;
+}
+
+async function manyFilesCompleted(root) {
+  for (const folder of ["chats/many-files", "work"]) {
+    try {
+      await access(join(root, folder, ".many-files-complete"));
+      return true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  return false;
+}
 
 function mentionsCommand() {
   return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
@@ -259,7 +296,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -333,6 +370,18 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.end("data: [DONE]\n\n");
         return;
       }
+      if (fixture === "many-files" && afterTool) {
+        const result = messages.at(-1);
+        const failed = result.isError || /(?:Error:|failed|exit code [1-9])/i.test(textOf(result));
+        await sleep(durationMs);
+        const completed = !failed && await manyFilesCompleted(root);
+        send({ role: "assistant", content: completed
+          ? "The background file-generation command finished. Review its changed files and SVG in Outputs, then check the reported addresses."
+          : "The background file-generation command did not complete. Check its result before reviewing Outputs." });
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
       if (fixture === "link" && afterTool) {
         const result = messages.at(-1);
         const output = textOf(result);
@@ -367,7 +416,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "cfg-save" ? [
         // omp 18.18+ asks before a cfg:// write; the dialog's title quotes the setting path in Markdown code marks.
         { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
-      ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },
