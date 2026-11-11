@@ -4,7 +4,18 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Fixed
+## [0.7.18] - 2026-11-11
+
+visual-omp 0.7.18 stops Outputs from parsing command output again for every changed file, which blocked the app's window during turns that changed many files. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** **Outputs parses command output once per update.** In a turn that changed 2,478 files, Outputs parsed every running command's output again for each changed file, which blocked the app's window for about 1.6 seconds on each update.
+- **Fixed:** Outputs stops showing a background command as running once omp reports that its job ended.
+
+### Detailed changes
+
+#### Fixed
 
 - Outputs no longer parses every running command's output again for each changed file. In one turn that had changed 2,478 files, most of them from a site build, that repeated parsing blocked the app's window for about 1.6 seconds on each update.
 - When omp reports that a background command's job ended, Outputs stops showing the command as running, and the files and folders the command named no longer add to what the app watches.
