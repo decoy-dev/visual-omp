@@ -500,6 +500,24 @@ describe("chatOutputs", () => {
 		});
 	});
 
+	it("excludes handler-only writes while retaining resolved local files in Outputs", () => {
+		const entries = [
+			...tool("cfg-denied", "write", { path: "cfg://compaction/enabled/save" }, 1, { details: { cfg: { outcome: "declined" } } }),
+			...tool("cfg-applied", "write", { path: "cfg://compaction/enabled/save" }, 2, { details: { cfg: { outcome: "applied" } } }),
+			...tool("peer", "write", { path: "agent://helper_0" }, 3, { details: { message: { delivered: true }, touchesNoFiles: true } }),
+			...tool("ssh", "write", { path: "ssh://host/path/file.txt" }, 4),
+			...tool("conflict-bulk", "write", { path: "conflict://*" }, 5),
+			...tool("local", "write", { path: "local://plans/plan.md" }, 6, { details: { resolvedPath: "/proj/plan.md" } }),
+			...tool("file-free", "write", { path: "/proj/synthetic.txt" }, 7, { details: { resolvedPath: "/proj/synthetic.txt", touchesNoFiles: true } }),
+			...tool("conflict-one", "write", { path: "conflict://4" }, 8, { details: { resolvedPath: "/proj/conflicted.ts" } }),
+		];
+		expect(chatOutputs(entries, context).flatMap(output => output.path ? [output.path] : []).sort()).toEqual([
+			"/proj/conflicted.ts",
+			"/proj/plan.md",
+		]);
+	});
+
+
 	it("lists files from write, edit and applied ast_edit, resolving relative and home paths", () => {
 		const entries = [
 			...tool("w1", "write", { path: "~/site/logo.svg" }, 1),
@@ -792,6 +810,34 @@ describe("fileEdits and editTotals", () => {
 		});
 		// A write has no diff, so the file's totals become unknown and leave the sums.
 		expect(editTotals(edits, ["e1", "w1"])).toEqual({ files: [{ path: "/proj/a.ts", action: "edited", added: null, removed: null }], added: 0, removed: 0, partial: true });
+	});
+
+	it("counts writes only when the result identifies a local file", () => {
+		const entries = [
+			call("cfg-denied", "write", { path: "cfg://compaction/enabled/save" }),
+			result("cfg-denied", "write", "", { cfg: { path: "compaction.enabled", previous: "true", value: "false", save: true, outcome: "declined" } }),
+			call("cfg-applied", "write", { path: "cfg://compaction/enabled/save" }),
+			result("cfg-applied", "write", "", { cfg: { path: "compaction.enabled", previous: "true", value: "false", save: true, outcome: "applied" } }),
+			call("peer", "write", { path: "agent://helper_0" }),
+			result("peer", "write", "", { message: { delivered: true }, touchesNoFiles: true }),
+			call("ssh", "write", { path: "ssh://host/path/file.txt" }),
+			result("ssh", "write", "", {}),
+			call("conflict-bulk", "write", { path: "conflict://*" }),
+			result("conflict-bulk", "write", "", {}),
+			call("local", "write", { path: "local://plans/plan.md" }),
+			result("local", "write", "", { resolvedPath: "/proj/plan.md" }),
+			call("relative", "write", { path: "src/file.ts" }),
+			result("relative", "write", "", {}),
+			call("file-free", "write", { path: "/proj/synthetic.txt" }),
+			result("file-free", "write", "", { resolvedPath: "/proj/synthetic.txt", touchesNoFiles: true }),
+			call("conflict-one", "write", { path: "conflict://4" }),
+			result("conflict-one", "write", "", { resolvedPath: "/proj/conflicted.ts" }),
+		];
+		expect([...fileEdits(entries, context)]).toEqual([
+			["local", [{ path: "/proj/plan.md", action: "written", added: null, removed: null }]],
+			["relative", [{ path: "/proj/src/file.ts", action: "written", added: null, removed: null }]],
+			["conflict-one", [{ path: "/proj/conflicted.ts", action: "written", added: null, removed: null }]],
+		]);
 	});
 
 	it("credits an applied ast_edit preview to the resolve call", () => {

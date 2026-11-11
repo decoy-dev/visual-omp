@@ -945,7 +945,7 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 		// Main returns a call's files newest first; adding them oldest first keeps that order in the result.
 		for (const file of [...(made[message.toolCallId] ?? [])].reverse()) addFile(file.path, name, "made", time, context);
 		if (message.isError) continue;
-		if (name === "write") {
+		if (name === "write" && details?.touchesNoFiles !== true) {
 			const raw = str(details?.resolvedPath) ?? str(args.path);
 			if (raw) addFile(raw, "write", "written", time, context);
 		} else if (name === "edit") {
@@ -988,8 +988,9 @@ function diffLineCounts(diff: string | null): { added: number | null; removed: n
 }
 
 /**
- * Files each successful `edit`, `write` and `ast_edit` call changed, by tool call id. Failed calls and failed files are
- * left out; a staged `ast_edit` preview counts only once `resolve` applies it, under the resolve call. `write` reports
+ * Files each successful `edit`, local-file `write` and `ast_edit` call changed, by tool call id. Failed calls and failed
+ * files are left out; handler writes count only when they report a resolved local path, and file-free writes are
+ * excluded. A staged `ast_edit` preview counts only once `resolve` applies it, under the resolve call. `write` reports
  * no diff (it may have replaced a file), and `ast_edit` none that can be counted, so their line counts stay unknown.
  */
 export function fileEdits(entries: readonly SessionEntry[], context: OutputContext): Map<string, FileEdit[]> {
@@ -1003,8 +1004,13 @@ export function fileEdits(entries: readonly SessionEntry[], context: OutputConte
 		const id = item.message.toolCallId;
 		const files: FileEdit[] = [];
 		if (name === "write") {
-			const raw = str(details?.resolvedPath) ?? str(args.path) ?? str(args.file_path);
-			if (raw) files.push({ path: resolve(raw, context), action: "written", added: null, removed: null });
+			// Handler URLs count only when omp identifies the local file it changed.
+			// File-backed writes also report resolvedPath; older results may name a plain path.
+			const resolvedPath = str(details?.resolvedPath);
+			const raw = resolvedPath ?? str(args.path) ?? str(args.file_path);
+			if (details?.touchesNoFiles !== true && raw && (resolvedPath !== null || !URL_SCHEME.test(raw))) {
+				files.push({ path: resolve(raw, context), action: "written", added: null, removed: null });
+			}
 		} else if (name === "edit" || name === "apply_patch") {
 			const perFile = Array.isArray(details?.perFileResults) ? details.perFileResults.filter(isRecord) : [];
 			const sources = perFile.length > 0 ? perFile : details ? [{ ...details, path: str(details.path) ?? str(args.path) ?? str(args.file_path) }] : [];
