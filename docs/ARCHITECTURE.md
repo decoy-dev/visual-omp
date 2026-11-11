@@ -1040,6 +1040,12 @@ Pictures contribute accessible text only. Result details render `answers[]` ques
 pairs, including empty answers and timeout submissions. Saved `questions[]` calls retain
 their existing renderer and series replay.
 
+The transcript renders omp 18.18.8 option labels and note text from `details.notes[]`
+below the answer with the same name and question. Malformed notes are ignored;
+results without notes keep their existing output. Native `omp.ask.note` content and
+the `save-note` action remain display-only. Note editors and option detail spans leave
+form recognition and question matching unchanged.
+
 The recorded `18.18.3/ask-html-form` fixture contains the native dock form, all seven guest
 requests and the saved session with one tool result. Main projects that dock's field labels,
 preceding text, section titles, field kinds and option rows for conservative request matching.

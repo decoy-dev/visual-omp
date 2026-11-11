@@ -29,6 +29,14 @@ interface AskAnswer {
 	timedOut?: boolean;
 }
 
+interface AskOptionNote {
+	name: string;
+	question: string;
+	option: string;
+	value: string;
+	text: string;
+}
+
 /** The TUI appends this to the recommended option's label before selection. */
 const RECOMMENDED_SUFFIX = " (Recommended)";
 
@@ -218,10 +226,16 @@ function FormBody({ args, result }: ToolRenderProps): ReactNode {
 	const form = typeof args.html === "string" ? parseAskForm(args.html) : null;
 	const details = detailsRecord(result);
 	const answers = Array.isArray(details?.answers) ? details.answers.filter(isRecord) : null;
+	const notes = Array.isArray(details?.notes) ? details.notes.filter((note): note is AskOptionNote =>
+		isRecord(note) && ["name", "question", "option", "value", "text"].every(key => typeof note[key] === "string"),
+	) : [];
 	return <>
 		{answers ? answers.map((answer, index) => <div className="tv-list" key={index}>
 			<Row><ColorText text={str(answer.question) ?? str(answer.name) ?? ""} /></Row>
 			<Row k="answer"><ColorText text={str(answer.answer) || "(no answer)"} /></Row>
+			{notes.filter(note => note.name === answer.name && note.question === answer.question).map((note, noteIndex) =>
+				<Note key={noteIndex}>✎ <ColorText text={`${note.option}: ${note.text}`} /></Note>,
+			)}
 		</div>) : form?.fields.map((field, index) => <div className="tv-list" key={index}>
 			<Row><ColorText text={form.legends.includes(field.question) ? field.name.replace(/[_-]+/g, " ") : field.question} /></Row>
 			{field.options.map((option, optionIndex) => <Row key={optionIndex} k={field.multi ? (option.selected ? "■" : "□") : option.selected ? "●" : "○"}><ColorText text={option.label} />{option.selected && <> <Badge tone="accent">preselected</Badge></>}</Row>)}

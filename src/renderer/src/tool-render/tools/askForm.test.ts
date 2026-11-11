@@ -53,6 +53,43 @@ describe("HTML ask transcript", () => {
 		expect(empty).toContain("(no answer)");
 		expect(empty).toContain("after the timeout");
 	});
+	it("renders option notes only under the answer with the same name and question", () => {
+		const answers = [
+			{ name: "channel", question: "Release channel", answer: "Stable" },
+			{ name: "channel", question: "Support channel", answer: "Email" },
+			{ name: "support", question: "Release channel", answer: "Preview" },
+		];
+		const notes = [
+			{ name: "channel", question: "Release channel", option: "Stable", value: "stable", text: "Keep compatibility" },
+			{ name: "channel", question: "Release channel", option: "Preview", value: "preview", text: "Compare #aabbcc" },
+			{ name: "channel", question: "Unrelated question", option: "Stable", value: "stable", text: "Unmatched question" },
+			{ name: "unknown", question: "Release channel", option: "Stable", value: "stable", text: "Unmatched name" },
+		];
+		const container = document.createElement("div");
+		container.innerHTML = renderToStaticMarkup(createElement(askRenderer.Body!, { name: "ask", args: {}, result: { content: [], details: { answers, notes } } }));
+		const rows = container.querySelectorAll(".tv-list");
+		expect(rows).toHaveLength(3);
+		expect(rows[0]?.textContent).toContain("✎ Stable: Keep compatibility");
+		expect(rows[0]?.textContent).toContain("✎ Preview: Compare #aabbcc");
+		expect(rows[0]?.querySelector(".vomp-color-swatch")).not.toBeNull();
+		for (const row of [rows[1], rows[2]]) expect(row?.textContent).not.toContain("✎");
+		expect(container.textContent).not.toContain("Unmatched");
+	});
+	it("keeps results without notes unchanged and ignores malformed note entries", () => {
+		const answers = [{ name: "channel", question: "Release channel", answer: "Stable" }];
+		const render = (details: Record<string, unknown>) => renderToStaticMarkup(createElement(askRenderer.Body!, { name: "ask", args: {}, result: { content: [], details } }));
+		const original = render({ answers });
+		expect(original).toContain("Release channel");
+		expect(original).toContain("Stable");
+		expect(original).not.toContain("✎");
+		for (const notes of [undefined, null, {}, "invalid", []]) expect(render({ answers, notes })).toBe(original);
+		const valid = { name: "channel", question: "Release channel", option: "Stable", value: "stable", text: "Malformed note" };
+		const malformed: unknown[] = [null, "invalid", [], {}];
+		for (const key of Object.keys(valid)) {
+			malformed.push({ ...valid, [key]: 42 }, { ...valid, [key]: undefined });
+		}
+		expect(render({ answers, notes: malformed })).toBe(original);
+	});
 	it("attributes every recorded request to its live form without starting legacy replay", () => {
 		const source = { activeTools: new Map([[call.id, { toolCallId: call.id, toolName: "ask", args: call.arguments }]]), entries: [], stream: null, working: true };
 		for (const stage of evidence.stages) if (stage.request) {

@@ -14,7 +14,7 @@ export const TSP_ROLES = {
 	askOptions: "omp.ask.options", askOption: "omp.ask.option", askCheck: "omp.ask.check",
 	askWell: "omp.ask.well", askWellMulti: "omp.ask.well.multi", askSummary: "omp.ask.summary",
 	askBullets: "omp.ask.bullets", askPre: "omp.ask.pre", askTable: "omp.ask.table", askError: "omp.ask.error",
-	askHead: "omp.ask.head", askQuestions: "omp.ask.questions", askAnswers: "omp.ask.answers", askNotice: "omp.ask.notice",
+	askHead: "omp.ask.head", askQuestions: "omp.ask.questions", askAnswers: "omp.ask.answers", askNotice: "omp.ask.notice", askNote: "omp.ask.note",
 	composerModel: "omp.composer.model", composerEffort: "omp.composer.effort", composerModelEffort: "omp.composer.model.effort",
 	compaction: "omp.compaction", working: "omp.working", workingLabel: "omp.working.label", loader: "omp.loader",
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
@@ -61,7 +61,7 @@ export function isAskFormAction(action: string): boolean {
 }
 export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",

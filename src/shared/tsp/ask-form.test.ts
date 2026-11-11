@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hookQuestions, matchQuestions, type CollabQuestion } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
-import { isClaimable } from "./roles";
+import { askFormPresentation, isAskFormAction, isClaimable, isKnownAction, isKnownRole, TSP_READ_ONLY_ACTIONS } from "./roles";
 import { unclaimed, walkNodes } from "./view-state";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import evidence from "../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
@@ -51,5 +51,44 @@ describe("recorded 18.18.3 form arbitration", () => {
 		expect(matchQuestions(scope, { ...state, requests: [{ reqId: 42, kind: "editor", title: "Unrelated" }] }, dialogs)[0]?.status).toBe("ambiguous");
 		expect(matchQuestions(scope, state, [...dialogs, { ...dialogs[0]!, nodeId: "duplicate" }]).every(match => match.status === "ambiguous")).toBe(true);
 		expect(matchQuestions(scope, { ...state, connected: false }, dialogs)[0]?.status).toBe("unavailable");
+	});
+});
+
+describe("18.18.8 form option notes", () => {
+	it("recognizes the note role and keeps note actions display-only", () => {
+		expect(isKnownRole(TSP_ROLES.askNote)).toBe(true);
+		for (const action of ["note", "save-note"]) {
+			expect(TSP_READ_ONLY_ACTIONS[action]).toBe(true);
+			expect(isKnownAction(action)).toBe(false);
+			expect(isAskFormAction(action)).toBe(false);
+		}
+	});
+	it("keeps form claims and question matching unchanged with note details and an open note editor", () => {
+		const stage = evidence.stages[0]!;
+		const surfaces = structuredClone(stage.surfaces) as unknown as TspSurfaceSnapshot[];
+		const original = hookQuestions(surfaces, scope.generation);
+		const root = surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.p?.role === TSP_ROLES.editorAsk)!;
+		const presentation = askFormPresentation(root);
+		const field = [...walkNodes(root)].find(node => node.p?.role === TSP_ROLES.askField)!;
+		const option = [...walkNodes(field)].find(node => node.k === "item")!;
+		if (option.k !== "item") throw new Error("Missing choice option");
+		option.p!.detail = [{ t: "  ✎ " }, { t: "Keep compatibility" }];
+		option.p!.actions = { menu: ["note"] };
+		field.c = [...field.c!,
+			{ id: "note-label", k: "text", p: { role: TSP_ROLES.askNote, spans: [{ t: "Note for Stable" }], wrap: "word" } },
+			{ id: "note-editor", k: "editor", p: { text: "Keep compatibility", cursor: 18 } },
+		];
+		root.c = [...root.c!,
+			{ id: "note-hint", k: "text", p: { role: TSP_ROLES.askNote, spans: [{ t: "Save the note" }] } },
+			{ id: "note-keep", k: "button", p: { text: "Keep", actions: { click: "cancel" } } },
+			{ id: "note-save", k: "button", p: { text: "Save", actions: { click: "save-note" } } },
+		];
+		expect(askFormPresentation(root)).toEqual(presentation);
+		expect(isClaimable(root)).toBe(true);
+		const dialogs = hookQuestions(surfaces, scope.generation);
+		expect(dialogs).toEqual(original);
+		const current = { ...scope, connection: 1, revision: 1, connected: true, requests: [stage.request as CollabQuestion] };
+		expect(matchQuestions(scope, current, dialogs)).toEqual(matchQuestions(scope, current, original));
+		expect(matchQuestions(scope, current, dialogs)[0]?.status).toBe("matched");
 	});
 });
