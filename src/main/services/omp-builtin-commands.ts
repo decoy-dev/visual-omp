@@ -5,7 +5,8 @@
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
  * them at runtime from key bindings (`/loop`, `/switch`, `/effort`); those name the default keys
  * here. The `/effort` and `/compact` subcommands are spelled out from omp's thinking levels and
- * compact modes.
+ * compact modes. Smithery's `/mcp` subcommands are omitted: Smithery shut down its API on October 31,
+ * 2026, and omp 18.18.9 removed them.
  *
  * When omp is asked, its own entries replace these by name (`mergeSlashCommands`).
  */
@@ -293,9 +294,6 @@ const BUILTINS: readonly BuiltinSpec[] = [
 			{ name: "unauth", description: "Remove OAuth auth from a server", usage: "<name>" },
 			{ name: "enable", description: "Enable an MCP server", usage: "<name>" },
 			{ name: "disable", description: "Disable an MCP server", usage: "<name>" },
-			{ name: "smithery-search", description: "Search Smithery registry and deploy an MCP server", usage: "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]" },
-			{ name: "smithery-login", description: "Login to Smithery and cache API key" },
-			{ name: "smithery-logout", description: "Remove cached Smithery API key" },
 			{ name: "reconnect", description: "Reconnect to a specific MCP server", usage: "<name>" },
 			{ name: "reload", description: "Force reload MCP runtime tools" },
 			{ name: "resources", description: "List available resources from connected servers" },

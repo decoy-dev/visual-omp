@@ -17,7 +17,12 @@ describe("OMP_BUILTIN_COMMANDS", () => {
 		const names = OMP_BUILTIN_COMMANDS.map(entry => entry.name);
 		expect(new Set(names).size).toBe(names.length);
 		expect(OMP_BUILTIN_COMMANDS.flatMap(entry => entry.aliases).sort()).toEqual(["force:", "models", "plugin", "providers", "q", "rewind", "status", "subagents", "worktree"]);
-		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "mcp")?.subcommands.map(sub => sub.name)).toContain("smithery-search");
+	});
+
+	it("does not suggest the retired Smithery subcommands", () => {
+		// Smithery shut down its API on 2026-10-31 and omp 18.18.9 removed these commands.
+		const mcp = OMP_BUILTIN_COMMANDS.find(entry => entry.name === "mcp")?.subcommands.map(sub => sub.name) ?? [];
+		expect(mcp.filter(name => name.startsWith("smithery-"))).toEqual([]);
 	});
 
 	it("includes the new terminal commands and keeps commands older omp still accepts", () => {
