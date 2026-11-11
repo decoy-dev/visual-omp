@@ -4,6 +4,18 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### New
+
+- When omp stops using a provider sign-in after a failed refresh or an upstream invalidation, such as an expired grant, the app shows a notice with a button that opens Providers. Each sign-in is reported once: a launch reports the sign-ins omp stopped using since the previous check, and the first launch after this update reports any that omp already lists. The notice names the account when omp reports one, and several sign-ins share one notice.
+
+### Improved
+
+- Saved ask results show the option notes omp 18.18.8 records, beneath their matching answers. The note editor in omp's own form stays display-only in the app.
+
+### Fixed
+
+- Helpers created in Settings are saved in the folder omp reads when your shell sets `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` or an omp profile. omp 18.18.8 and later read helpers from `PI_CODING_AGENT_DIR`.
+
 ## [0.7.16] - 2026-11-10
 
 visual-omp 0.7.16 keeps the omp screen closed until you request it, adds Continue for main chats and offers Undo after a rewind. It requires omp 18.15.0 or later.
