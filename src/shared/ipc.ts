@@ -254,6 +254,11 @@ export interface AppPreferences {
 	classicPresentation: boolean;
 	/** Automatically send crash reports and app events. Native crash reports may contain process memory. */
 	sendCrashReports: boolean;
+	/**
+	 * Disabled omp sign-ins the app already announced, as `provider:credentialId:disabledAtMs`, oldest first. Each key
+	 * is announced once; the list keeps every key so a sign-in omp still lists is never announced again.
+	 */
+	expiredSignInsShown: string[];
 }
 
 /** Unopened chat results, including other chats in a focused window (DESIGN §4.22). */

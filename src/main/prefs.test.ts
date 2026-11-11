@@ -234,6 +234,29 @@ describe("crash-report preferences", () => {
 	});
 });
 
+describe("announced sign-in preferences", () => {
+	it("loads every unique string key in first-seen order", async () => {
+		const keys = Array.from({ length: 150 }, (_, index) => `anthropic:${index}:`);
+		fake.contents = JSON.stringify({ expiredSignInsShown: [...keys, 7, null, "anthropic:0:"] });
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().expiredSignInsShown).toEqual(keys);
+	});
+	it.each([null, "{}", '{"expiredSignInsShown":"anthropic:1:"}'])("starts empty for a missing or invalid list: %s", async contents => {
+		fake.contents = contents;
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().expiredSignInsShown).toEqual([]);
+	});
+	it("keeps announced keys through unrelated changes and reload", async () => {
+		const { getPrefs, setPrefs, flushPrefs } = await import("./prefs");
+		setPrefs({ expiredSignInsShown: ["openai-codex:4:100", "openai-codex:4:100"] });
+		setPrefs({ theme: "dark" });
+		await flushPrefs();
+		expect(getPrefs().expiredSignInsShown).toEqual(["openai-codex:4:100"]);
+		vi.resetModules();
+		expect((await import("./prefs")).getPrefs().expiredSignInsShown).toEqual(["openai-codex:4:100"]);
+	});
+});
+
 describe("project identity migration", () => {
 	it("normalizes only project fields in a patch and leaves unrelated settings free of path lookups", async () => {
 		fake.contents = JSON.stringify({

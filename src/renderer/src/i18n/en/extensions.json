@@ -36,6 +36,17 @@
 		"refresh": "Refresh",
 		"untitled": "Untitled chat",
 		"noModel": "Unknown",
+		"signIns": {
+			"titleOne": "{{provider}} needs you to sign in again",
+			"titleMany": "{{count}} providers need you to sign in again",
+			"account": "omp stopped using {{account}} on {{date}}.",
+			"accountUndated": "omp stopped using {{account}}.",
+			"unnamed": "omp stopped using a sign-in on {{date}}.",
+			"unnamedUndated": "omp stopped using a sign-in.",
+			"accounts": "omp stopped using {{count}} sign-ins for this provider.",
+			"providers": "omp stopped using sign-ins for {{providers}}.",
+			"open": "Open Providers"
+		},
 		"limits": {
 			"title": "Plan limits",
 			"description": "Limits each provider reports for the accounts omp is signed in to. They can include use outside the chats on this computer.",

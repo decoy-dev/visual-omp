@@ -4,7 +4,8 @@
  * turn finishes, and when a reader asks (the chat's providers changed, the page opened). Passive reads
  * invoke `omp usage --json` without explicitly invalidating omp's cache; the page's "Refresh limits"
  * ({@link checkUsageLimits}) requests invalidation. A failed read keeps the last good snapshot and
- * records why in {@link UsageLimitsStatus}.
+ * records why in {@link UsageLimitsStatus}. The expired sign-in notice reads once at launch and observes
+ * accepted snapshots ({@link observeUsageLimits}) without starting polling.
  */
 import { useSyncExternalStore } from "react";
 import type { UsageLimitsSnapshot } from "@shared/contracts/usage";
@@ -28,6 +29,7 @@ let inFlight: Promise<void> | null = null;
 let timer: number | null = null;
 let stopWatching: (() => void) | null = null;
 const listeners = new Set<() => void>();
+const observers = new Set<(snapshot: UsageLimitsSnapshot) => void>();
 
 function notify(): void {
 	for (const listener of listeners) listener();
@@ -41,6 +43,7 @@ export function publishUsageLimits(next: UsageLimitsSnapshot): void {
 	if (snapshot && next.generatedAt < snapshot.generatedAt) return;
 	snapshot = next;
 	notify();
+	for (const observer of observers) observer(next);
 }
 
 /** Runs a read and resolves with why it failed, or null after a success. */
@@ -68,12 +71,25 @@ async function track(read: Promise<UsageLimitsSnapshot>): Promise<string | null>
 export function refreshUsageLimits(): Promise<void> {
 	if (inFlight) return inFlight;
 	if (listeners.size === 0 || document.visibilityState === "hidden") return Promise.resolve();
-	inFlight = track(window.vomp.invoke("usage:limits"))
+	return readUsageLimits();
+}
+
+/** One passive read even while nothing polls (the launch sign-in check); joins a read already running. */
+export function readUsageLimits(): Promise<void> {
+	inFlight ??= track(window.vomp.invoke("usage:limits"))
 		.then(() => undefined)
 		.finally(() => {
 			inFlight = null;
 		});
 	return inFlight;
+}
+
+/** Calls `observer` with every snapshot the store accepts, without starting or keeping polling. */
+export function observeUsageLimits(observer: (snapshot: UsageLimitsSnapshot) => void): () => void {
+	observers.add(observer);
+	return () => {
+		observers.delete(observer);
+	};
 }
 
 /**

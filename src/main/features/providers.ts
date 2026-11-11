@@ -15,13 +15,14 @@ import { dirname, join } from "node:path";
 import { app, BrowserWindow, dialog } from "electron";
 import { z } from "zod";
 import type { ModelKind } from "@shared/contracts/config";
-import type {
-	ConnectedProvider,
-	DisabledProviderAccount,
-	LoginMethod,
-	ProviderAccount,
-	ProvidersState,
-	StoredProviderAccount,
+import {
+	type ConnectedProvider,
+	type DisabledProviderAccount,
+	type LoginMethod,
+	type ProviderAccount,
+	type ProvidersState,
+	SIGNED_OUT_CAUSE,
+	type StoredProviderAccount,
 } from "@shared/contracts/providers";
 import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
@@ -125,9 +126,6 @@ async function storedAccounts(providerIds: string[]): Promise<Map<string, Stored
 }
 
 // ─── Provider state ────────────────────────────────────────────────────────
-
-/** omp records its own sign-out as a disabled credential; that is not something to fix. */
-const SIGNED_OUT_CAUSE = /^(logged out by user|deleted by user|replaced by)/i;
 
 let stateCache: Promise<ProvidersState> | null = null;
 

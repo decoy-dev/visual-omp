@@ -1,9 +1,10 @@
-/** Usage & limits: its page (own chunk), its command and the status bar's plan usage. */
+/** Usage & limits: its page (own chunk), its command, the status bar's plan usage and expired sign-in notices. */
 import { Gauge } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
 import { lazyPage } from "@/registry/lazy";
-import { pages, statusItems } from "@/registry/slots";
+import { globals, pages, statusItems } from "@/registry/slots";
 import { openUsage } from "@/state/navigation";
+import { ExpiredSignInWatcher } from "./expiredSignIns";
 import { PlanUsageStatus } from "./PlanUsageStatus";
 
 pages.register({
@@ -23,3 +24,4 @@ registerCommand({
 });
 
 statusItems.register({ id: "usage-limits", title: "settings:status.items.usage", side: "right", order: 10, component: PlanUsageStatus });
+globals.register({ id: "usage.expired-sign-ins", component: ExpiredSignInWatcher });

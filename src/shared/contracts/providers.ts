@@ -14,6 +14,9 @@
  */
 import type { ModelKind } from "./config";
 
+/** omp records its own sign-out as a disabled credential; that is not something to fix. */
+export const SIGNED_OUT_CAUSE = /^(logged out by user|deleted by user|replaced by)/i;
+
 export interface ProviderAccount {
 	email: string | null;
 	accountId: string | null;

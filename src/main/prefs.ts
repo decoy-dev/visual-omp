@@ -44,6 +44,7 @@ const DEFAULTS: AppPreferences = {
 	voiceInput: false,
 	classicPresentation: false,
 	sendCrashReports: true,
+	expiredSignInsShown: [],
 };
 
 const file = join(app.getPath("userData"), "preferences.json");
@@ -56,6 +57,11 @@ function sidebarSort(value: unknown): SidebarSort {
 		by: stored.by === "name" || stored.by === "created" || stored.by === "recent" ? stored.by : DEFAULT_SIDEBAR_SORT.by,
 		groupByProject: typeof stored.groupByProject === "boolean" ? stored.groupByProject : DEFAULT_SIDEBAR_SORT.groupByProject,
 	};
+}
+
+/** Unique strings in first-seen order. Every key stays: an evicted key would announce a listed sign-in again. */
+function signInKeys(value: unknown): string[] {
+	return Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === "string"))] : [];
 }
 
 /** Preserve list order; canonical color entries win conflicts, then the first saved alias. */
@@ -77,7 +83,7 @@ function projectPreferences<T extends Partial<AppPreferences>>(prefs: T): T {
 function load(): StoredPreferences {
 	try {
 		const stored = JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>;
-		return projectPreferences({ appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false });
+		return projectPreferences({ appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false, expiredSignInsShown: signInKeys(stored.expiredSignInsShown) });
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { appUpdateSkipThrough: null, ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
@@ -98,6 +104,7 @@ export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
 		statusBar: normalizeStatusBar(patch.statusBar === undefined ? current.statusBar : patch.statusBar),
 		textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)),
 		sendCrashReports: typeof patch.sendCrashReports === "boolean" ? patch.sendCrashReports : current.sendCrashReports,
+		expiredSignInsShown: patch.expiredSignInsShown === undefined ? current.expiredSignInsShown : signInKeys(patch.expiredSignInsShown),
 	};
 	const snapshot = JSON.stringify(current, null, 2);
 	// A failed flush must still allow a subsequent write to restore the previous rollback boundary.
