@@ -53,6 +53,16 @@ describe("HTML ask transcript", () => {
 		expect(empty).toContain("(no answer)");
 		expect(empty).toContain("after the timeout");
 	});
+	it("renders inline code in HTML-form questions and choices", () => {
+		const args = { html: "<form><label for=\"config\">Save `task.agentModelOverrides`?</label><select name=\"config\" id=\"config\"><option>Use `config.yml`</option></select></form>" };
+		expect(parseAskForm(args.html).fields[0]?.question).toBe("Save `task.agentModelOverrides`?");
+		const html = renderToStaticMarkup(createElement(askRenderer.Body!, { name: "ask", args }));
+		const container = document.createElement("div");
+		container.innerHTML = html;
+		expect([...container.querySelectorAll(".tv-row")].map(row => row.textContent)).toEqual(["Save task.agentModelOverrides?", "●Use config.yml preselected"]);
+		expect([...container.querySelectorAll(".tv-row")].map(row => row.querySelector("code")?.textContent ?? "no-code")).toEqual(["task.agentModelOverrides", "config.yml"]);
+		expect([...container.querySelectorAll("code")].map(code => code.textContent)).toEqual(["task.agentModelOverrides", "config.yml"]);
+	});
 	it("renders option notes only under the answer with the same name and question", () => {
 		const answers = [
 			{ name: "channel", question: "Release channel", answer: "Stable" },

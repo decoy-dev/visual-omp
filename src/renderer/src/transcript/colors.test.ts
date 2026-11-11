@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ColorText } from "./ColorText";
-import { colorTextHtml, decorateColors } from "./colors";
+import { colorTextHtml, decorateColors, truncateInlineCode } from "./colors";
 import { MarkdownBlocks, renderMarkdown } from "./render";
 
 const parse = (html: string) => {
@@ -60,12 +60,66 @@ describe("inline color swatches", () => {
 		}
 	});
 
-	it("preserves literal question punctuation and escaped text while decorating inline code", () => {
+	it("keeps plain user and thinking text literal while decorating inline code swatches", () => {
 		const text = "Use **#aabbcc** or `#123`, with <script>#11223344</script> & issue #123?";
 		const root = parse(renderToStaticMarkup(createElement(ColorText, { text })));
 		expect(root.textContent).toBe(text);
 		expect(root.querySelector("script")).toBeNull();
+		expect(root.querySelector("code")).toBeNull();
 		expect(root.querySelectorAll(".vomp-color-swatch")).toHaveLength(3);
+	});
+
+	it("renders question inline code without delimiters, decorates colors, and escapes HTML", () => {
+		const text = "Save `task.agentModelOverrides <script>` and `#abc`, then `unfinished";
+		const root = parse(colorTextHtml(text, undefined, true));
+		expect(root.querySelector("script")).toBeNull();
+		expect(root.querySelector("code")?.textContent).toBe("task.agentModelOverrides <script>");
+		expect(root.querySelectorAll("code")).toHaveLength(2);
+		expect(root.querySelectorAll(".vomp-color-swatch")).toHaveLength(1);
+		expect(root.textContent).toBe("Save task.agentModelOverrides <script> and #abc, then `unfinished");
+	});
+
+	it("keeps escaped backticks literal and supports different-length runs inside code", () => {
+		const text = "Escaped \\`literal\\`, then ``code with ` one backtick``.";
+		const root = parse(colorTextHtml(text, undefined, true));
+		expect(root.querySelectorAll("code")).toHaveLength(1);
+		expect(root.querySelector("code")?.textContent).toBe("code with ` one backtick");
+		expect(root.textContent).toBe("Escaped \\`literal\\`, then code with ` one backtick.");
+	});
+
+	it.each([
+		["closed", "Before `#abc`\n```js\n#112233\n```\nAfter `code`", "Before #abc\n```js\n#112233\n```\nAfter code"],
+		["unfinished", "Before `#abc`\n```js\n#112233\nAfter `code`", "Before #abc\n```js\n#112233\nAfter `code`"],
+	])("preserves %s fences when rendering inline code", (_kind, text, expected) => {
+		const root = parse(colorTextHtml(text, undefined, true));
+		expect(root.textContent).toBe(expected);
+		expect(swatches(root.innerHTML).map(node => node.getAttribute("title"))).toEqual(["#AABBCC"]);
+	});
+
+	it("extends a question summary cutoff through a code span", () => {
+		const question = `${"x".repeat(67)} \`task.agentModelOverrides\` and more text`;
+		const summary = truncateInlineCode(question, 70);
+		const root = parse(colorTextHtml(summary, undefined, true));
+		expect(root.querySelector("code")?.textContent).toBe("task.agentModelOverrides");
+		expect(summary.endsWith("…")).toBe(true);
+	});
+
+	it("keeps closing delimiter runs whole at a summary cutoff", () => {
+		const question = "``" + "x".repeat(67) + "`` tail";
+		const summary = truncateInlineCode(question, 70);
+		const root = parse(colorTextHtml(summary, undefined, true));
+		expect(summary).toBe(question.slice(0, 71) + "…");
+		expect(root.querySelector("code")?.textContent).toBe("x".repeat(67));
+	});
+
+	it.each([
+		["unmatched", "Before `unfinished\n```js\n#112233\n```\nAfter `#abc`", "Before `unfinished\n```js\n#112233\n```\nAfter #abc"],
+		["escaped", "Before \\`escaped\n```js\n#112233\n```\nAfter `#abc`", "Before \\`escaped\n```js\n#112233\n```\nAfter #abc"],
+	])("finds fenced blocks after %s backticks", (_kind, text, expected) => {
+		const root = parse(colorTextHtml(text, undefined, true));
+		expect(root.textContent).toBe(expected);
+		expect(root.querySelectorAll("code")).toHaveLength(1);
+		expect([...root.querySelectorAll(".vomp-color-swatch")].map(node => node.getAttribute("title"))).toEqual(["#AABBCC"]);
 	});
 
 	it("does not decorate fenced code in plain question text", () => {

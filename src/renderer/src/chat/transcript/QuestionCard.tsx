@@ -225,7 +225,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
 					<p id={titleId} className="selectable mb-3 text-base font-medium text-fg">
-						<ColorText text={request.title} />
+						<ColorText text={request.title} inlineCode />
 					</p>
 					<Textarea
 						ref={editorRef}
@@ -271,7 +271,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				{noteLine}
 				<Heading icon={<ShieldWarning className="text-warn" />}>
 					<p className="mb-2 text-base font-medium text-fg">{t("question.approval")}</p>
-					<pre className="selectable max-h-48 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg">{request.title}</pre>
+					<pre className="selectable max-h-48 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg"><ColorText text={request.title} inlineCode /></pre>
 				</Heading>
 				{labels.length > 2 && (
 					<div className="mt-3">
@@ -280,7 +280,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						<div className="mt-2 flex flex-wrap gap-2">
 							{labels.filter(label => label !== once && label !== "Deny").map(label => (
 								<Button key={label} variant="secondary" disabled={denying} className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => session.answer(request.reqId, label)}>
-									{label}
+									<ColorText text={label} inlineCode />
 								</Button>
 							))}
 						</div>
@@ -334,14 +334,15 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			{noteLine}
 			<Heading icon={<Question className="text-accent" />}>
 				<p id={titleId} className="selectable text-base font-medium text-fg">
-					<ColorText text={request.title} />
+					<ColorText text={request.title} inlineCode />
 				</p>
-				{(multi || helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={helpText ?? t("question.chooseMany")} /></p>}
+				{(multi || helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={helpText ?? t("question.chooseMany")} inlineCode /></p>}
 			</Heading>
 			<ChoiceGrid
 				choices={choices}
 				multi={multi}
 				labelledBy={titleId}
+				inlineCode
 				disabled={disabled && !steadyControls}
 				isOn={index => (multi ? checked.has(index) : selected === index && !other.trim())}
 				activeIndex={activeIndex}

@@ -43,10 +43,12 @@ export interface ChoiceGridProps {
 	/** Single choice: a double-click answers with the option at once. */
 	onConfirm?: (index: number) => void;
 	disabled?: boolean;
+	/** Render backtick-delimited code from model-authored question text. */
+	inlineCode?: boolean;
 }
 
 /** Bordered option tiles in a two-column grid: a radio group with arrow keys, or a group of checkboxes. */
-export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, activeIndex, onSelect, onConfirm, disabled = false }: ChoiceGridProps): ReactNode {
+export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, activeIndex, onSelect, onConfirm, disabled = false, inlineCode = false }: ChoiceGridProps): ReactNode {
 	const indicatorId = useId();
 	const moveSelection = (event: KeyboardEvent<HTMLDivElement>) => {
 		// Modified arrows belong to the card (Alt+Left and Alt+Right move between questions).
@@ -135,8 +137,8 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 							</AnimatePresence>
 						</span>
 						<span className="relative min-w-0 wrap-anywhere">
-							<span className="block text-md font-medium text-fg"><ColorText text={label} /></span>
-							{description && <span className="mt-0.5 block text-sm text-fg-muted"><ColorText text={description} /></span>}
+							<span className="block text-md font-medium text-fg"><ColorText text={label} inlineCode={inlineCode} /></span>
+							{description && <span className="mt-0.5 block text-sm text-fg-muted"><ColorText text={description} inlineCode={inlineCode} /></span>}
 						</span>
 					</button>
 				);

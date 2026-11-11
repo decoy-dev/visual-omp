@@ -225,7 +225,8 @@
 	margin: 0;
 }
 
-.tr-md code {
+.tr-md code,
+.tr-inline-code {
 	font-family: var(--font-mono);
 	font-size: 12.5px;
 	padding: 1px 5px;

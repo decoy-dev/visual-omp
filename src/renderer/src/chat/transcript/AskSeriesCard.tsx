@@ -81,7 +81,7 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 					<Heading icon={<Question className="text-accent" />}>
 						{/* The right padding keeps a long title clear of the progress label. */}
 						<p id={titleId} className="selectable pr-28 text-base font-medium wrap-anywhere text-fg">
-							<ColorText text={question.question} />
+							<ColorText text={question.question} inlineCode />
 						</p>
 						{question.multi && <p className="mt-0.5 text-sm text-fg-muted">{t("question.chooseMany")}</p>}
 					</Heading>
@@ -89,6 +89,7 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 						choices={question.options}
 						multi={question.multi}
 						labelledBy={titleId}
+						inlineCode
 						describedBy={progressId}
 						isOn={option => answer.selected.includes(option) && (question.multi || !custom.trim())}
 						activeIndex={activeIndex}

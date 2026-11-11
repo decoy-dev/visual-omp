@@ -2,8 +2,9 @@
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
-import { detailsRecord, isAskClosedByMessage, isRecord, normalizeWs, num, str, truncate } from "../util";
+import { detailsRecord, isAskClosedByMessage, isRecord, normalizeWs, num, str } from "../util";
 import { ColorText } from "../../transcript/ColorText";
+import { truncateInlineCode } from "../../transcript/colors";
 import { parseAskForm } from "./askForm";
 
 interface AskOption {
@@ -168,14 +169,14 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 		const form = typeof args.html === "string" ? parseAskForm(args.html) : null;
 		const answers = detailsRecord(result)?.answers;
 		const count = form?.fields.length ?? (Array.isArray(answers) ? answers.length : 0);
-		return <><span><ColorText text={truncate(form?.legends.join(", ") || form?.fields[0]?.question || "Form", 70)} /></span><Badge>{count} {count === 1 ? "field" : "fields"}</Badge>{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}</>;
+		return <><span><ColorText text={truncateInlineCode(form?.legends.join(", ") || form?.fields[0]?.question || "Form", 70)} inlineCode /></span><Badge>{count} {count === 1 ? "field" : "fields"}</Badge>{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}</>;
 	}
 	const questions = questionsOf(args);
 	const first = questions[0];
 	if (!first) return <InvalidArg what="questions" />;
 	return (
 		<>
-			<span><ColorText text={truncate(normalizeWs(first.question), 70)} /></span>
+			<span><ColorText text={truncateInlineCode(normalizeWs(first.question), 70)} inlineCode /></span>
 			{questions.length > 1 && <Badge>{questions.length} questions</Badge>}
 			{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}
 		</>
@@ -188,7 +189,7 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 		<div className="tv-list">
 			<Row>
 				{q.id !== "?" && <span className="tv-faint">[{q.id}] </span>}
-				{q.question ? <span><ColorText text={q.question} /></span> : <InvalidArg what="question" />}
+				{q.question ? <span><ColorText text={q.question} inlineCode /></span> : <InvalidArg what="question" />}
 				{q.multi && <Badge>multi</Badge>}
 			</Row>
 			{q.options.map((opt, i) => {
@@ -196,9 +197,9 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 				const marker = q.multi ? (isSelected ? "■" : "□") : isSelected ? "●" : "○";
 				return (
 					<Row key={i} k={<span className={isSelected ? "tv-ok-text" : undefined}>{marker}</span>}>
-						<span className={answer && !isSelected ? "tv-muted" : undefined}><ColorText text={opt.label} /></span>
+						<span className={answer && !isSelected ? "tv-muted" : undefined}><ColorText text={opt.label} inlineCode /></span>
 						{i === q.recommended && <Badge tone="accent">recommended</Badge>}
-						{opt.description && <span className="tv-muted">: <ColorText text={opt.description} /></span>}
+						{opt.description && <span className="tv-muted">: <ColorText text={opt.description} inlineCode /></span>}
 					</Row>
 				);
 			})}
@@ -231,14 +232,14 @@ function FormBody({ args, result }: ToolRenderProps): ReactNode {
 	) : [];
 	return <>
 		{answers ? answers.map((answer, index) => <div className="tv-list" key={index}>
-			<Row><ColorText text={str(answer.question) ?? str(answer.name) ?? ""} /></Row>
+			<Row><ColorText text={str(answer.question) ?? str(answer.name) ?? ""} inlineCode /></Row>
 			<Row k="answer"><ColorText text={str(answer.answer) || "(no answer)"} /></Row>
 			{notes.filter(note => note.name === answer.name && note.question === answer.question).map((note, noteIndex) =>
 				<Note key={noteIndex}>✎ <ColorText text={`${note.option}: ${note.text}`} /></Note>,
 			)}
 		</div>) : form?.fields.map((field, index) => <div className="tv-list" key={index}>
-			<Row><ColorText text={form.legends.includes(field.question) ? field.name.replace(/[_-]+/g, " ") : field.question} /></Row>
-			{field.options.map((option, optionIndex) => <Row key={optionIndex} k={field.multi ? (option.selected ? "■" : "□") : option.selected ? "●" : "○"}><ColorText text={option.label} />{option.selected && <> <Badge tone="accent">preselected</Badge></>}</Row>)}
+			<Row><ColorText text={form.legends.includes(field.question) ? field.name.replace(/[_-]+/g, " ") : field.question} inlineCode /></Row>
+			{field.options.map((option, optionIndex) => <Row key={optionIndex} k={field.multi ? (option.selected ? "■" : "□") : option.selected ? "●" : "○"}><ColorText text={option.label} inlineCode />{option.selected && <> <Badge tone="accent">preselected</Badge></>}</Row>)}
 			{field.value && <Row k="value"><ColorText text={field.value} /></Row>}
 		</div>)}
 		{form?.images.map((alt, index) => <Row key={`image:${index}`}><ColorText text={alt} /></Row>)}

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -41,4 +42,24 @@ it("shows colors in saved questions, choices, custom answers and notes", () => {
 	expect(html).toContain('title="#11223344"');
 	expect(html).toContain('title="#445566"');
 	expect(html).toContain("issue #123");
+});
+
+it("renders question and option code while keeping typed answers and notes literal", () => {
+	const args = { questions: [{ id: "db", question: "Save `task.agentModelOverrides`?", options: [{ label: "Use `config.yml`", description: "Set `mode`" }] }] };
+	const result = { content: [], details: { results: [{ id: "db", selectedOptions: ["Use `config.yml`"], customInput: "Keep `my answer`", note: "Typed `option note`" }] } };
+	const html = renderToStaticMarkup(createElement(ToolView, { name: "ask", args, result, defaultOpen: true }));
+	const root = document.createElement("div");
+	root.innerHTML = html;
+	expect([...root.querySelectorAll("code")].map(code => code.textContent)).toEqual(["task.agentModelOverrides", "task.agentModelOverrides", "config.yml", "mode"]);
+	expect(root.textContent).toContain("Keep `my answer`");
+	expect(root.textContent).toContain("Typed `option note`");
+});
+
+it("keeps a summary code span whole when the 70-character cutoff crosses it", () => {
+	const question = `${"x".repeat(68)} \`task.agentModelOverrides\` after the cutoff`;
+	const html = renderToStaticMarkup(createElement(ToolView, { name: "ask", args: { questions: [{ id: "db", question, options: [{ label: "Keep" }] }] }, defaultOpen: true }));
+	const root = document.createElement("div");
+	root.innerHTML = html;
+	expect(root.querySelector(".tv-sum code")?.textContent).toBe("task.agentModelOverrides");
+	expect(root.querySelector(".tv-sum")?.textContent).not.toContain("`");
 });
