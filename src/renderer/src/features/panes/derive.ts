@@ -341,41 +341,76 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		};
 		jobs.set(jobId, { ...existing, ...patch });
 	};
-	const stopRunning = () => {
-		for (const job of jobs.values()) if (job.state === "running") upsert(job.jobId, { state: "cancelled" });
+	const exitedJobs = new Map<string, BackgroundJob>();
+	const savedReports = new Map<string, JobReport>();
+	const reportKey = (jobId: string, scope: "previous" | "current") => `${jobId}:${scope}`;
+	const stopRunning = (exitingProcess = false) => {
+		for (const job of jobs.values()) {
+			if (exitingProcess && !exitedJobs.has(job.jobId)) exitedJobs.set(job.jobId, { ...job, state: job.state === "running" ? "cancelled" : job.state });
+			if (job.state === "running") upsert(job.jobId, { state: "cancelled" });
+		}
+		if (exitingProcess) {
+			savedReports.clear();
+			reportedAt.clear();
+		}
 	};
 	/** When the latest poll or delivery for each job was saved. */
 	const reportedAt = new Map<string, number>();
 	for (const item of transcriptItems(entries)) {
 		if (item.kind === "exit") {
-			stopRunning();
+			stopRunning(true);
 			continue;
 		}
 		if (item.kind === "result" && (item.name === "bash" || item.name === "eval") && item.details && isRecord(item.details.async)) {
 			const jobId = str(item.details.async.jobId);
 			const state = item.details.async.state;
 			if (jobId && isJobState(state)) {
+				const existing = jobs.get(jobId);
+				if (existing && typeof processStartedAt === "number" && item.start >= processStartedAt && existing.startedAt !== null && existing.startedAt < processStartedAt) {
+					if (!exitedJobs.has(jobId)) exitedJobs.set(jobId, { ...existing, state: existing.state === "running" ? "cancelled" : existing.state });
+					savedReports.delete(reportKey(jobId, "current"));
+					reportedAt.delete(jobId);
+				}
 				const folder = str(item.details.cwd) ?? str(item.args.cwd);
-				upsert(jobId, { command: str(item.args.command) ?? str(item.args.code) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start, toolCallId: item.message.toolCallId });
+				upsert(jobId, { command: str(item.args.command) ?? str(item.args.code) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start, durationMs: null, exitCode: null, caption: null, widget: null, toolCallId: item.message.toolCallId });
 			}
 			continue;
 		}
 		for (const report of jobReports(item)) {
-			reportedAt.set(report.id, item.kind === "result" ? item.message.timestamp : item.kind === "custom" ? item.time : 0);
+			const reportAt = item.kind === "result" ? item.message.timestamp : item.kind === "custom" ? item.time : 0;
+			reportedAt.set(report.id, reportAt);
 			const job = jobs.get(report.id);
+			const reportScope = typeof processStartedAt === "number" && reportAt < processStartedAt ? "previous" : "current";
+			if (reportScope === "current" && job && typeof processStartedAt === "number" && job.startedAt !== null && job.startedAt < processStartedAt && !exitedJobs.has(report.id)) {
+				exitedJobs.set(report.id, { ...job, state: job.state === "running" ? "cancelled" : job.state });
+			}
 			if (!job && report.type !== "bash" && report.type !== "eval") continue;
 			if (!job) upsert(report.id, { command: report.label ?? "", intent: report.intent, state: report.state });
-			// A delivery ends a running job. When a poll already said how it ended, that outcome stands, but the
-			// delivery still brings the final output, omp's run time and the exit line.
-			const state = report.delivered && job && job.state !== "running" ? job.state : report.state;
-			const output = report.output ?? job?.output ?? "";
+			const key = reportKey(report.id, reportScope);
+			const currentJob = job && (reportScope === "previous" ? typeof processStartedAt !== "number" || job.startedAt === null || job.startedAt < processStartedAt : typeof processStartedAt !== "number" || job.startedAt === null || job.startedAt >= processStartedAt) ? job : undefined;
+			const previousReport = savedReports.get(key);
+			const reportState = report.delivered && previousReport && previousReport.state !== "running" ? previousReport.state : report.state;
+			const savedReport: JobReport = {
+				...report,
+				label: report.label ?? previousReport?.label ?? null,
+				intent: report.intent ?? previousReport?.intent ?? null,
+				state: reportState,
+				output: report.output ?? previousReport?.output ?? null,
+				durationMs: report.durationMs ?? previousReport?.durationMs ?? null,
+				cwd: report.cwd ?? previousReport?.cwd ?? null,
+				widget: report.widget ?? previousReport?.widget ?? null,
+			};
+			savedReports.set(key, savedReport);
+			// A delivery ends a running job. A poll in the same process can establish its outcome.
+			const state = report.delivered && currentJob && currentJob.state !== "running" ? currentJob.state : reportState;
+			const output = report.output ?? currentJob?.output ?? "";
 			upsert(report.id, {
 				state,
 				output,
-				...(report.intent ? { intent: report.intent } : {}),
-				...(report.cwd ? { cwd: report.cwd } : {}),
-				...(report.widget ? { widget: report.widget } : {}),
-				...(state !== "running" ? { durationMs: report.durationMs ?? job?.durationMs ?? null, exitCode: exitCodeOf(output) ?? job?.exitCode ?? null } : {}),
+				...(savedReport.intent ? { intent: savedReport.intent } : {}),
+				...(savedReport.cwd ? { cwd: savedReport.cwd } : {}),
+				...(savedReport.widget ? { widget: savedReport.widget } : {}),
+				...(state !== "running" ? { durationMs: savedReport.durationMs ?? currentJob?.durationMs ?? null, exitCode: exitCodeOf(output) ?? currentJob?.exitCode ?? null } : {}),
 			});
 		}
 	}
@@ -438,6 +473,10 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		if (!isRecord(tool.args)) continue;
 		const jobId = startedJob(tool);
 		if (!jobId) continue;
+		const previousJob = jobs.get(jobId);
+		if (previousJob && typeof processStartedAt === "number" && previousJob.startedAt !== null && previousJob.startedAt < processStartedAt && !exitedJobs.has(jobId)) {
+			exitedJobs.set(jobId, { ...previousJob, state: previousJob.state === "running" ? "cancelled" : previousJob.state });
+		}
 		const async = isRecord(details?.async) ? details.async : null;
 		const output = str(details?.output) ?? (tool.toolName === "eval" && Array.isArray(partial?.content) ? resultText({ content: partial.content }) : null);
 		const existing = replacesEarlier(jobId, tool) ? undefined : jobs.get(jobId);
@@ -464,7 +503,59 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		if (job?.state === "running") upsert(native.id, { intent: job.intent || native.intent, caption: native.caption });
 	}
 	if (!ompLive) stopRunning();
-	const newestFirst = [...jobs.values()].reverse();
+	const exitedRows = [...exitedJobs.values()];
+	const currentRows = new Map(jobs);
+	const currentFrames: BackgroundJob[] = [];
+	for (const exited of exitedRows) {
+		const jobId = exited.jobId;
+		const savedJob = jobs.get(jobId);
+		const savedReport = savedReports.get(reportKey(jobId, "current"));
+		const reportOwnerId = reportOwner(jobId);
+		const candidates = frames.filter(tool => startedJob(tool) === jobId && tool.startedAt > (exited.startedAt ?? -1) && (typeof processStartedAt !== "number" || tool.startedAt >= processStartedAt));
+		const owners = reportOwnerId ? candidates.filter(tool => tool.toolCallId === reportOwnerId) : candidates;
+		currentRows.delete(jobId);
+		if (owners.length) {
+			for (const owner of owners) {
+				const report = owner.toolCallId === reportOwnerId ? savedReport : undefined;
+				const args = isRecord(owner.args) ? owner.args : {};
+				const partial = isRecord(owner.partialResult) ? owner.partialResult : null;
+				const details = partial && isRecord(partial.details) ? partial.details : null;
+				const folder = str(details?.cwd) ?? str(args.cwd) ?? report?.cwd;
+				const output = report?.output ?? str(details?.output) ?? (owner.toolName === "eval" && Array.isArray(partial?.content) ? resultText({ content: partial.content }) : "");
+				const async = isRecord(details?.async) ? details.async : null;
+				const native = owners.length === 1 ? nativeJobs?.find(job => job.id === jobId) : undefined;
+				currentFrames.push({
+					jobId,
+					command: str(args.command) ?? str(args.code) ?? report?.label ?? "",
+					intent: callIntent({ intent: owner.intent, arguments: args }) ?? report?.intent ?? native?.intent ?? null,
+					state: report?.state ?? (isJobState(async?.state) ? async.state : "running"),
+					output,
+					startedAt: owner.startedAt,
+					durationMs: report?.durationMs ?? null,
+					exitCode: exitCodeOf(output),
+					cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd,
+					widget: report?.widget ?? null,
+					...(native?.caption ? { caption: native.caption } : {}),
+					toolCallId: owner.toolCallId,
+				});
+			}
+			continue;
+		}
+		if (savedJob?.toolCallId && savedJob.toolCallId !== exited.toolCallId && savedJob.startedAt !== null && savedJob.startedAt > (exited.startedAt ?? -1)) {
+			const ownsReport = (reportedAt.get(jobId) ?? 0) >= savedJob.startedAt;
+			const report = ownsReport ? savedReport : undefined;
+			const output = report?.output ?? savedJob.output;
+			currentRows.set(jobId, {
+				...savedJob,
+				state: report?.state ?? savedJob.state,
+				output,
+				durationMs: report?.durationMs ?? savedJob.durationMs,
+				exitCode: exitCodeOf(output) ?? savedJob.exitCode,
+				widget: report?.widget ?? savedJob.widget,
+			});
+		}
+	}
+	const newestFirst = [...exitedRows, ...currentRows.values(), ...currentFrames].reverse().map(job => !ompLive && job.state === "running" ? { ...job, state: "cancelled" as const } : job);
 	return [...newestFirst.filter(job => job.state === "running"), ...newestFirst.filter(job => job.state !== "running")];
 }
 

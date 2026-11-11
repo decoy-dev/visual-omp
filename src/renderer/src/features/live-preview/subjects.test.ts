@@ -253,7 +253,14 @@ describe("current-turn live subjects", () => {
 			const exit = { type: "custom", id: "exit", parentId: null, timestamp: new Date(4_000).toISOString(), customType: "session_exit", data: { reason: "dispose" } } as unknown as SessionEntry;
 			const entries = [user(), call("old", "old.mp4", 200), started("old", 300), exit, call("new", "new.mp4", 10_000), started("new", 10_100), poll("failed", 10_200)];
 			const tools = new Map([["old", running("old", { command: command("old.mp4"), async: true }, "bash", 200)], ["new", running("new", { command: command("new.mp4"), async: true }, "bash", 10_000)]]);
-			expect(derive(entries, tools, 5_000).states).toEqual({ "call:old": "running", "call:new": "failed" });
+			expect(derive(entries, tools, 5_000).states).toEqual({ "call:old": "stopped", "call:new": "failed" });
+		});
+		it("settles a live-only reused job id without changing the earlier process's cancelled call", () => {
+			const exit = { type: "custom", id: "exit", parentId: null, timestamp: new Date(4_000).toISOString(), customType: "session_exit", data: { reason: "dispose" } } as unknown as SessionEntry;
+			const entries = [user(), call("old", "old.mp4", 200), started("old", 300), exit, call("new", "new.mp4", 10_000), poll("failed", 10_200)];
+			const old = running("old", { command: command("old.mp4"), async: true }, "bash", 200);
+			const current = { ...running("new", { command: command("new.mp4"), async: true }, "bash", 10_000), partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } };
+			expect(derive(entries, new Map([["old", old], ["new", current]]), 5_000)).toEqual({ states: { "call:old": "stopped", "call:new": "failed" }, named: [], videos: [] });
 		});
 
 		it("gives a settled report to the current process's frame, never an earlier process's frame that reused the job id", () => {

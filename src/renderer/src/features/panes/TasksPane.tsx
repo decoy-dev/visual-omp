@@ -72,9 +72,13 @@ function HelperRow({ helper, jobs, error, session, layoutKey }: { helper: Helper
 	);
 }
 
+function jobRowKey(job: BackgroundJob): string {
+	return `${job.jobId}\0${job.toolCallId ?? job.startedAt ?? "unknown"}`;
+}
+
 /** Rows remeasure for order and visible-row structure, not progress text or elapsed time. */
 function jobLayoutKey(job: BackgroundJob): string {
-	return `${job.jobId}\0${job.state}\0${Boolean(job.intent)}\0${Boolean(job.caption)}\0${Boolean(job.widget)}\0`;
+	return `${jobRowKey(job)}\0${job.state}\0${Boolean(job.intent)}\0${Boolean(job.caption)}\0${Boolean(job.widget)}\0`;
 }
 
 /**
@@ -272,7 +276,7 @@ function JobList({ jobs, session }: { jobs: readonly BackgroundJob[]; session?: 
 			<ul className="overflow-hidden rounded-lg border border-border bg-panel">
 				<AnimatePresence initial={false}>
 					{shown.map(job => (
-						<JobRow key={job.jobId} job={job} session={session} layoutKey={layoutKey} />
+						<JobRow key={jobRowKey(job)} job={job} session={session} layoutKey={layoutKey} />
 					))}
 				</AnimatePresence>
 			</ul>

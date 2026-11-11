@@ -290,6 +290,7 @@ describe("backgroundJobs", () => {
 		expect(jobs.map(job => [job.jobId, job.command, job.state])).toEqual([
 			["bg_1", "gh run watch 41549644117", "running"],
 			["bg_2", "npx electron-vite build", "cancelled"],
+			["bg_1", "gh run watch 41147366297", "cancelled"],
 		]);
 		// Without a known process start, transcript-only jobs keep today's behaviour.
 		expect(backgroundJobs(entries, true).find(job => job.jobId === "bg_2")?.state).toBe("running");
@@ -302,12 +303,88 @@ describe("backgroundJobs", () => {
 			at(result("old-poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", resultText: "old output" }] }), 2_000),
 		];
 		const live: ActiveTool = { toolCallId: "new1", toolName: "bash", args: { command: "gh run watch 41549644117", async: true }, startedAt: 10_000, partialResult: { details: { output: "queued", async: { jobId: "bg_1", state: "running" } } } };
-		expect(backgroundJobs(entries, true, new Map([["new1", live]]), undefined, null, undefined, 5_000)).toMatchObject([
-			{ jobId: "bg_1", command: "gh run watch 41549644117", state: "running", output: "queued", startedAt: 10_000, durationMs: null, exitCode: null },
+		expect(backgroundJobs(entries, true, new Map([["new1", live]]), undefined, null, undefined, 5_000).map(job => [job.jobId, job.command, job.state, job.output])).toEqual([
+			["bg_1", "gh run watch 41549644117", "running", "queued"],
+			["bg_1", "gh run watch 41147366297", "cancelled", "old output"],
 		]);
 		// A live frame cannot revive the earlier process's job when it predates the current process.
 		const stale: ActiveTool = { ...live, startedAt: 1_000 };
 		expect(backgroundJobs(entries, true, new Map([["old1", stale]]), undefined, null, undefined, 5_000)[0]).toMatchObject({ command: "gh run watch 41147366297", state: "cancelled" });
+	});
+	it("keeps a saved start's exited job separate from a live-only reused job's report", () => {
+		const at = (entry: SessionEntry, time: number) => { if (entry.type === "message") entry.message.timestamp = time; return entry; };
+		const oldStarted = started("old", "bg_1", "ffmpeg old.mp4").map(entry => at(entry, 1_000));
+		const currentCall = at(call("new", "bash", { command: "ffmpeg new.mp4", async: true }), 10_000);
+		const report = at(result("poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "failed", resultText: "new output" }] }), 10_200);
+		const current: ActiveTool = { toolCallId: "new", toolName: "bash", args: { command: "ffmpeg new.mp4", async: true }, startedAt: 10_000, partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } };
+		const entries = [...oldStarted, exit, currentCall, report];
+		const jobs = backgroundJobs(entries, true, new Map([["new", current]]), undefined, null, [{ id: "bg_1", intent: "Native rendering", caption: "Rendering current video" }], 5_000);
+		expect(jobs).toMatchObject([
+			{ jobId: "bg_1", command: "ffmpeg new.mp4", state: "failed", output: "new output", toolCallId: "new", startedAt: 10_000, intent: "Native rendering", caption: "Rendering current video" },
+			{ jobId: "bg_1", command: "ffmpeg old.mp4", state: "cancelled", output: ["run=1", "", "Backgrounded as job bg_1"].join(String.fromCharCode(10)), toolCallId: "old", startedAt: 1_000 },
+		]);
+		expect(backgroundJobs(entries, true, undefined, undefined, null, undefined, 5_000)).toMatchObject([
+			{ jobId: "bg_1", command: "ffmpeg old.mp4", state: "cancelled", toolCallId: "old" },
+		]);
+		const ambiguous = { ...current, toolCallId: "other" };
+		expect(backgroundJobs(entries, true, new Map([["new", current], ["other", ambiguous]]), undefined, null, undefined, 5_000).map(job => [job.toolCallId, job.state])).toEqual([
+			["other", "running"],
+			["new", "running"],
+			["old", "cancelled"],
+		]);
+	});
+	it.each(["saved", "live-only"] as const)("isolates successful delivery data from the previous process's failure for a %s current start", startMode => {
+		const at = (entry: SessionEntry, time: number) => { if (entry.type === "message") entry.message.timestamp = time; return entry; };
+		const oldDelivery = {
+			...base(),
+			timestamp: new Date(3_000).toISOString(),
+			type: "custom_message",
+			customType: "async-result",
+			content: ["<system-notice>", "Background job bg_1 has completed. Resume your work using the result below.", "old failure", "Command exited with code 1", "</system-notice>"].join(String.fromCharCode(10)),
+			display: true,
+			details: { jobs: [{ jobId: "bg_1", type: "bash", label: "old watcher" }] },
+		} as unknown as SessionEntry;
+		const old = [
+			...started("old", "bg_1", "old watcher").map(entry => at(entry, 1_000)),
+			at(result("old-poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "failed", resultText: "old failure" }] }), 2_000),
+			oldDelivery,
+		];
+		const currentCall = at(call("new", "bash", { command: "new watcher", async: true }), 10_000);
+		const currentStart = started("new", "bg_1", "new watcher").map(entry => at(entry, 10_100));
+		const delivery = {
+			...base(),
+			timestamp: new Date(10_200).toISOString(),
+			type: "custom_message",
+			customType: "async-result",
+			content: ["<system-notice>", "Background job bg_1 has completed. Resume your work using the result below.", "new success", "</system-notice>"].join(String.fromCharCode(10)),
+			display: true,
+			details: { jobs: [{ jobId: "bg_1", type: "bash", label: "new watcher" }] },
+		} as unknown as SessionEntry;
+		const current: ActiveTool = { toolCallId: "new", toolName: "bash", args: { command: "new watcher", async: true }, startedAt: 10_000, partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } };
+		const entries = [...old, currentCall, ...(startMode === "saved" ? currentStart : []), delivery];
+		expect(backgroundJobs(entries, true, new Map([["new", current]]), undefined, null, undefined, 5_000).map(job => [job.toolCallId, job.state, job.output])).toEqual([
+			["new", "completed", "new success"],
+			["old", "failed", ["old failure", "Command exited with code 1"].join(String.fromCharCode(10))],
+		]);
+	});
+	it("keeps a delivered reused job's outcome and output with its unique current owner", () => {
+		const at = (entry: SessionEntry, time: number) => { if (entry.type === "message") entry.message.timestamp = time; return entry; };
+		const oldStarted = started("old", "bg_1", "ffmpeg old.mp4").map(entry => at(entry, 1_000));
+		const currentCall = at(call("new", "bash", { command: "ffmpeg new.mp4", async: true }), 10_000);
+		const delivery = {
+			...base(),
+			timestamp: new Date(10_200).toISOString(),
+			type: "custom_message",
+			customType: "async-result",
+			content: ["<system-notice>", "Background job bg_1 has completed. Resume your work using the result below.", "new delivery", "Command exited with code 2", "</system-notice>"].join(String.fromCharCode(10)),
+			display: true,
+			details: { jobs: [{ jobId: "bg_1", type: "bash", label: "ffmpeg new.mp4", durationMs: 25 }] },
+		} as unknown as SessionEntry;
+		const current: ActiveTool = { toolCallId: "new", toolName: "bash", args: { command: "ffmpeg new.mp4", async: true }, startedAt: 10_000, partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } };
+		expect(backgroundJobs([...oldStarted, exit, currentCall, delivery], true, new Map([["new", current]]), undefined, null, undefined, 5_000)).toMatchObject([
+			{ jobId: "bg_1", command: "ffmpeg new.mp4", state: "failed", output: ["new delivery", "Command exited with code 2"].join(String.fromCharCode(10)), durationMs: 25, exitCode: 2, toolCallId: "new" },
+			{ jobId: "bg_1", command: "ffmpeg old.mp4", state: "cancelled", output: ["run=1", "", "Backgrounded as job bg_1"].join(String.fromCharCode(10)), toolCallId: "old" },
+		]);
 	});
 
 	it("closes a job from a wait snapshot", () => {
