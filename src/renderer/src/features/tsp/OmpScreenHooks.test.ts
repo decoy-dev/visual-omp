@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TspDocument } from "../../../../main/omp/tsp/apply";
 import { hookAnswerEvents } from "@shared/tsp/dialogs";
 import type { TspFrame } from "@shared/tsp";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { QuestionArbitrator } from "@shared/tsp/question-arbitrator";
 import { walkNodes } from "@shared/tsp/view-state";
 import type { TspHostSnapshot, TspRendererEvent, TspSurfaceSnapshot } from "@shared/tsp-host";

@@ -23,7 +23,7 @@ import { TSP_CLASSIC_ACTION_UNAVAILABLE, type TspEditorRestore, type TspHostSnap
 import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { QuestionArbitrator } from "@shared/tsp/question-arbitrator";
 import { nodeHasLeft } from "@shared/tsp/dialogs";
 import { TspHookAnswer } from "@shared/tsp/dialogs.schema";

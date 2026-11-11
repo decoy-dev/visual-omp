@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hookQuestions, matchQuestions, type CollabQuestion } from "./question-match";
+import { hookQuestions } from "./hook-questions";
+import { matchQuestions, type CollabQuestion } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
 import { askFormPresentation, isAskFormAction, isClaimable, isKnownAction, isKnownRole, TSP_READ_ONLY_ACTIONS } from "./roles";
 import { unclaimed, walkNodes } from "./view-state";

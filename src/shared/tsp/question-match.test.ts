@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hookQuestions, matchQuestions, type CollabQuestionState, type HookQuestion } from "./question-match";
+import { hookQuestions, type HookQuestion } from "./hook-questions";
+import { matchQuestions, type CollabQuestionState } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
@@ -31,13 +32,13 @@ const windowResetCases = [
 	options: [{ label: "Yes", description: `Redeem now and set ${key} to yes.` }, { label: "No", description: `Do not redeem, and set ${key} to no.` }],
 })));
 
-function resetFixture(value: Pick<typeof resetCases[number], "title" | "lines" | "options">, shape: "picker" | "card") {
+function resetFixture<Option extends { label: string; description?: string }>(value: { title: string; lines: string[]; options: Option[] }, shape: "picker" | "card") {
 	const items = value.options.map((option, index) => ({ id: String(index), label: option.label, detail: option.description }));
 	const node: TspNode = shape === "picker"
 		? { id: "hook", k: "picker", p: { title: value.title, subtitle: value.lines.join("\n"), noun: "options", size: "md", layout: "rows", preview: "none", query: null, items, selected: "0", total: 2, empty: "No matching options", actions: [{ id: "confirm", label: "Select", keys: ["enter"], primary: true }, { id: "close", label: "Close", keys: ["esc"], end: true }] } }
 		: { id: "hook", k: "card", p: { role: "omp.overlay.hook-select", head: value.title }, c: [
 			{ id: "hook.detail", k: "text", p: { spans: [{ t: value.lines.join("\n"), s: "accent" }], wrap: "word" } },
-			{ id: "hook.list", k: "list", p: { selected: "0" }, c: items.map(item => ({ id: `hook.list/${item.id}`, k: "item", p: { key: item.id, label: [{ t: item.label }], detail: [{ t: item.detail, s: "muted" }] } })) },
+			{ id: "hook.list", k: "list", p: { selected: "0" }, c: items.map(item => ({ id: `hook.list/${item.id}`, k: "item", p: { key: item.id, label: [{ t: item.label }], ...(item.detail === undefined ? {} : { detail: [{ t: item.detail, s: "muted" }] }) } })) },
 		] };
 	const surface: TspSurfaceSnapshot & { documentGeneration: number } = { open: { id: "s", mode: "inline" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, focus: null, settled: [], document: { id: "s", k: "col", c: [{ id: "layer", k: "col", c: [node] }] } };
 	return { surface, request: { reqId: 9, kind: "select" as const, title: [value.title, ...value.lines].join("\n"), options: value.options } };
@@ -73,6 +74,49 @@ describe("hook-collab question arbitration", () => {
 		expect(matchQuestions(scope, { ...state, requests: [request, { ...request, reqId: 12 }] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
 		const changedDescription = { ...request, options: request.options.map(option => ({ ...option, description: "A different consequence." })) };
 		expect(matchQuestions(scope, { ...state, requests: [changedDescription] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
+	});
+	// omp v18.18.8: interactive-mode.ts #promptCfgChange; hook-selector.ts renders the first line as inline Markdown.
+	it.each(["picker", "card"] as const)("matches a config change approval whose collab title keeps Markdown code marks in a %s", shape => {
+		const change = { title: "Your agent wants to save task.agentModelOverrides to your config.", lines: ['{"task":"fixture/model-a:high"} → {"task":"fixture/model-b:high"}'], options: [{ label: "Always for this session" }, { label: "Allow once" }, { label: "Deny" }] };
+		const { surface, request } = resetFixture(change, shape);
+		const dialogs = hookQuestions([surface], 1);
+		const sourceTitle = (path: string) => [`Your agent wants to save \`${path}\` to your config.`, ...change.lines].join("\n");
+		expect(matchQuestions(scope, { ...state, requests: [{ ...request, title: sourceTitle("task.agentModelOverrides") }] }, dialogs)).toMatchObject([{ status: "matched", reqId: 9 }]);
+		expect(matchQuestions(scope, { ...state, requests: [{ ...request, title: sourceTitle("task.agentModelDefaults") }] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
+	});
+	it("matches option labels and descriptions omp rendered from inline Markdown", () => {
+		const markdown = { ...state.requests[0]!, options: [{ label: "**Yes**", description: "Continue with [the plan (draft)](https://example.com/plan_(v2))" }, "_No_"] };
+		const rendered: HookQuestion = { ...dialog, options: [{ label: "Yes", description: "Continue with the plan (draft)" }, { label: "No" }] };
+		expect(matchQuestions(scope, { ...state, requests: [markdown] }, [rendered])).toMatchObject([{ status: "matched", reqId: 4 }]);
+	});
+	it.each([
+		["Remove api_key from your config?", "Remove apikey from your config?"],
+		["Open ~/config?", "Open /config?"],
+		["Use a*b?", "Use ab?"],
+		["Use a*b?", "Use `a b`?"],
+		["Use AB?", "Use A<br>B?"],
+		["Solve (x)?", "Solve \\(x\\)?"],
+		["Keep old?", "Keep ~~old~~?"],
+	])("keeps literal characters distinct: %s against %s", (native, source) => {
+		expect(matchQuestions(scope, { ...state, requests: [{ ...state.requests[0]!, title: source }] }, [{ ...dialog, title: native }])).toMatchObject([{ status: "ambiguous" }]);
+	});
+	it("renders only the heading, so code inside the source heading matches its literal text", () => {
+		expect(matchQuestions(scope, { ...state, requests: [{ ...state.requests[0]!, title: "Use `a*b`?" }] }, [{ ...dialog, title: "Use a*b?" }])).toMatchObject([{ status: "matched" }]);
+	});
+	it.each(["picker", "card"] as const)("compares selector detail lines literally in a %s", shape => {
+		const question = { title: "Save the folder?", lines: ["C:\\work_dir\\`notes`"], options: [{ label: "Yes" }, { label: "No" }] };
+		const { surface, request } = resetFixture(question, shape);
+		const dialogs = hookQuestions([surface], 1);
+		expect(matchQuestions(scope, { ...state, requests: [request] }, dialogs)).toMatchObject([{ status: "matched", reqId: 9 }]);
+		for (const detail of ["C:work_dir\\`notes`", "C:\\work_dir\\notes"]) {
+			expect(matchQuestions(scope, { ...state, requests: [{ ...request, title: `Save the folder?\n${detail}` }] }, dialogs)).toMatchObject([{ status: "ambiguous" }]);
+		}
+	});
+	it("compares text-entry titles literally, as omp shows them", () => {
+		const editor: HookQuestion = { ...dialog, kind: "editor", title: "Name for `branch`", field: "" };
+		const request = { reqId: 7, kind: "editor" as const, title: "Name for `branch`" };
+		expect(matchQuestions(scope, { ...state, requests: [request] }, [editor])).toMatchObject([{ status: "matched", reqId: 7 }]);
+		expect(matchQuestions(scope, { ...state, requests: [request] }, [{ ...editor, title: "Name for branch" }])).toMatchObject([{ status: "ambiguous" }]);
 	});
 	it("handles collab first and TSP first without treating absence as identity", () => {
 		for (const first of ["collab", "tsp"]) {

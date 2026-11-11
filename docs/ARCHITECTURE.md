@@ -1013,7 +1013,9 @@ Closing the sheet itself does not answer omp, and focus returns to that chat's c
 "Show raw outline" discloses read-only document diagnostics below the semantic content; normal
 screen controls remain available above it. Failed and exited TSP hosts offer Restart omp.
 
-`src/shared/tsp/question-match.ts` provides conservative question arbitration.
+`src/shared/tsp/question-match.ts` provides conservative question arbitration in main. Main and the
+renderer read native questions with `src/shared/tsp/hook-questions.ts`; only main matches them, which
+keeps the Markdown parser that matching uses out of the renderer's startup chunk.
 The renderer mirrors all pending collab requests, including locally answered requests awaiting
 `ui-request-end`, through `host:tsp-questions`. Main validates the host, protocol epoch, room
 generation and monotonically increasing mirror revision. Matching authority is scoped to the guest
@@ -1026,7 +1028,14 @@ stays unavailable while the original collab `reqId` answer path remains availabl
 mutual uniqueness of title, field and option data. Select titles include the native picker's subtitle
 or the selector card's detail node, because omp splits a multi-line question across those properties
 while collab retains the complete title string. Whitespace normalization preserves all detail text,
-including account distinctions; option labels and available descriptions must still agree.
+including account distinctions; option labels and available descriptions must still agree. omp's
+selectors render the first title line, option labels and descriptions as inline Markdown (pi-tui
+`plainInline`), so `` save `path` `` arrives in collab with code marks and in the native node without
+them. Selector comparisons accept either the literal source or its rendering by
+`shared/tsp/inline-markdown.ts`, which follows omp's marked-based renderer for plain text, code,
+emphasis, links, escapes and entities. Sources with HTML, math, strikethrough, breaks, images or other
+blocks have no rendering, so only the literal comparison applies to them. Detail lines, text-entry
+titles and ask-form fields compare literally.
 A matched node remains in settling state until both its request and node have ended.
 Snapshots expose `questionMatches`, including diagnostic
 `nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock

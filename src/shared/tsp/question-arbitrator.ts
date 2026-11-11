@@ -1,5 +1,6 @@
 import { CollabQuestionState as QuestionStateSchema } from "./question-match.schema";
-import { matchQuestions, type CollabQuestionState, type HookQuestion, type QuestionMatch, type QuestionScope } from "./question-match";
+import type { HookQuestion } from "./hook-questions";
+import { matchQuestions, type CollabQuestionState, type QuestionMatch, type QuestionScope } from "./question-match";
 
 const sameScope = (a: QuestionScope, b: QuestionScope): boolean => a.hostId === b.hostId && a.generation === b.generation && a.epoch === b.epoch;
 

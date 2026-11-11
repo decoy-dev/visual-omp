@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
-import { hookQuestions, matchQuestions, type CollabQuestion, type CollabQuestionState } from "./question-match";
+import { hookQuestions } from "./hook-questions";
+import { matchQuestions, type CollabQuestion, type CollabQuestionState } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
 import { askFormPresentation, isClaimable, isKnownAction, isKnownRole, TSP_ACTIONS, TSP_READ_ONLY_ACTIONS, TSP_ROLES } from "./roles";
 import { unclaimed, walkNodes } from "./view-state";

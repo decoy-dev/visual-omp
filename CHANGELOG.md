@@ -15,6 +15,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### Fixed
 
 - Helpers created in Settings are saved in the folder omp reads when your shell sets `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` or an omp profile. omp 18.18.8 and later read helpers from `PI_CODING_AGENT_DIR`.
+- omp's question to save or change a setting appears once, in the chat's question card. The question formats the setting name as code, which previously made the chat show a second copy of omp's dialog that could not be answered.
 
 ## [0.7.16] - 2026-11-10
 

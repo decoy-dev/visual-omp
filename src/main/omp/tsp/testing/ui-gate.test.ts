@@ -12,7 +12,7 @@ import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording, parseFixtureInputs, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/state/tsp/labels";
 import type { TspHostSnapshot } from "@shared/tsp-host";

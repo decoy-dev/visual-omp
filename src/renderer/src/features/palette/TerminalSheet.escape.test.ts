@@ -7,7 +7,7 @@ import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { TspNode } from "@shared/tsp";
 import type { QuestionMatch } from "@shared/tsp/question-match";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { QuestionArbitrator } from "@shared/tsp/question-arbitrator";
 import { TSP_ROLES } from "@shared/tsp/roles";
 import type * as SheetModule from "../../ui/Sheet";

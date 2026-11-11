@@ -259,7 +259,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -364,7 +364,10 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "cfg-save" ? [
+        // omp 18.18+ asks before a cfg:// write; the dialog's title quotes the setting path in Markdown code marks.
+        { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
+      ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },

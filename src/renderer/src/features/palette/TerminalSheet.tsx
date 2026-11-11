@@ -4,7 +4,7 @@
  * resizes the hidden terminal and restores its previous size on close.
  */
 import { openOverlay, screenSurface } from "@shared/tsp/view-state";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

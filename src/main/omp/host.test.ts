@@ -12,7 +12,7 @@ import type { NativePromptWatch } from "./native-bridge";
 import type { MessageBoxOptions } from "electron";
 import { broadcast } from "../ipc";
 import type { TspRendererEvent } from "@shared/tsp-host";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { treeSelector } from "@shared/tsp/tree-navigation";
 
 const pty = vi.hoisted(() => ({

@@ -3,7 +3,7 @@ import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { hookAnswerEvents, hookDialogTarget } from "@shared/tsp/dialogs";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { QuestionArbitrator } from "@shared/tsp/question-arbitrator";
 import { openOverlay, unclaimed } from "@shared/tsp/view-state";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";

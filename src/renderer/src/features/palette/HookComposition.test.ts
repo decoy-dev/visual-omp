@@ -8,7 +8,7 @@ import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
 import { hookAnswerEvents, hookDialogTarget } from "@shared/tsp/dialogs";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { walkNodes } from "@shared/tsp/view-state";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";

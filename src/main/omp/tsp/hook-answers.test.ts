@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import type { TspRendererEvent } from "../../../shared/tsp-host";
-import { hookQuestions } from "../../../shared/tsp/question-match";
+import { hookQuestions } from "../../../shared/tsp/hook-questions";
 import { hookAnswerEvents, type TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { isHookNode } from "../../../shared/tsp/roles";
 import { openOverlay, walkNodes } from "../../../shared/tsp/view-state";

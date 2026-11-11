@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import hostLabels from "../../../../shared/i18n/en/host.json";
-import { hookQuestions } from "../../../../shared/tsp/question-match";
+import { hookQuestions } from "../../../../shared/tsp/hook-questions";
 import { SessionHost } from "../../host";
 import { lifecyclePlatform, nativeTheme } from "./windows-lifecycle-platform";
 

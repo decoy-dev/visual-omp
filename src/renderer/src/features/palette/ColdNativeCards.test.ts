@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, type Mock, vi } from "vitest";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
-import { hookQuestions } from "@shared/tsp/question-match";
+import { hookQuestions } from "@shared/tsp/hook-questions";
 import { planReview } from "@shared/tsp/plan-review";
 import { openOverlay } from "@shared/tsp/view-state";
 import { ChatArea } from "../../chat/ChatArea";
