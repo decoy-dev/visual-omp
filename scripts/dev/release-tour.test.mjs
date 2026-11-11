@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { generateChat, parseArguments, readTourSession, tourEnvironment, tourLayout } from "./release-tour.mjs";
+import { defaultRelease, generateChat, parseArguments, readTourSession, tourEnvironment, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
@@ -13,14 +13,14 @@ import next from "./tours/0.7.12.mjs";
 import latest from "./tours/0.7.13.mjs";
 import release0714 from "./tours/0.7.14.mjs";
 import release0716 from "./tours/0.7.16.mjs";
+import release0717 from "./tours/0.7.17.mjs";
 import previous from "./tours/0.7.8.mjs";
-import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.16");
-  assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
+  assert.equal(parseArguments([]).release, "0.7.17");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -35,6 +35,16 @@ test("an absolute omp selection precedes inherited PATH without changing fixture
   assert.deepEqual(tourEnvironment(root, "omp"), base);
   assert.deepEqual(tourEnvironment(root), base);
   assert.deepEqual(tourEnvironment(root, binary), { ...base, PATH: [dirname(binary), base.PATH].filter(Boolean).join(delimiter) });
+});
+
+test("expired sign-in seeding rejects an auth database outside the tour root", { skip: process.platform === "win32" }, async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-auth-root-"));
+  const outside = await mkdtemp(join(tmpdir(), "vomp-tour-auth-outside-"));
+  t.after(() => Promise.all([rm(root, { recursive: true, force: true }), rm(outside, { recursive: true, force: true })]));
+  await mkdir(join(root, "data"), { recursive: true });
+  await writeFile(join(outside, "agent.db"), "fixture");
+  await symlink(outside, join(root, "data", "omp"), "dir");
+  await assert.rejects(seedExpiredSignIn(root, { VOMP_DEV_PROFILE: join(root, "app-profile") }, "omp-that-must-not-run"), /outside the tour root/);
 });
 
 test("0.7.14 prepares both patch checks and states the backlog resync evidence limit", () => {
@@ -58,7 +68,7 @@ test("0.7.14 prepares both patch checks and states the backlog resync evidence l
 });
 
 test("0.7.16 prepares five UI checks without enabling bash visualization", () => {
-  assert.equal(release0716.version, parseArguments([]).release);
+  assert.equal(release0716.version, "0.7.16");
   assert.deepEqual(release0716.chats.map(chat => chat.id), ["grep-patterns", "undo-rewind", "continue", "narrow-helper-cards", "shortcut-glyphs"]);
   assert.deepEqual(release0716.models, [{ id: "second", name: "Second fixture", reasoning: false }]);
   assert.equal(release0716.config, undefined);
@@ -79,6 +89,19 @@ test("0.7.16 prepares five UI checks without enabling bash visualization", () =>
   assert.match(glyphs.prompts[0], /omp error, task list, leftover picker or other output.*never open automatically.*rate-limit errors.*classic chats.*does not produce rate-limit errors.*Cmd\+J.*deliberately.*Type \/extensions and press Enter.*requested screen should open.*View question in omp screen/s);
   assert.equal(tourLayout(release0716.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
+test("0.7.17 covers launch-time expired sign-in, setting approval and omp question notes", () => {
+  assert.equal(release0717.version, defaultRelease);
+  assert.equal(parseArguments([]).release, "0.7.17");
+  assert.equal(release0717.expiredSignIn, true);
+  assert.deepEqual(release0717.chats.map(chat => chat.id), ["expired-sign-in", "cfg-save-question", "ask-option-notes"]);
+  const [expired, save, notes] = release0717.chats;
+  assert.match(expired.prompts[0], /expired@example\.com.*isolated omp auth database.*warning appears at launch.*Settings > Providers.*needs sign-in.*Relaunch visual-omp.*does not repeat/s);
+  assert.match(save.prompts[0], /^fixture notes\n.*Send fixture cfg-save.*exactly once.*setting name formatted as code.*duplicate omp dialog and omp screen should stay closed.*Choose Deny.*does not say 'Changed 1 file'/s);
+  assert.match(notes.prompts[0], /^fixture notes\n.*omp 18\.18\.8.*Send fixture form.*Cmd\+J.*Note button or n.*submit the question in omp.*transcript shows the note under the matching Stable answer.*question card should not offer a note control/s);
+  assert.ok(release0717.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release0717.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
+});
+
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
   assert.equal(patch.version, "0.7.10");

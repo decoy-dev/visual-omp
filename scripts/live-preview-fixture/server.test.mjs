@@ -113,6 +113,17 @@ test("colors includes a hex-option ask question", async () => {
   assert.deepEqual(call.args.questions[0].options.map(option => option.label), ["#2B72E5", "#197f8680"]);
   assert.match(call.args.questions[0].question, /#2B72E5/);
 });
+test("cfg-save requests one guarded setting write and stops after its result", async () => {
+  const [call] = await callsFor("fixture cfg-save");
+  assert.deepEqual(call, { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" } });
+  const messages = [
+    { role: "user", content: "fixture cfg-save" },
+    { role: "assistant", tool_calls: [{ function: { name: "write", arguments: JSON.stringify(call.args) } }] },
+    { role: "tool", content: "Denied." },
+  ];
+  assert.deepEqual(await callsFor("", messages), []);
+});
+
 
 test("ask fixtures send an HTML form when omp's ask tool takes one", async () => {
   const tools = [{ type: "function", function: { name: "ask", parameters: { type: "object", properties: { html: { type: "string" } } } } }];
@@ -128,6 +139,7 @@ test("ask fixtures send an HTML form when omp's ask tool takes one", async () =>
   assert.equal((await ask("fixture colors")).html, COLOR_FORM);
   const form = (await ask("fixture form")).html;
   assert.equal(form, RELEASE_FORM);
+  assert.match(form, /name="channel" value="stable" checked> Stable/);
   for (const control of ['type="radio"', 'type="checkbox"', 'type="text"', "<select"]) assert.ok(form.includes(control), control);
 });
 

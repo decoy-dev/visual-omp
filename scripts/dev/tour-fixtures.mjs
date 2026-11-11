@@ -1,7 +1,41 @@
-import { appendFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { appendFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
+/** Seeds one expired OAuth row in omp's isolated data store after omp has created it. */
+export async function seedExpiredSignIn(root, env, binary) {
+  root = await realpath(resolve(root));
+  const dataDir = await realpath(join(root, "data", "omp"));
+  const database = await realpath(join(dataDir, "agent.db"));
+  const withinRoot = relative(root, database);
+  if (withinRoot === ".." || withinRoot.startsWith(`..${sep}`) || isAbsolute(withinRoot)) throw new Error("The omp auth database is outside the tour root.");
+
+  const readUsage = () => JSON.parse(execFileSync(binary, ["usage", "--json"], { cwd: join(root, "work"), env, encoding: "utf8" }));
+  const identity = { provider: "anthropic", email: "expired@example.com" };
+  const prior = readUsage();
+  if (prior.disabledCredentials?.some(item => item.provider === identity.provider && item.email === identity.email)) {
+    throw new Error("The expired sign-in fixture already exists in the tour auth database.");
+  }
+
+  const preferencesPath = join(env.VOMP_DEV_PROFILE, "preferences.json");
+  const script = [
+    "import sqlite3, sys",
+    "with sqlite3.connect(sys.argv[1]) as db:",
+    "    db.execute('INSERT INTO auth_credentials (provider, credential_type, data, disabled_cause) VALUES (?, ?, ?, ?)', ('anthropic', 'oauth', '{\"access\":\"fixture-access\",\"refresh\":\"fixture-refresh\",\"expires\":0,\"email\":\"expired@example.com\"}', 'refresh failed: invalid_grant'))",
+  ].join("\n");
+  execFileSync("python3", ["-c", script, database], { env, stdio: "pipe" });
+  const seeded = readUsage();
+  const credential = seeded.disabledCredentials?.find(item => item.provider === identity.provider && item.email === identity.email);
+  if (!credential) throw new Error("omp did not report the expired sign-in fixture after seeding.");
+  try {
+    const preferences = JSON.parse(await readFile(preferencesPath, "utf8"));
+    const key = `${credential.provider}:${credential.id}:${credential.disabledAtMs ?? ""}`;
+    if (preferences.expiredSignInsShown?.includes(key)) throw new Error("The app profile already records the expired sign-in fixture.");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
 export async function configureTour(env, manifest) {
   const configPath = join(env.PI_CODING_AGENT_DIR, "config.yml");
   const config = JSON.parse(await readFile(configPath, "utf8"));

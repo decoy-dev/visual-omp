@@ -6,10 +6,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { fixtureEnvironment, requireFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
-import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.16";
+export const defaultRelease = "0.7.17";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -162,6 +162,7 @@ export async function prepareTour({ root, binary, manifest, signal }) {
     chats.push(generated);
     console.log(`Prepared ${chat.title}`);
   }
+  if (manifest.expiredSignIn) await seedExpiredSignIn(root, env, binary);
   const seed = join(root, "tour-layout.json");
   await writeFile(seed, JSON.stringify(tourLayout(chats), null, 2) + "\n");
   await writeFile(join(env.VOMP_DEV_PROFILE, "preferences.json"), JSON.stringify({ setupCompleted: true, tourCompleted: true, newUserApproval: "done", livePreview: true, livePreviewOpenOutputs: true, sendCrashReports: false, ...manifest.preferences, ...(isAbsolute(binary) ? { ompPath: binary } : {}) }, null, 2) + "\n");
