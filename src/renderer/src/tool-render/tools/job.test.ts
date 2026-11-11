@@ -31,3 +31,21 @@ describe.each([["job", jobRenderer], ["wait", waitRenderer]] as const)("%s job n
 		expect(row.nextElementSibling).toBeNull();
 	});
 });
+
+describe("interrupted waits", () => {
+	// omp 18.18.9 tui/src/tools/wait.ts: the message arrives as its own turn after the wait.
+	const interrupted = { content: [{ type: "text", text: "Wait interrupted by message." }], details: { op: "wait", jobs: [], interrupted: true } };
+	const render = (component: typeof waitRenderer.Summary, result: unknown) =>
+		renderToStaticMarkup(createElement(component, { name: "wait", args: {}, running: false, result: result as never }));
+
+	it("says the wait ended for a message and shows no job snapshot", () => {
+		expect(render(waitRenderer.Summary, interrupted)).toContain("interrupted by message");
+		expect(render(waitRenderer.Body!, interrupted)).toBe("");
+	});
+
+	it("keeps job details for a failed interrupted result", () => {
+		const failed = { ...interrupted, isError: true, details: { ...interrupted.details, jobs: [{ id: "bg_7", type: "bash", status: "running", intent: "Checking the release build", label: "npm run build" }] } };
+		expect(render(waitRenderer.Summary, failed)).not.toContain("interrupted by message");
+		expect(render(waitRenderer.Body!, failed)).toContain("Checking the release build");
+	});
+});
