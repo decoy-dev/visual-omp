@@ -199,7 +199,7 @@ Script-enabled iframes are permitted for slice F only if both packaged Windows a
 
 ## Why this does not use the owner's omp configuration
 
-`PI_CODING_AGENT_DIR` is a full path override for the default profile. It does not redirect all of omp's generic config discovery by itself. Named profiles also inherit default keybindings and leave foreign-tool config discovery under home. The fixture therefore changes HOME as well, uses the default profile explicitly and creates the native agent directory inside that scratch home.
+`PI_CODING_AGENT_DIR` is a full path override for the default profile. In omp 18.18.8 it also redirects native user config discovery. Named profiles take precedence and inherit default keybindings; foreign-tool config uses its own home-based paths and overrides. The fixture therefore changes HOME as well, uses the default profile explicitly and creates the native agent directory inside that scratch home.
 
 `PI_CONFIG_DIR` is a directory name under HOME. An absolute value is unsuitable here. The fixture uses the supported name `.omp` and checks the resulting location with the installed binary:
 

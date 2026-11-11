@@ -1,9 +1,19 @@
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createAgent, listAgents, readAgentFile, updateAgent } from "./service";
+import { basename, dirname, join, resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	createAgent,
+	customizeBundledAgent,
+	deleteAgent,
+	listAgents,
+	readAgentFile,
+	updateAgent,
+	writeAgentRaw,
+} from "./service";
 
 const fake = vi.hoisted(() => ({
+	env: {} as NodeJS.ProcessEnv,
+	bundled: [] as string[],
 	dirs: new Set<string>(),
 	files: new Map<string, string>(),
 	stat: vi.fn(),
@@ -11,10 +21,12 @@ const fake = vi.hoisted(() => ({
 }));
 vi.mock("node:fs/promises", () => ({
 	stat: (path: string) => fake.stat(path),
-	readdir: async () => [],
+	readdir: async (path: string) => [...fake.files.keys()]
+		.filter(file => dirname(file) === path)
+		.map(file => ({ name: basename(file), isFile: () => true, isSymbolicLink: () => false })),
 	mkdtemp: async () => "unused-bundled-scratch",
 	rm: vi.fn(),
-	unlink: vi.fn(),
+	unlink: async (path: string) => { fake.files.delete(path); },
 }));
 vi.mock("../../files", () => ({
 	pathExists: async (path: string) => fake.files.has(path),
@@ -28,16 +40,18 @@ vi.mock("../../files", () => ({
 		fake.files.set(path, content);
 	},
 }));
-vi.mock("../../omp/paths", () => ({ agentDir: () => "test-user-agent" }));
+vi.mock("../../env", () => ({ userEnv: async () => fake.env }));
 vi.mock("../../omp/config-file", () => ({ deleteConfigPath: vi.fn(), readConfig: vi.fn(), setConfigPath: vi.fn() }));
 vi.mock("../../omp/cli", () => ({
 	runOmpJson: async (argv: string[]) => {
-		if (argv[0] === "agents") return { written: [] };
+		if (argv[0] === "agents") return { written: fake.bundled };
 		return { value: argv[2] === "task.disabledAgents" ? [] : {} };
 	},
 }));
 
 beforeEach(() => {
+	fake.env = {};
+	fake.bundled = [];
 	fake.dirs.clear();
 	fake.files.clear();
 	fake.write.mockClear();
@@ -47,8 +61,53 @@ beforeEach(() => {
 	});
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 const draft = { name: "helper", description: "Helps", systemPrompt: "Help with the task." };
 const ceilings = [...new Set([homedir(), tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp", "/var/tmp"])])];
+
+describe("user helper directory", () => {
+	const custom = join(tmpdir(), "shell-agent");
+	const root = join(homedir(), ".omp");
+
+	it.each([
+		{ name: "the default directory when unset", env: {}, dir: join(root, "agent") },
+		{ name: "the login-shell override", env: { PI_CODING_AGENT_DIR: custom }, dir: custom },
+		{
+			name: "the named profile before the override",
+			env: { PI_CODING_AGENT_DIR: custom, OMP_PROFILE: "work", PI_PROFILE: "ignored" },
+			dir: join(root, "profiles", "work", "agent"),
+		},
+		{
+			name: "the legacy profile before the override",
+			env: { PI_CODING_AGENT_DIR: custom, PI_PROFILE: "work" },
+			dir: join(root, "profiles", "work", "agent"),
+		},
+	])("lists and edits helpers under $name", async ({ env, dir }) => {
+		vi.stubEnv("PI_CODING_AGENT_DIR", undefined);
+		fake.env = env;
+		const agentsDir = join(dir, "agents");
+		const filePath = join(agentsDir, "helper.md");
+		expect((await listAgents(null, true)).dirs.user).toBe(agentsDir);
+
+		const file = await createAgent(draft, "user");
+		expect(file).toMatchObject({ filePath, scope: "user" });
+		expect(fake.write).toHaveBeenLastCalledWith(filePath, file.content);
+		expect((await listAgents()).agents).toMatchObject([{ name: "helper", filePath, scope: "user" }]);
+		expect((await readAgentFile(filePath)).scope).toBe("user");
+		expect((await updateAgent(filePath, { description: "Helps more" })).scope).toBe("user");
+		expect((await writeAgentRaw(filePath, file.content)).scope).toBe("user");
+		await deleteAgent(filePath);
+		expect(fake.files.has(filePath)).toBe(false);
+
+		const bundledPath = join(tmpdir(), "bundled-helper.md");
+		fake.files.set(bundledPath, file.content);
+		fake.bundled = [bundledPath];
+		await listAgents(null, true);
+		expect(await customizeBundledAgent("helper", "user")).toMatchObject({ filePath, scope: "user" });
+		expect(fake.write).toHaveBeenLastCalledWith(filePath, file.content);
+	});
+});
 
 describe("project helper discovery ceilings", () => {
 	it.each(ceilings)("does not inspect or create project helpers at %s", async cwd => {

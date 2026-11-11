@@ -14,6 +14,7 @@ import type {
 	AgentValidation,
 	AgentWritableScope,
 } from "@shared/contracts/agents";
+import { userEnv } from "../../env";
 import { pathExists, readText, writeText } from "../../files";
 import { runOmpJson } from "../../omp/cli";
 import { deleteConfigPath, readConfig, setConfigPath } from "../../omp/config-file";
@@ -52,8 +53,8 @@ interface BundledAgent {
 	validation: Extract<AgentValidation, { ok: true }>;
 }
 
-function userAgentsDir(): string {
-	return join(agentDir(), "agents");
+async function userAgentsDir(): Promise<string> {
+	return join(agentDir(await userEnv()), "agents");
 }
 
 /** omp `findAllNearestProjectConfigDirs("agents")`, `.omp` source: the first `.omp/agents` dir walking up. */
@@ -76,11 +77,11 @@ async function scopeDir(scope: AgentWritableScope, cwd: string | null | undefine
 }
 
 /** Only `.md` files directly inside the user agents dir or a `.omp/agents` dir may be read or changed. */
-function agentFileScope(filePath: string): AgentWritableScope {
+async function agentFileScope(filePath: string): Promise<AgentWritableScope> {
 	const file = resolve(filePath);
 	const dir = dirname(file);
 	if (!file.endsWith(".md")) throw new Error(`Not an agent markdown file: ${filePath}`);
-	if (dir === resolve(userAgentsDir())) return "user";
+	if (dir === resolve(await userAgentsDir())) return "user";
 	if (basename(dir) === "agents" && basename(dirname(dir)) === ".omp") return "project";
 	throw new Error(`Not inside an omp agents folder: ${filePath}`);
 }
@@ -161,7 +162,7 @@ interface AgentSettings {
 
 /** Effective values as omp resolves them for `cwd` (global + project layers + env). */
 async function readAgentSettings(cwd: string | null | undefined): Promise<AgentSettings> {
-	const options = { cwd: cwd ?? agentDir() };
+	const options = { cwd: cwd ?? agentDir(await userEnv()) };
 	const [disabled, overrides] = await Promise.all([
 		runOmpJson(["config", "get", "task.disabledAgents", "--json"], options),
 		runOmpJson(["config", "get", "task.agentModelOverrides", "--json"], options),
@@ -185,7 +186,7 @@ async function readTaskSettingsFile(scope: "global" | "project", cwd?: string): 
 }
 
 export async function listAgents(cwd?: string | null, refresh = false): Promise<AgentsSnapshot> {
-	const userDir = userAgentsDir();
+	const userDir = await userAgentsDir();
 	const projectDir = cwd ? await nearestProjectAgentsDir(cwd) : null;
 	const [bundled, project, user, settings] = await Promise.all([
 		bundledAgents(refresh),
@@ -242,7 +243,7 @@ export async function listAgents(cwd?: string | null, refresh = false): Promise<
 }
 
 export async function readAgentFile(filePath: string): Promise<AgentFile> {
-	const scope = agentFileScope(filePath);
+	const scope = await agentFileScope(filePath);
 	return agentFile(resolve(filePath), scope, await readText(filePath));
 }
 
@@ -261,7 +262,7 @@ export async function createAgent(
 }
 
 export async function updateAgent(filePath: string, draft: AgentDraft): Promise<AgentFile> {
-	const scope = agentFileScope(filePath);
+	const scope = await agentFileScope(filePath);
 	const content = applyAgentDraft(await readText(filePath), draft);
 	const file = agentFile(resolve(filePath), scope, content);
 	if (!file.validation.ok) throw new Error(file.validation.error);
@@ -270,13 +271,13 @@ export async function updateAgent(filePath: string, draft: AgentDraft): Promise<
 }
 
 export async function writeAgentRaw(filePath: string, content: string): Promise<AgentFile> {
-	const file = agentFile(resolve(filePath), agentFileScope(filePath), content);
+	const file = agentFile(resolve(filePath), await agentFileScope(filePath), content);
 	await writeText(file.filePath, content);
 	return file;
 }
 
 export async function deleteAgent(filePath: string): Promise<void> {
-	agentFileScope(filePath);
+	await agentFileScope(filePath);
 	await unlink(resolve(filePath));
 }
 
