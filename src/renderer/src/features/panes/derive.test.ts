@@ -710,6 +710,14 @@ describe("madeCandidates", () => {
 		];
 		expect(madeCandidates(entries, context)).toEqual([{ id: "j", paths: ["/tmp/r.pdf"], start: 1000, end: 50_000 }]);
 	});
+
+	it("ignores URLs in commands and output without dropping rooted paths that start with slashes", () => {
+		const fetched = Array.from({ length: 40 }, (_, index) => `GET https://example.com/terms/card-${index}.html 200`).join("\n");
+		const output = `${fetched}\nsaved /tmp/crawl/report.pdf\ncopied //tmp/crawl/copy.pdf and //nas/share/flyer.pdf`;
+		const entries = [callAt("u", "bash", { command: "node crawl.mjs https://example.com/start git+ssh://host/repo" }, 1000), resultAt("u", "bash", output, 2000)];
+		// Forty addresses come first, so any address taken as a path would push the made files past the per-call limit.
+		expect(madeCandidates(entries, context)[0].paths).toEqual(["/tmp/crawl/report.pdf", "//tmp/crawl/copy.pdf", "//nas/share/flyer.pdf"]);
+	});
 });
 
 describe("isIntactBase64", () => {

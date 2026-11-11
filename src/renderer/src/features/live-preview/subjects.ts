@@ -4,10 +4,10 @@ import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
 import { resolveToolCall } from "../../chat/friendly";
 import type { ActiveTool } from "../../collab/lib/client";
 import { isRecord, resultTextOf, str } from "../../tool-render/util";
-import { commandPaths, IMAGE_EXT, isIntactBase64, resolveOutputPath } from "../panes/derive";
+import { type BackgroundJob, commandPaths, IMAGE_EXT, isIntactBase64, type JobState, resolveOutputPath } from "../panes/derive";
 import type { LiveFormat, LiveImage, LiveRequest, LiveSubject, LiveSubjectState } from "./types";
-import { parseProgress } from "./progress";
-import { parseRenderCommand } from "./render-command";
+import { type LiveProgress, parseProgress } from "./progress";
+import { parseRenderCommand, type RenderCommand } from "./render-command";
 
 export interface SubjectInput {
 	stream: AssistantMessage | null;
@@ -20,6 +20,8 @@ export interface SubjectInput {
 	folder: string | null;
 	platform?: string;
 	now: number;
+	/** Shell jobs from `backgroundJobs`. A background call stops running once omp reports that the job it started ended. */
+	jobs?: readonly BackgroundJob[];
 }
 
 interface Call {
@@ -34,6 +36,8 @@ interface Call {
 	active: boolean;
 	result?: ToolResultMessage;
 	partial?: unknown;
+	/** How the background job a call started ended, once omp reported it. */
+	job?: Exclude<JobState, "running">;
 }
 
 const ELIDED = /…\[\d+ chars elided for collab session\]/;
@@ -75,7 +79,24 @@ function turnStart(input: SubjectInput): { index: number; time: number } {
 	return { index: 0, time: 0 };
 }
 
+/**
+ * Tracker hands one input object to every export in a pass, so the pass builds its calls once and works out each call's
+ * render and paths once. Inputs are snapshots: a caller that changes one must pass a new object.
+ */
+const passCalls = new WeakMap<SubjectInput, Call[]>();
+const passRenders = new WeakMap<Call, Render | null>();
+const passPaths = new WeakMap<Call, string[]>();
+
 function callsOf(input: SubjectInput): Call[] {
+	let calls = passCalls.get(input);
+	if (!calls) passCalls.set(input, calls = buildCalls(input));
+	return calls;
+}
+
+/** How a settled background job shows on the subject of the call that started it. */
+const SETTLED_STATE: Record<Exclude<JobState, "running">, LiveSubjectState> = { completed: "saved", failed: "failed", cancelled: "stopped" };
+
+function buildCalls(input: SubjectInput): Call[] {
 	const turn = turnStart(input);
 	const calls = new Map<string, Call>();
 	const starts = new Map<string, number>();
@@ -112,6 +133,15 @@ function callsOf(input: SubjectInput): Call[] {
 		// Background updates can continue after the initial tool result.
 		if (!input.backgroundTools.has(call.id)) call.active = false;
 	}
+	// A background shell call keeps running until omp reports that its job ended. Jobs match by the call that started
+	// them, because omp reuses job ids across processes; a call without a known job keeps running.
+	for (const job of input.jobs ?? []) {
+		const call = job.toolCallId ? calls.get(job.toolCallId) : undefined;
+		if (call && (call.name === "bash" || call.name === "eval") && job.state !== "running" && input.backgroundTools.has(call.id)) {
+			call.active = false;
+			call.job = job.state;
+		}
+	}
 	return [...calls.values()];
 }
 
@@ -120,7 +150,18 @@ function outputOf(call: Call): string {
 	return `${partial}\n${resultTextOf(call.result)}`;
 }
 
-function renderOf(call: Call, input: SubjectInput) {
+/** A recognized render with its output and frame folders resolved against the call's working folder. */
+interface Render extends RenderCommand {
+	progress: LiveProgress | null;
+}
+
+function renderOf(call: Call, input: SubjectInput): Render | null {
+	let render = passRenders.get(call);
+	if (render === undefined) passRenders.set(call, render = parseRender(call, input));
+	return render;
+}
+
+function parseRender(call: Call, input: SubjectInput): Render | null {
 	if (call.name !== "bash" && call.name !== "eval") return null;
 	const command = str(call.args.command ?? call.args.code) ?? "";
 	const output = outputOf(call);
@@ -160,6 +201,12 @@ export function activeVideoPaths(input: SubjectInput): string[] {
 }
 
 function pathsOf(call: Call, input: SubjectInput): string[] {
+	let paths = passPaths.get(call);
+	if (!paths) passPaths.set(call, paths = parsePaths(call, input));
+	return paths;
+}
+
+function parsePaths(call: Call, input: SubjectInput): string[] {
 	const context = { cwd: input.folder, home: null, platform: input.platform };
 	const paths = commandPaths(call.args, outputOf(call), context);
 	const render = renderOf(call, input);
@@ -189,6 +236,7 @@ function stateOf(call: Call, working: boolean): LiveSubjectState {
 	const details = call.result?.details;
 	if (isRecord(details) && details.source === "interrupt_skipped" && (details.__synthetic === true || details.__interrupted === true)) return "skipped";
 	if (call.active) return "running";
+	if (call.job) return SETTLED_STATE[call.job];
 	if (call.result) return call.result.isError ? "failed" : "saved";
 	if (call.aborted || !working) return "stopped";
 	return call.streaming ? "writing" : "running";
@@ -263,6 +311,19 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		}
 	}
 	const turn = turnStart(input);
+	// Changes add only file and sequence subjects, and only call subjects can claim a change.
+	const callSubjects = [...subjects.keys()];
+	const claimant = (claims: (subject: LiveSubject) => unknown): LiveSubject | undefined => {
+		for (const id of callSubjects) {
+			const subject = subjects.get(id)!;
+			if (claims(subject)) return subject;
+		}
+		return undefined;
+	};
+	// Newest first. The sort is stable, so calls that started together keep transcript order.
+	const byStart = [...calls].sort((a, b) => b.start - a.start);
+	// Each running call's watched paths, worked out once for all changes instead of once per change.
+	let scopes: { call: Call; paths: { key: string; folder: string }[] }[] | undefined;
 	for (const change of input.changes) {
 		const path = outputPathInFolder(change.path, input.folder, input.platform);
 		const key = outputPathKey(path, input.platform);
@@ -290,7 +351,7 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 			}
 		}
 		if (change.mtimeMs < turn.time) continue;
-		const render = [...subjects.values()].find(subject => subject.kind === "render" || (subject.kind === "file" && subject.id.startsWith("call:"))
+		const render = claimant(subject => subject.kind === "render" || (subject.kind === "file" && subject.id.startsWith("call:"))
 			? sequenceKey && subject.sequence
 				? JSON.stringify({ ...subject.sequence.pattern, folder: outputPathKey(subject.sequence.pattern.folder, input.platform) }) === sequenceKey
 				: subject.path !== null && outputPathKey(subject.path, input.platform) === key
@@ -301,14 +362,15 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 			subjects.set(render.id, { ...render, kind: "file", format: sequence ? "sequence" : format, path, sequence, size: change.size, updatedAt: change.mtimeMs });
 			continue;
 		}
-		const named = calls.filter(call => call.active && pathsOf(call, input).some(path => {
-			const namedKey = outputPathKey(path, input.platform);
-			return key === namedKey || key.startsWith(`${namedKey.replace(/[\\/]+$/, "")}/`);
-		}));
-		const owner = named.sort((a, b) => b.start - a.start)[0] ?? calls.filter(call => change.mtimeMs >= call.start && change.mtimeMs <= (call.end ?? input.now)).sort((a, b) => b.start - a.start)[0];
+		scopes ??= byStart.filter(call => call.active).map(call => ({ call, paths: pathsOf(call, input).map(named => {
+			const namedKey = outputPathKey(named, input.platform);
+			return { key: namedKey, folder: `${namedKey.replace(/[\\/]+$/, "")}/` };
+		}) }));
+		const owner = scopes.find(scope => scope.paths.some(named => key === named.key || key.startsWith(named.folder)))?.call
+			?? byStart.find(call => change.mtimeMs >= call.start && change.mtimeMs <= (call.end ?? input.now));
 		// The write that streamed this file already shows it, so its save is not a second output. The guest stamps a
 		// call's start when collab delivers it, which can be after the file's mtime, so match the write by path.
-		const source = [...subjects.values()].find(subject => subject.path !== null && outputPathKey(subject.path, input.platform) === key && (subject.kind === "source" || (subject.kind === "file" && subject.id.startsWith("call:"))));
+		const source = claimant(subject => subject.path !== null && outputPathKey(subject.path, input.platform) === key && (subject.kind === "source" || (subject.kind === "file" && subject.id.startsWith("call:"))));
 		if (source && (!owner || owner.id === source.toolCallId)) {
 			if (source.kind === "source" && !source.elided) continue;
 			subjects.set(source.id, { ...source, kind: "file", text: null, elided: false, size: change.size, updatedAt: source.kind === "file" ? Math.max(source.updatedAt, change.mtimeMs) : change.mtimeMs });

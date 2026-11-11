@@ -37,10 +37,11 @@ export function trackSession(session: SessionController, autoOpen: () => boolean
 		if (view.working && !wasWorking) { opened = false; changes = []; cancelPreviewRedirect(session.tabId); }
 		wasWorking = view.working;
 		const entries = guest?.entries ?? EMPTY_ENTRIES;
+		const activeTools = guest?.activeTools ?? EMPTY_TOOLS, backgroundTools = guest?.backgroundTools ?? EMPTY_TOOLS;
+		const jobs = backgroundJobs(entries, ompRunning(view), activeTools, backgroundTools, session.projectPath, undefined, view.host?.processStartedAt);
 		const input: SubjectInput = {
-			stream: guest?.stream ?? null, streamDone: guest?.streamDone ?? true,
-			activeTools: guest?.activeTools ?? EMPTY_TOOLS, backgroundTools: guest?.backgroundTools ?? EMPTY_TOOLS,
-			entries, changes, working: view.working, folder: session.projectPath, platform: window.vomp.platform, now: Date.now(),
+			stream: guest?.stream ?? null, streamDone: guest?.streamDone ?? true, activeTools, backgroundTools,
+			entries, changes, working: view.working, folder: session.projectPath, platform: window.vomp.platform, now: Date.now(), jobs,
 		};
 		const before = useLivePreview.getState().chats[session.tabId] ?? EMPTY_CHAT;
 		const subjects = deriveSubjects(input, before.subjects);
@@ -49,7 +50,7 @@ export function trackSession(session: SessionController, autoOpen: () => boolean
 			opened = true;
 			if (autoOpen()) useApp.getState().showPane("outputs", session.tabId);
 		}
-		watching = view.working || backgroundJobs(entries, ompRunning(view), input.activeTools, input.backgroundTools, session.projectPath, undefined, view.host?.processStartedAt).some(job => job.state === "running");
+		watching = view.working || jobs.some(job => job.state === "running");
 		const named = namedPaths(input);
 		const sequences = sequencePatterns(input);
 		const rendering = activeVideoPaths(input);

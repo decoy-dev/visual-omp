@@ -1,6 +1,7 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { ActiveTool } from "../../collab/lib/client";
+import { backgroundJobs, type JobState } from "../panes/derive";
 import { activeVideoPaths, deriveSubjects, isVisualCall, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
 
 function assistant(id = "draw", name = "write", args: Record<string, unknown> = { path: "poster.svg", content: "<svg>" }, timestamp = 200): AssistantMessage {
@@ -216,6 +217,52 @@ describe("current-turn live subjects", () => {
 		expect(relatedPaths(snapshot)).toContain("/project/work/plot.png");
 		expect(namedPaths(snapshot)).toEqual([]);
 		expect(namedPaths({ ...snapshot, backgroundTools: new Map([["draw", running("draw", { command: "python render.py /project/work/plot.png" }, "bash")]]) })).toContain("/project/work/plot.png");
+	});
+
+	describe("background shell jobs", () => {
+		const command = (file: string) => `ffmpeg -i input.mov /project/work/${file}`;
+		const call = (id: string, file: string, timestamp: number) => entry({ ...assistant(id, "bash", { command: command(file), async: true }), timestamp }, `call:${id}`);
+		const started = (id: string, timestamp: number) => entry({ ...result(false, { async: { state: "running", jobId: "bg_1", type: "bash" } }), toolCallId: id, toolName: "bash", timestamp }, `started:${id}`);
+		const poll = (status: JobState, timestamp: number) => entry({ ...result(false, { jobs: [{ id: "bg_1", type: "bash", status }] }), toolCallId: `poll:${timestamp}`, toolName: "wait", timestamp }, `poll:${timestamp}`);
+		const derive = (entries: SessionEntry[], backgroundTools: Map<string, ActiveTool>, processStartedAt?: number) => {
+			const snapshot = input({ stream: null, entries, backgroundTools, jobs: backgroundJobs(entries, true, new Map(), backgroundTools, null, undefined, processStartedAt) });
+			return { states: Object.fromEntries(deriveSubjects(snapshot, []).map(subject => [subject.id, subject.state])), named: namedPaths(snapshot), videos: activeVideoPaths(snapshot) };
+		};
+		const SETTLED = [["completed", "saved"], ["failed", "failed"], ["cancelled", "stopped"]] as const;
+
+		it.each(SETTLED)("ends a saved background render when omp reports its job %s", (status, state) => {
+			const tools = new Map([["draw", running("draw", { command: command("live.mp4"), async: true }, "bash")]]);
+			const entries = [user(), call("draw", "live.mp4", 200), started("draw", 600)];
+			expect(derive(entries, tools)).toEqual({ states: { "call:draw": "running" }, named: ["/project/work/live.mp4"], videos: ["/project/work/live.mp4"] });
+			expect(derive([...entries, poll(status, 700)], tools)).toEqual({ states: { "call:draw": state }, named: [], videos: [] });
+		});
+
+		it.each(SETTLED)("ends a background render known only from a live frame when its job is %s", (status, state) => {
+			const tool = { ...running("draw", { command: command("live.mp4"), async: true }, "bash"), partialResult: { details: { async: { jobId: "bg_1", state: status } } } };
+			expect(derive([user(), call("draw", "live.mp4", 200)], new Map([["draw", tool]]))).toEqual({ states: { "call:draw": state }, named: [], videos: [] });
+		});
+
+		it.each(SETTLED)("ends a render from a saved %s report before its start result, while its live frame still says running", (status, state) => {
+			const tools = new Map([["draw", { ...running("draw", { command: command("live.mp4"), async: true }, "bash", 300), partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } }]]);
+			expect(derive([user(), call("draw", "live.mp4", 200), poll(status, 700)], tools)).toEqual({ states: { "call:draw": state }, named: [], videos: [] });
+			// A report saved before the app first saw the call describes an earlier job with that id.
+			expect(derive([user(), call("draw", "live.mp4", 200), poll(status, 250)], tools).states).toEqual({ "call:draw": "running" });
+		});
+
+		it("does not give a reused job id's outcome to the call an earlier omp process started", () => {
+			const exit = { type: "custom", id: "exit", parentId: null, timestamp: new Date(4_000).toISOString(), customType: "session_exit", data: { reason: "dispose" } } as unknown as SessionEntry;
+			const entries = [user(), call("old", "old.mp4", 200), started("old", 300), exit, call("new", "new.mp4", 10_000), started("new", 10_100), poll("failed", 10_200)];
+			const tools = new Map([["old", running("old", { command: command("old.mp4"), async: true }, "bash", 200)], ["new", running("new", { command: command("new.mp4"), async: true }, "bash", 10_000)]]);
+			expect(derive(entries, tools, 5_000).states).toEqual({ "call:old": "running", "call:new": "failed" });
+		});
+
+		it("gives a settled report to the current process's frame, never an earlier process's frame that reused the job id", () => {
+			const exit = { type: "custom", id: "exit", parentId: null, timestamp: new Date(4_000).toISOString(), customType: "session_exit", data: { reason: "dispose" } } as unknown as SessionEntry;
+			const frame = (id: string, file: string, startedAt: number) => ({ ...running(id, { command: command(file), async: true }, "bash", startedAt), partialResult: { details: { async: { jobId: "bg_1", state: "running" } } } });
+			const entries = [user(), call("old", "old.mp4", 200), exit, call("new", "new.mp4", 10_000), poll("failed", 10_200)];
+			const tools = new Map([["old", frame("old", "old.mp4", 200)], ["new", frame("new", "new.mp4", 10_000)]]);
+			expect(derive(entries, tools, 5_000)).toEqual({ states: { "call:old": "running", "call:new": "failed" }, named: ["/project/work/old.mp4"], videos: ["/project/work/old.mp4"] });
+		});
 	});
 
 	it.each(["script.ts", "movie.mp4", "deck.pptx"])("does not offer out-of-phase source %s", path => {

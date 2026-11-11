@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Fixed
+
+- Outputs no longer parses every running command's output again for each changed file. In one turn that had changed 2,478 files, most of them from a site build, that repeated parsing blocked the app's window for about 1.6 seconds on each update.
+- When omp reports that a background command's job ended, Outputs stops showing the command as running, and the files and folders the command named no longer add to what the app watches.
+- The app no longer reads addresses such as `https://example.com/page` in a command or its output as file paths. Previously, a command that printed many addresses could use up the 32 paths the app checks for each command, so Outputs missed a file the command made.
+
 ## [0.7.17] - 2026-11-11
 
 visual-omp 0.7.17 tells you when omp stops using a provider sign-in, shows omp's setting questions once and supports omp 18.18.8 and 18.18.9. It requires omp 18.15.0 or later.

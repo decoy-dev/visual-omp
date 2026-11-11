@@ -48,6 +48,8 @@ export interface BackgroundJob {
 	/** The call's folder, falling back to its session header when none was specified. */
 	cwd?: string | null;
 	widget?: JobWidgetView | null;
+	/** The tool call that started the job, when its result or live frame names it. omp reuses job ids across processes. */
+	toolCallId?: string;
 }
 
 type TranscriptItem =
@@ -342,6 +344,8 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 	const stopRunning = () => {
 		for (const job of jobs.values()) if (job.state === "running") upsert(job.jobId, { state: "cancelled" });
 	};
+	/** When the latest poll or delivery for each job was saved. */
+	const reportedAt = new Map<string, number>();
 	for (const item of transcriptItems(entries)) {
 		if (item.kind === "exit") {
 			stopRunning();
@@ -352,11 +356,12 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			const state = item.details.async.state;
 			if (jobId && isJobState(state)) {
 				const folder = str(item.details.cwd) ?? str(item.args.cwd);
-				upsert(jobId, { command: str(item.args.command) ?? str(item.args.code) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
+				upsert(jobId, { command: str(item.args.command) ?? str(item.args.code) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start, toolCallId: item.message.toolCallId });
 			}
 			continue;
 		}
 		for (const report of jobReports(item)) {
+			reportedAt.set(report.id, item.kind === "result" ? item.message.timestamp : item.kind === "custom" ? item.time : 0);
 			const job = jobs.get(report.id);
 			if (!job && report.type !== "bash" && report.type !== "eval") continue;
 			if (!job) upsert(report.id, { command: report.label ?? "", intent: report.intent, state: report.state });
@@ -391,7 +396,23 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		jobs.delete(jobId);
 		return true;
 	};
-	for (const tool of [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])]) {
+	const frames = [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])];
+	/** The job a live frame's call started. Only calls the model sent to the background count; a foreground wait also runs as a managed job. */
+	const startedJob = (tool: ActiveTool): string | null => {
+		const details = isRecord(tool.partialResult) && isRecord(tool.partialResult.details) ? tool.partialResult.details : null;
+		return isRecord(tool.args) && (tool.args.async === true || tool.toolName === "eval") && isRecord(details?.async) ? str(details.async.jobId) : null;
+	};
+	/**
+	 * Polls and deliveries name no call, and omp reuses job ids across processes. A settled row takes a call only when
+	 * one frame from the current omp process started that job before the report was saved; otherwise the owner stays unknown.
+	 */
+	const reportOwner = (jobId: string): string | null => {
+		const reported = reportedAt.get(jobId);
+		if (reported === undefined) return null;
+		const owners = frames.filter(tool => startedJob(tool) === jobId && tool.startedAt <= reported && (typeof processStartedAt !== "number" || tool.startedAt >= processStartedAt));
+		return owners.length === 1 ? owners[0].toolCallId : null;
+	};
+	for (const tool of frames) {
 		const partial = isRecord(tool.partialResult) ? tool.partialResult : null;
 		const details = partial && isRecord(partial.details) ? partial.details : null;
 		if (Array.isArray(details?.jobs)) {
@@ -414,15 +435,17 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 				});
 			}
 		}
-		// Only calls the model sent to the background; a foreground wait also runs as a managed job.
-		if (!isRecord(tool.args) || (tool.args.async !== true && tool.toolName !== "eval")) continue;
-		const async = details && isRecord(details.async) ? details.async : null;
-		const jobId = async ? str(async.jobId) : null;
+		if (!isRecord(tool.args)) continue;
+		const jobId = startedJob(tool);
 		if (!jobId) continue;
+		const async = isRecord(details?.async) ? details.async : null;
 		const output = str(details?.output) ?? (tool.toolName === "eval" && Array.isArray(partial?.content) ? resultText({ content: partial.content }) : null);
 		const existing = replacesEarlier(jobId, tool) ? undefined : jobs.get(jobId);
 		// A saved poll or delivery can be newer than the last live frame kept for this call.
-		if (existing && existing.state !== "running") continue;
+		if (existing && existing.state !== "running") {
+			if (!existing.toolCallId && reportOwner(jobId) === tool.toolCallId) upsert(jobId, { toolCallId: tool.toolCallId });
+			continue;
+		}
 		const state = isJobState(async?.state) ? async.state : existing?.state ?? "running";
 		const folder = str(details?.cwd) ?? str(tool.args.cwd);
 		upsert(jobId, {
@@ -431,6 +454,7 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : existing?.cwd ?? cwd,
 			state,
 			startedAt: existing?.startedAt ?? tool.startedAt,
+			toolCallId: tool.toolCallId,
 			...(output ? { output } : {}),
 		});
 	}
@@ -765,10 +789,15 @@ const ABSOLUTE = String.raw`(?:~|\.{1,2}|\$\{?[A-Za-z_]\w*\}?)?\/${UNQUOTED}`;
 const WINDOWS = String.raw`[A-Za-z]:[\\/][^\s"'\`<>|;&()]*|\\\\[\w.$-]+\\[^\s"'\`<>|;&()]*`;
 const RELATIVE = String.raw`[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)+|[\w@+-][\w.@+-]*\.(?:pdf|png|jpe?g|gif|webp|avif|bmp|ico|svg)\b`;
 const BEFORE = String.raw`(?<![\w.~$/@+\\-])`;
+/**
+ * Not the `//host/page` that follows a URL's scheme (`https://host/page`), which would otherwise read as a rooted path.
+ * A `file:` URL keeps its path, and `//` without a scheme stays a path.
+ */
+const NOT_URL = String.raw`(?!(?<=\b(?!file:)[A-Za-z][A-Za-z0-9+.-]*:)\/\/)`;
 /** In arguments (commands, code): quoted strings, Windows paths, `/abs`, `~/x`, `./x`, `$VAR/x`, `a/b` and bare `name.pdf`. */
-const ARGUMENT_TOKEN = new RegExp(String.raw`"([^"\n]{1,1024})"|'([^'\n]{1,1024})'|${BEFORE}(${WINDOWS}|${ABSOLUTE}|${RELATIVE})`, "g");
+const ARGUMENT_TOKEN = new RegExp(String.raw`"([^"\n]{1,1024})"|'([^'\n]{1,1024})'|${BEFORE}${NOT_URL}(${WINDOWS}|${ABSOLUTE}|${RELATIVE})`, "g");
 /** In printed output, where quotes are often apostrophes: rooted paths only. */
-const OUTPUT_TOKEN = new RegExp(String.raw`${BEFORE}(${WINDOWS}|${ABSOLUTE})`, "g");
+const OUTPUT_TOKEN = new RegExp(String.raw`${BEFORE}${NOT_URL}(${WINDOWS}|${ABSOLUTE})`, "g");
 const WINDOWS_ROOTED = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 /** Shell assignments (`OUT="/x"`, `export OUT=/x`), so `$OUT/previews` resolves. */
 const ASSIGNMENT = /(?:^|[\s;&|(])(?:export\s+|local\s+)?([A-Za-z_]\w*)=(?:"([^"\n]*)"|'([^'\n]*)'|([^\s;&|)'"]+))/g;
