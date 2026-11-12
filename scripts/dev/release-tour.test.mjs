@@ -131,14 +131,18 @@ test("0.8.0 remains available and checks bash visualizations, helper steps and o
   assert.equal(tourLayout(release080.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
 });
 
-test("0.8.1 is the default and checks a form question's footer after a taller question", () => {
+test("0.8.1 is the default and checks a form question's footer and closing idle or selected chats", () => {
   assert.equal(defaultRelease, "0.8.1");
   assert.equal(release081.version, "0.8.1");
-  assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form"]);
-  const [chat] = release081.chats;
-  assert.equal(chat.prompts[0].split("\n")[0], "fixture notes");
-  assert.match(chat.prompts[0], /fixture form/);
-  assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
+  assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form", "close-chats", "spare-chat"]);
+  const [form, close] = release081.chats;
+  assert.ok(release081.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
+  assert.match(form.prompts[0], /fixture form/);
+  // The close check needs a chat that keeps working while the owner opens the dialogs.
+  assert.match(close.prompts[0], /fixture helper-work/);
+  assert.match(close.prompts[0], /03 Spare chat/);
+  assert.ok(release081.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {

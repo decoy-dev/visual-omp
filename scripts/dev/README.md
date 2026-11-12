@@ -36,7 +36,9 @@ The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through 
 | Chat | Checks |
 | --- | --- |
 | 01 Question form height | Send `fixture form` and answer Release channel and Platforms to check. The shorter Release note headline question keeps the card's height with its text box under the title and its hint and buttons at the bottom of the card, with no empty space below the buttons. Answer the headline and Review depth, the last question; the card closes after that answer. The local fixture provider answers, and no external model provider is contacted. |
-| Covered by tests | The buttons stay at the bottom of the retained height when a shorter question follows (`src/main/omp/tsp/testing/ui-gate.test.ts` with `TSP_UI_GATE=1` and `TSP_FORM_LAYOUT_GATE=1`). |
+| 02 Close chats | Send `fixture helper-work`, which keeps omp working for about 45 seconds. Meanwhile, Close all chats in the Current chats menu lists this chat as working and offers Close idle chats; cancel it. With the chat still working (send `fixture helper-work` again if it finished), Select chats, check this chat and 03 Spare chat and choose Close: the dialog asks to close 2 chats, and Close idle chats closes only 03 Spare chat, with a message that 1 selected chat stays open. ⌘⇧T reopens 03 Spare chat. |
+| 03 Spare chat | An idle chat for the 02 check to close. |
+| Covered by tests | The buttons stay at the bottom of the retained height when a shorter question follows (`src/main/omp/tsp/testing/ui-gate.test.ts` with `TSP_UI_GATE=1` and `TSP_FORM_LAYOUT_GATE=1`). An idle close skips a chat that becomes idle or starts working while its dialog is open, draft losses for the idle choice are figured separately, a different bulk close waits for the running one, search keeps the selection controls, and ⌘1-⌘9 do nothing from a selection checkbox (`quit.test.ts`, `app.close.test.ts`, `Sidebar.test.ts`). |
 
 ### The 0.8.0 tour
 
