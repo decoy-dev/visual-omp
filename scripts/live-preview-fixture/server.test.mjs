@@ -389,3 +389,12 @@ test("helper waits again after an idle wait and stops only after its reply arriv
   messages.push({ role: "assistant", tool_calls: [{ function: { name: "wait", arguments: "{}" } }] }, { role: "tool", content: "The helper checked the sample. Completed." });
   assert.deepEqual(await callsFor("", messages), []);
 });
+
+test("steps requests one helper whose steps each get the fixed helper reply", async () => {
+  const [call] = await callsFor("fixture steps");
+  assert.equal(call.name, "task");
+  assert.equal(call.args.tasks[0].name, "TourHelper");
+  assert.equal(call.args.tasks[0].task, undefined);
+  assert.equal(call.args.tasks[0].steps.length, 2);
+  for (const step of call.args.tasks[0].steps) assert.match(step, /fixture helper-reply/);
+});

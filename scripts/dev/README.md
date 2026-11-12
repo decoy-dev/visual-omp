@@ -31,6 +31,15 @@ The command creates a new temporary root and starts the loopback fixture provide
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
 
+### The 0.7.19 tour
+
+Select it with `npm run tour -- --release 0.7.19`. It needs PATH omp 18.19.0 or later, because its scratch configuration turns on omp's `task.steps`.
+
+| Chat | Checks |
+| --- | --- |
+| 01 Helper steps | The prepared helper received its work as two steps. Expand the task card and check both steps, titled Step 1/2 and Step 2/2, and the 2 steps badge. Open TourHelper from Tasks or its card: its conversation shows Step 1 of 2 and Step 2 of 2 with each step's text and none of omp's closing instructions to the helper. Send `fixture steps` again to watch a live run. |
+| 02 Tool cards: omp 18.19.0 formats | Recorded examples; no GitHub request is made and no browser starts. The GitHub card shows a progress line under each job with steps (4/4 steps complete, the failed step #4 Check formatting, and 3/4 #3 Build installers in progress), each opening the job's ordered steps, while the notify job keeps its single row. The browser cards show connected http://127.0.0.1:9222 with target Release notes, and webkit. The read card shows `src/release.ts` with lines 20-24,30-32, and its file reference names `src/release.ts`. The task card lists ReleaseReader's two steps beside its scout badge and ReleaseWriter's single task. |
+
 ### The 0.7.18 tour
 
 | Chat | Checks |

@@ -296,7 +296,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -407,7 +407,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       send({ role: "assistant", content: afterTool ? "The fixture tool result was received." : fixture ? `I will prepare the ${fixture} fixture.` : "The correction was received." });
-      if ((afterTool && !htmlNeedsPage && !["grep-patterns", "proof", "helper", "helpers", "process"].includes(fixture)) || !fixture) {
+      if ((afterTool && !htmlNeedsPage && !["grep-patterns", "proof", "helper", "helpers", "steps", "process"].includes(fixture)) || !fixture) {
         send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;
@@ -420,14 +420,17 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },
-      ] : fixture === "helper" || fixture === "helpers" ? !afterTool ? [
+      ] : fixture === "helper" || fixture === "helpers" || fixture === "steps" ? !afterTool ? [
         fixture === "helper"
           ? { name: "task", args: { i: "Checking release helper conversation", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", task: "fixture helper-reply. Reply with the short release-tour helper check.", solutionSpace: "One fixed reply, no investigation." }] }, slow: false }
-          : { name: "task", args: { i: "Starting six busy tour helpers", context: "Use the local fixture provider.", tasks: Array.from({ length: 6 }, (_, index) => ({ name: `TourWorker${index + 1}`, task: "fixture helper-work. Run the release-tour workload.", solutionSpace: "One fixed command, no investigation." })) }, slow: false },
-      ] : (fixture === "helper"
+          : fixture === "steps"
+            // omp 18.19.0 sends each step as its own prompt when `task.steps` is on; every step gets the fixed reply.
+            ? { name: "task", args: { i: "Checking a stepped helper", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", agent: "task", steps: ["fixture helper-reply. Read the release sample.", "fixture helper-reply. Summarize the release sample in one sentence."], solutionSpace: "One fixed reply per step, no investigation." }] }, slow: false }
+            : { name: "task", args: { i: "Starting six busy tour helpers", context: "Use the local fixture provider.", tasks: Array.from({ length: 6 }, (_, index) => ({ name: `TourWorker${index + 1}`, task: "fixture helper-work. Run the release-tour workload.", solutionSpace: "One fixed command, no investigation." })) }, slow: false },
+      ] : (fixture === "helper" || fixture === "steps"
         ? turnMessages.some(message => message.role !== "assistant" && textOf(message).includes("The helper checked the sample."))
         : helperCalls.some(call => call.function?.name === "wait")) ? [] : [
-        { name: "wait", args: { i: fixture === "helper" ? "Waiting for tour helper" : "Waiting for tour helpers" }, slow: false },
+        { name: "wait", args: { i: fixture === "helpers" ? "Waiting for tour helpers" : "Waiting for tour helper" }, slow: false },
       ] : fixture === "helper-work" ? [
         { name: "bash", args: { i: "Running the tour workload", command: "for i in $(seq 1 450); do echo \"tour workload step $i\"; sleep 0.1; done", timeout: 120 }, slow: false },
       ] : fixture === "process" ? !afterTool ? [
