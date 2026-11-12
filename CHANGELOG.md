@@ -4,6 +4,29 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-12
+
+visual-omp 0.8.1 warns when its window falls behind and offers Reload window and Close idle chats, can close only the chats that aren't working or the chats you select, and keeps a form question's buttons at the bottom of its card. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **A warning when the window falls behind.** When visual-omp responds slowly or a chat's updates pile up, a warning offers Reload window, which reconnects your open chats while omp keeps running, and Close idle chats.
+- **New:** **Close idle or selected chats.** Close idle chats leaves the chats where omp or its helpers are working open; it is in the Current chats menu, the command palette and the Close all chats confirmation. Select chats in the same menu lets you check the chats to close.
+- **Fixed:** A shorter question in a form no longer leaves empty space below its buttons.
+
+### Detailed changes
+
+#### New
+
+- visual-omp warns when its window falls behind: when it stops responding for 10 seconds or responds slowly, or when a chat's updates keep waiting to reach it. The warning names the chat when one is behind and offers Reload window, which reconnects your open chats while omp keeps running, and Close idle chats. It goes away once the window keeps up. Earlier slowdowns came from updates piling up faster than the window could show them, and the warning watches for that.
+- Reload window is in the command palette, for a window that feels slow. It asks first, because text entered in open omp forms may be lost.
+- Current chats has Select chats in its section menu. Check the chats to close, or use Select all, then choose Close; the confirmation lists any work running in the checked chats and the drafts closing them would discard. Done or Escape leaves selection.
+- Close idle chats, in the Current chats menu and the command palette, closes the chats where neither omp nor its helpers are working and leaves the working ones open. When some of the chats being closed are working, the Close all chats and Close selected chats confirmations offer the same choice.
+
+#### Fixed
+
+- A form's question card keeps the height of the tallest question so far, which keeps its buttons from moving between questions. A shorter question, such as a text box after a list of choices, left that extra height as empty space below the buttons. The hint and buttons now sit at the bottom of the card, with the extra space above them.
+
 ## [0.8.0] - 2026-11-12
 
 visual-omp 0.8.0 shows what each bash command did, using omp's own view of the run, and supports omp 18.19.0. It requires omp 18.15.0 or later.
