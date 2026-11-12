@@ -2,7 +2,7 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { confirmCloseAllTabs, QuitDialog, useQuitRequest } from "./quit";
+import { confirmBulkCloseTabs, QuitDialog, useQuitRequest } from "./quit";
 import "../../i18n";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin" } }); });
@@ -19,11 +19,11 @@ it.each(["Close", "Escape"])("keeps chats open and restores focus when a failed 
 	const container = document.createElement("div"); document.body.append(container);
 	const root = createRoot(container);
 	const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-	let result: Promise<boolean> | undefined;
+	let result: Promise<unknown> | undefined;
 	const frame = async () => { const { promise, resolve } = Promise.withResolvers<void>(); requestAnimationFrame(() => resolve()); await promise; };
 	try {
 		await act(async () => root.render(createElement(Fragment, null,
-			createElement("button", { onClick: () => { result = confirmCloseAllTabs(["saved"]); } }, "Close all chats"),
+			createElement("button", { onClick: () => { result = confirmBulkCloseTabs(["saved"], "all"); } }, "Close all chats"),
 			createElement("main", { id: "vo-main", tabIndex: -1 }), createElement(QuitDialog))));
 		const opener = container.querySelector("button")!;
 		await act(async () => { opener.focus(); opener.click(); await frame(); });
@@ -31,14 +31,14 @@ it.each(["Close", "Escape"])("keeps chats open and restores focus when a failed 
 		const dialog = document.querySelector('[role="dialog"]')!;
 		expect(dialog.textContent).toContain("Couldn't load this part of visual-omp");
 		expect(dialog.textContent).toContain("Try again");
-		expect(useQuitRequest.getState().request?.kind).toBe("all");
+		expect(useQuitRequest.getState().request).toMatchObject({ kind: "bulk", scope: "all" });
 		await act(async () => {
 			if (dismissal === "Close") [...dialog.querySelectorAll("button")].find(button => button.textContent === "Close")!.click();
 			else document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 			await result;
 		});
 		await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(opener)); });
-		expect(await result).toBe(false);
+		expect(await result).toBeNull();
 		expect(useQuitRequest.getState().request).toBeNull();
 		expect(document.activeElement).toBe(opener);
 	} finally { await act(async () => root.unmount()); container.remove(); quiet.mockRestore(); }

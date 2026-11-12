@@ -3,6 +3,7 @@
  * the user chose to quit or close (omp's reply, helpers at work, or both, in one message), since that work may end
  * while the dialog is open; the quit list's rows show each chat as it is now.
  */
+import type { BulkCloseScope } from "../../registry/guards";
 import type { ChatWork } from "../../state/chatWork";
 
 /** An i18n key with the count its plural forms take, when it has them. */
@@ -39,16 +40,25 @@ export function quitCopy(work: readonly ChatWork[], unchecked: number): WarningC
 	return { title: { key: work.length > 0 ? "quit.title" : "quit.titleUnchecked" }, body };
 }
 
-/** Bulk close keeps quit's work findings, with copy naming this operation and its reopen limit. */
-export function closeAllCopy(work: readonly ChatWork[], unchecked: number): WarningCopy {
+/**
+ * A bulk close keeps quit's work findings, with copy naming its scope (every chat, the selected chats, or only the
+ * idle ones) and the reopen limit. `count` is the number of chats the title or idle body names; `offerIdle` adds the
+ * sentence that points to the Close idle chats choice.
+ */
+export function bulkCopy(scope: BulkCloseScope, work: readonly ChatWork[], unchecked: number, count: number, offerIdle: boolean): WarningCopy {
+	if (scope === "idle") {
+		return { title: { key: "quit.idleTitle" }, body: [{ key: "quit.idleCount", count }, { key: "quit.idleExplain" }, { key: "quit.idleBody" }] };
+	}
+	const all = scope === "all";
 	const replies = work.filter(chat => chat.replying).length;
 	const helpers = work.reduce((total, chat) => total + chat.helpers, 0);
 	const body: CopyKey[] = [];
-	if (replies > 0) body.push({ key: "quit.allReplies", count: replies });
-	if (helpers > 0) body.push({ key: "quit.allHelpers", count: helpers });
+	if (replies > 0) body.push({ key: all ? "quit.allReplies" : "quit.selectedReplies", count: replies });
+	if (helpers > 0) body.push({ key: all ? "quit.allHelpers" : "quit.selectedHelpers", count: helpers });
 	if (unchecked > 0) body.push({ key: "quit.bodyUnchecked", count: unchecked });
 	body.push({ key: "quit.allBody" });
-	return { title: { key: "quit.allTitle" }, body };
+	if (offerIdle) body.push({ key: "quit.idleOffer" });
+	return { title: all ? { key: "quit.allTitle" } : { key: "quit.selectedTitle", count }, body };
 }
 
 /** What one chat in the quit list is doing now; its work may have ended while the dialog was open. */

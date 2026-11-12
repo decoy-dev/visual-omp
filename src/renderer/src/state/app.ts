@@ -11,7 +11,7 @@ import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { reconcileUnseen, type UnseenChats } from "../features/onboarding/attention";
-import { confirmAllTabsClose, confirmTabClose, preparePaneLeave } from "../registry/guards";
+import { type BulkCloseScope, confirmBulkClose, confirmTabClose, preparePaneLeave } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
 import { workInFlight } from "./chatWork";
@@ -944,21 +944,49 @@ export async function closeChat(tabId: string): Promise<void> {
 	await useApp.getState().closeTab(tabId);
 }
 
-/** Close the chats present when asked, once approved, awaiting each omp worktree decision before the next close. */
-export function closeAllChats(): Promise<void> {
-	if (closingAll) return closingAll;
-	const tabIds = useApp.getState().tabs.map(tab => tab.id);
-	if (tabIds.length === 0) return Promise.resolve();
-	closingAll = (async () => {
-		if (!(await confirmAllTabsClose(tabIds))) return;
-		for (const tabId of tabIds) {
-			if (useApp.getState().tabs.some(tab => tab.id === tabId)) await useApp.getState().closeTab(tabId);
+/**
+ * Close `tabIds` in that order once the bulk close dialog approves, awaiting each omp worktree decision before the
+ * next close. An idle approval checks each chat again just before closing it, so one that started working stays open.
+ * The same request made again while it runs shares its result; a different one waits for it to finish and then asks
+ * about its own chats. Resolves with how many chats closed, or null when the dialog was cancelled or nothing was open.
+ */
+export function closeChats(tabIds: readonly string[], scope: BulkCloseScope): Promise<number | null> {
+	const key = `${scope}\0${tabIds.join("\0")}`;
+	if (closingMany?.key === key) return closingMany.promise;
+	const run = async (): Promise<number | null> => {
+		const open = new Set(useApp.getState().tabs.map(tab => tab.id));
+		const targets = tabIds.filter(id => open.has(id));
+		if (targets.length === 0) return null;
+		const approval = await confirmBulkClose(targets, scope);
+		if (!approval) return null;
+		const isOpen = (tabId: string) => useApp.getState().tabs.some(tab => tab.id === tabId);
+		let closed = 0;
+		for (const tabId of approval.tabIds) {
+			if (!isOpen(tabId) || (approval.stillIdle && !approval.stillIdle(tabId))) continue;
+			await useApp.getState().closeTab(tabId);
+			if (!isOpen(tabId)) closed++;
 		}
-	})().finally(() => { closingAll = null; });
-	return closingAll;
+		approval.done?.(closed, targets.filter(isOpen).length);
+		return closed;
+	};
+	const promise = (closingMany ? closingMany.promise.then(run, run) : run()).finally(() => {
+		if (closingMany?.promise === promise) closingMany = null;
+	});
+	closingMany = { key, promise };
+	return promise;
 }
 
-let closingAll: Promise<void> | null = null;
+let closingMany: { key: string; promise: Promise<number | null> } | null = null;
+
+/** Close every open chat, in tab order, once approved. */
+export function closeAllChats(): Promise<number | null> {
+	return closeChats(useApp.getState().tabs.map(tab => tab.id), "all");
+}
+
+/** Close the open chats with no reply or helper work running, once approved; working chats stay open. */
+export function closeIdleChats(): Promise<number | null> {
+	return closeChats(useApp.getState().tabs.map(tab => tab.id), "idle");
+}
 
 /**
  * A chat can still move to another folder while nothing has been sent: no input sent or on its

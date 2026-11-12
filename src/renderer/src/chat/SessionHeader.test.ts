@@ -23,7 +23,7 @@ vi.mock("../registry/commands", () => ({
 vi.mock("../state/app", () => ({
 	useApp: Object.assign((selector: (state: typeof env.state) => unknown) => selector(env.state), { getState: () => env.state }),
 	currentDock: () => ({ pane: "diff" }), dockKey: () => "a", useDockVisible: () => false,
-	canReopenChat: () => false, closeAllChats: vi.fn(), closeChat: vi.fn(), controllerFor: vi.fn(), focusedTabId: () => "a",
+	canReopenChat: () => false, closeAllChats: vi.fn(), closeChat: vi.fn(), closeIdleChats: vi.fn(), controllerFor: vi.fn(), focusedTabId: () => "a",
 }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null, chatStatus: () => "saved" }));
 vi.mock("../state/tsp/activity", () => ({ useOmpActivity: () => null }));

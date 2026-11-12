@@ -5,13 +5,13 @@
 import { Compass, DownloadSimple, GearSix, Question } from "@phosphor-icons/react";
 import { createElement } from "react";
 import { registerCommand } from "../../registry/commands";
-import { setAllTabsCloseGuard, setTabCloseGuard } from "../../registry/guards";
+import { setBulkCloseGuard, setTabCloseGuard } from "../../registry/guards";
 import { LoadFailed, type LoadFailureProps, lazyPage, lazyView } from "../../registry/lazy";
 import { globals, pages, screens, sheets } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { openHelp } from "../../state/navigation";
 import { installNotifications } from "./notifications";
-import { confirmCloseAllTabs, confirmCloseTab, installQuitGuard, QuitDialog } from "./quit";
+import { confirmBulkCloseTabs, confirmCloseTab, installQuitGuard, QuitDialog } from "./quit";
 import { startSetup } from "./setup";
 import { startTourFromAnywhere, TourHost } from "./tour";
 import { installUpdateWatchers, OMP_UPDATE_SHEET, OmpUpdateSheet } from "./updates";
@@ -70,7 +70,7 @@ registerCommand({
 });
 
 setTabCloseGuard(confirmCloseTab);
-setAllTabsCloseGuard(confirmCloseAllTabs);
+setBulkCloseGuard(confirmBulkCloseTabs);
 installQuitGuard();
 installNotifications();
 installUpdateWatchers();

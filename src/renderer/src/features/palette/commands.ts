@@ -20,7 +20,7 @@ import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
 import { chatStatus } from "../../shell/hooks";
 import { nextWaitingChat, stepChat } from "../../shell/sidebarRows";
-import { canReopenChat, closeAllChats, closeChat, controllerFor, focusedTabId, useApp } from "../../state/app";
+import { canReopenChat, closeAllChats, closeChat, closeIdleChats, controllerFor, focusedTabId, useApp } from "../../state/app";
 import { toast } from "../../ui";
 import { runCommand } from "./run";
 import { terminalSheet } from "./TerminalSheet";
@@ -220,7 +220,22 @@ registerCommand({
 	group: "chat",
 	icon: X,
 	when: () => useApp.getState().tabs.length > 0,
-	run: closeAllChats,
+	async run() {
+		await closeAllChats();
+	},
+});
+
+registerCommand({
+	id: "chat.closeIdle",
+	title: "palette:cmd.closeIdle.title",
+	hint: "palette:cmd.closeIdle.hint",
+	keywords: "palette:cmd.closeIdle.keywords",
+	group: "chat",
+	icon: X,
+	when: () => useApp.getState().tabs.length > 0,
+	async run() {
+		await closeIdleChats();
+	},
 });
 
 registerCommand({

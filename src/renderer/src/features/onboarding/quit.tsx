@@ -4,15 +4,19 @@
  * closing a chat. Either way, work in flight (omp's reply or helpers at work, `workInFlight`) gets
  * one dialog: Keep waiting / Stop and quit. The dialog states the work recorded when it was asked
  * for and waits for an answer; its rows show what each chat is doing now. A quit also asks about
- * chats whose state could not be checked in time, since unknown work may be running.
+ * chats whose state could not be checked in time, since unknown work may be running. A bulk close (every chat, the
+ * chats selected in Current chats, or only the idle ones) always asks, through `confirmBulkCloseTabs`.
  */
 import { lazyView, LoadFailedDialog, type LoadFailureProps } from "../../registry/lazy";
 import { create } from "zustand";
 import { useComposerDrafts } from "../../chat/composer/drafts";
+import { i18n } from "../../i18n";
+import type { BulkCloseApproval, BulkCloseScope } from "../../registry/guards";
 import { allControllers, controllerFor, MAIN_ID, useApp, whenHostsAdopted } from "../../state/app";
 import { CLOSED_LIMIT } from "../../state/closedChats";
 import { type ChatWork, workInFlight } from "../../state/chatWork";
 import type { SessionController, SessionView } from "../../state/session";
+import { toast } from "../../ui/toast";
 import { chatTitle } from "./chat";
 
 const DONT_ASK_KEY = "visual-omp:quit.alwaysStop";
@@ -53,23 +57,36 @@ interface Findings {
 	chats: readonly BusyChat[];
 	unchecked: readonly SessionController[];
 	drafts?: readonly LostDraft[];
+	/**
+	 * When a bulk close also offers to close only the idle chats (some chats are idle and others are working or
+	 * unchecked): the drafts that choice would discard. It is figured separately because closing fewer saved chats
+	 * changes which ones keep their text on the reopen stack.
+	 */
+	idleDrafts?: readonly LostDraft[] | null;
+	/** The number of chats a bulk close names in its title or body. */
+	count?: number;
 }
 
-interface LostDraft {
+export interface LostDraft {
 	tabId: string;
 	title: string | null;
 	text: boolean;
 	attachments: number;
 }
 
+/** Stop and quit or close (true), keep waiting or cancel (false), or close only the idle chats. */
+export type QuitAnswer = boolean | "idle";
+
 interface QuitRequest extends Findings {
-	kind: "quit" | "tab" | "all";
-	/** The chat a close asks about; null when quitting. */
+	kind: "quit" | "tab" | "bulk";
+	/** The chat a close asks about; null when quitting or closing several. */
 	tabId: string | null;
+	/** The chats a bulk close covers; null otherwise. */
+	scope: BulkCloseScope | null;
 	opener: HTMLElement | null;
 	allowed: boolean;
-	promise: Promise<boolean>;
-	resolve(allow: boolean): void;
+	promise: Promise<QuitAnswer>;
+	resolve(answer: QuitAnswer): void;
 }
 
 /** The open dialog's request (exported for tests). */
@@ -109,13 +126,14 @@ export function restoreQuitFocus(request: QuitRequest): void {
 }
 
 /**
- * Ask before quitting (`tabId` null) or closing one chat. The same request made again while its dialog is open (⌘Q
- * twice, a second close of the same chat) shares the answer. A different one waits until that dialog is answered and
- * then asks about its own chats, so stopping one chat never approves quitting the others.
+ * Ask before quitting (`tabId` null), closing one chat or closing several. The same quit or single close made again
+ * while its dialog is open (⌘Q twice, a second close of the same chat) shares the answer. A different one, and every
+ * bulk close, waits until that dialog is answered and then asks about its own chats, so stopping one chat never
+ * approves quitting the others and one bulk close never approves another.
  */
-async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => Findings, opener = quitOpener()): Promise<boolean> {
+async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => Findings, opener = quitOpener(), scope: BulkCloseScope | null = null): Promise<QuitAnswer> {
 	for (let pending = useQuitRequest.getState().request; pending; pending = useQuitRequest.getState().request) {
-		if (pending.kind === kind && pending.tabId === tabId) return pending.promise;
+		if (kind !== "bulk" && pending.kind === kind && pending.tabId === tabId) return pending.promise;
 		await pending.promise;
 		// Let the operation that dialog approved run first (closeChat removes its chat right after the answer), so this
 		// request asks about the chats that are left.
@@ -123,35 +141,36 @@ async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => 
 		setTimeout(resolve, 0);
 		await nextTask;
 	}
-	const { chats, unchecked, drafts = [] } = find();
-	if (kind !== "all" && chats.length === 0 && unchecked.length === 0) return true;
+	const { chats, unchecked, drafts = [], idleDrafts = null, count } = find();
+	if (kind !== "bulk" && chats.length === 0 && unchecked.length === 0) return true;
 	// "Always stop working chats when quitting" covers known work when quitting; closing a chat, and chats that could
 	// not be checked, still ask.
 	if (kind === "quit" && unchecked.length === 0 && localStorage.getItem(DONT_ASK_KEY) === "1") return true;
-	const { promise, resolve } = Promise.withResolvers<boolean>();
-	useQuitRequest.setState({ request: { kind, tabId, chats, unchecked, drafts, opener, allowed: false, promise, resolve } });
+	const { promise, resolve } = Promise.withResolvers<QuitAnswer>();
+	useQuitRequest.setState({ request: { kind, tabId, scope, chats, unchecked, drafts, idleDrafts, count, opener, allowed: false, promise, resolve } });
 	return promise;
 }
 
 /**
- * Answer the open dialog: Stop passes true; Keep waiting, Escape and dismissing it pass false. `alwaysStop` saves the
- * quit preference, and only when the answer stops quitting chats.
+ * Answer the open dialog: Stop passes true; Keep waiting, Cancel, Escape and dismissing it pass false; Close idle
+ * chats passes "idle". `alwaysStop` saves the quit preference, and only when the answer stops quitting chats.
  */
-export function answerQuitRequest(allow: boolean, alwaysStop = false): void {
+export function answerQuitRequest(answer: QuitAnswer, alwaysStop = false): void {
 	const request = useQuitRequest.getState().request;
 	if (!request) return;
-	if (allow && alwaysStop && request.kind === "quit") localStorage.setItem(DONT_ASK_KEY, "1");
-	request.allowed = allow;
+	if (answer === true && alwaysStop && request.kind === "quit") localStorage.setItem(DONT_ASK_KEY, "1");
+	request.allowed = answer !== false;
 	useQuitRequest.setState({ request: null });
-	request.resolve(allow);
+	request.resolve(answer);
 }
 
 /** Resolves true when it's fine to close the chat (nothing works in it, or the user chose to stop it). */
-export function confirmCloseTab(tabId: string): Promise<boolean> {
-	return ask("tab", tabId, () => {
+export async function confirmCloseTab(tabId: string): Promise<boolean> {
+	const answer = await ask("tab", tabId, () => {
 		const controller = controllerFor(tabId);
 		return { chats: controller ? busyChats([controller]) : [], unchecked: [] };
 	});
+	return answer === true;
 }
 
 /** The work quitting would stop, and the chats whose state is not known. */
@@ -161,29 +180,71 @@ function quitFindings(): Findings {
 	return { chats: busyChats(controllers.filter(controller => !unchecked.includes(controller))), unchecked };
 }
 
-/** Always confirm a bulk close, using quit's bounded state check and the drafts closeTab would discard. */
-export async function confirmCloseAllTabs(tabIds: readonly string[]): Promise<boolean> {
+/**
+ * A chat closing only idle chats may close: no reply or helper work is running in it and its state is known (or it
+ * has no omp controller at all).
+ */
+function idleChat(tabId: string): boolean {
+	const view = controllerFor(tabId)?.getSnapshot() ?? null;
+	return view === null || (stateKnown(view) && !workInFlight(view));
+}
+
+/** The draft text and attachments closing `tabIds` in that order would discard. */
+function lostDrafts(tabIds: readonly string[]): LostDraft[] {
+	const current = new Map(useApp.getState().tabs.map(tab => [tab.id, tab]));
+	const tabs = tabIds.flatMap(id => { const tab = current.get(id); return tab ? [tab] : []; });
+	const drafts = useComposerDrafts.getState();
+	// closeTab pushes in close order, so only the last ten distinct saved files retain their text.
+	const retained = new Set([...new Set(tabs.flatMap(tab => tab.sessionFile ? [tab.sessionFile] : []))].slice(-CLOSED_LIMIT));
+	return tabs.flatMap(tab => {
+		const text = Boolean(drafts.drafts[tab.id]) && (!tab.sessionFile || !retained.has(tab.sessionFile));
+		const attachments = drafts.attachments[tab.id]?.length ?? 0;
+		const controller = controllerFor(tab.id);
+		return text || attachments ? [{ tabId: tab.id, title: (controller ? chatTitle(controller) : null) ?? tab.title, text, attachments }] : [];
+	});
+}
+
+/**
+ * Always confirm a bulk close of `tabIds` (in close order), using quit's bounded state check and the drafts closeTab
+ * would discard. When some of those chats are idle and others are working or unchecked, the dialog also offers to
+ * close only the idle ones. An idle close covers only the chats the dialog counted as idle, so a chat that becomes
+ * idle while it is open never closes with drafts the dialog did not list; each is checked again as it closes, and the
+ * close reports what closed and what stayed open.
+ */
+export async function confirmBulkCloseTabs(tabIds: readonly string[], scope: BulkCloseScope): Promise<BulkCloseApproval | null> {
 	const opener = quitOpener();
 	await chatsKnown();
-	return ask("all", null, () => {
-		const current = new Map(useApp.getState().tabs.map(tab => [tab.id, tab]));
-		const tabs = tabIds.flatMap(id => { const tab = current.get(id); return tab ? [tab] : []; });
-		const selected = new Set(tabs.map(tab => tab.id));
+	if (scope === "idle" && !tabIds.some(idleChat)) {
+		toast({ tone: "info", message: i18n.t("onboarding:quit.noIdle") });
+		return null;
+	}
+	let idle: string[] = [];
+	const answer = await ask("bulk", null, () => {
+		const targets = new Set(tabIds);
 		const findings = quitFindings();
-		const drafts = useComposerDrafts.getState();
-		// closeTab pushes in tab order, so only the last ten distinct saved files retain their text.
-		const retained = new Set([...new Set(tabs.flatMap(tab => tab.sessionFile ? [tab.sessionFile] : []))].slice(-CLOSED_LIMIT));
+		const chats = findings.chats.filter(chat => targets.has(chat.controller.tabId));
+		const unchecked = findings.unchecked.filter(controller => targets.has(controller.tabId));
+		idle = tabIds.filter(idleChat);
+		const offerIdle = scope !== "idle" && idle.length > 0 && chats.length + unchecked.length > 0;
 		return {
-			chats: findings.chats.filter(chat => selected.has(chat.controller.tabId)),
-			unchecked: findings.unchecked.filter(controller => selected.has(controller.tabId)),
-			drafts: tabs.flatMap(tab => {
-				const text = Boolean(drafts.drafts[tab.id]) && (!tab.sessionFile || !retained.has(tab.sessionFile));
-				const attachments = drafts.attachments[tab.id]?.length ?? 0;
-				const controller = controllerFor(tab.id);
-				return text || attachments ? [{ tabId: tab.id, title: (controller ? chatTitle(controller) : null) ?? tab.title, text, attachments }] : [];
-			}),
+			chats,
+			unchecked,
+			drafts: lostDrafts(scope === "idle" ? idle : tabIds),
+			idleDrafts: offerIdle ? lostDrafts(idle) : null,
+			count: scope === "idle" ? idle.length : tabIds.length,
 		};
-	}, opener);
+	}, opener, scope);
+	if (answer === false) return null;
+	if (answer === true && scope !== "idle") return { tabIds, stillIdle: null };
+	return {
+		tabIds: idle.filter(idleChat),
+		stillIdle: idleChat,
+		done(closed, leftOpen) {
+			const message = closed > 0 ? i18n.t("onboarding:quit.closedIdle", { count: closed }) : i18n.t("onboarding:quit.noIdle");
+			const kept = leftOpen > 0 ? ` ${i18n.t(scope === "selected" ? "onboarding:quit.leftOpenSelected" : "onboarding:quit.leftOpen", { count: leftOpen })}` : "";
+			toast({ tone: "info", message: `${message}${kept}` });
+		},
+	};
 }
 
 /**
@@ -220,7 +281,7 @@ async function chatsKnown(): Promise<void> {
 async function confirmQuit(): Promise<boolean> {
 	const opener = quitOpener();
 	await chatsKnown();
-	return ask("quit", null, quitFindings, opener);
+	return (await ask("quit", null, quitFindings, opener)) === true;
 }
 
 /** Set by {@link quitAfterConfirm}: the next quit request from main is answered without asking again. */

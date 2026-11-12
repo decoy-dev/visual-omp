@@ -48,7 +48,8 @@ function onKeyDown(event: KeyboardEvent): void {
 	}
 	// ⌘1-⌘9 open the first nine open chats, in the order "Current chats" lists them (holding ⌘ shows the numbers).
 	const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
-	if (digit && !event.shiftKey) {
+	// Chat selection in Current chats has no numbered shortcuts while focus is in it.
+	if (digit && !event.shiftKey && !(event.target instanceof Element && event.target.closest("[data-chat-selection]"))) {
 		const state = useApp.getState();
 		const tab = state.tabs[Number(digit) - 1];
 		if (!tab) return;

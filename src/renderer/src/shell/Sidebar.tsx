@@ -3,8 +3,10 @@ import {
 	ArrowDown,
 	ArrowUp,
 	BoxArrowUp,
+	Broom,
 	CaretRight,
 	ChatCenteredDots,
+	CheckSquare,
 	Columns,
 	DotsThree,
 	Folder,
@@ -33,10 +35,11 @@ import type { SessionView } from "../state/session";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { DialogLoadFailed, lazyView } from "../registry/lazy";
-import { type AppState, closeAllChats, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
+import { type AppState, closeAllChats, closeChat, closeChats, closeIdleChats, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
 import { openHelp, openProjectSettings, openSettings, openUsage } from "../state/navigation";
 import {
 	Button,
+	Checkbox,
 	cn,
 	ContextMenu,
 	ContextMenuContent,
@@ -417,6 +420,39 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 	);
 });
 
+/**
+ * A Current chats row while chats are being selected: a checkbox named by the chat's title, described by its status,
+ * with the whole row as its label. It has no menus, drag, open or close gestures.
+ */
+const SelectChatRow = memo(function SelectChatRow({ chat, checked, onCheckedChange }: { chat: CurrentChat; checked: boolean; onCheckedChange(checked: boolean): void }): ReactNode {
+	const { t } = useTranslation("shell");
+	const session = chat.kind === "session" ? chat.session : null;
+	const tabTitle = useApp(state => state.tabs.find(entry => entry.id === chat.tabId)?.title ?? null);
+	const unseen = useApp(state => state.unseenChats[chat.tabId]);
+	const liveView = useSessionSelection(controllerFor(chat.tabId), sidebarSelection, shallow);
+	const active = useApp(state => state.view === "chat" && (state.activeTabId === chat.tabId || state.splitTabId === chat.tabId));
+	const inputId = useId();
+	const statusId = useId();
+	const title = liveView.title ?? session?.title ?? tabTitle ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
+	return (
+		<div
+			className={cn(
+				"relative isolate flex h-8 items-center gap-2 rounded-md pr-1 pl-row text-md has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring",
+				active ? "font-medium text-fg [--mark-overlay:var(--pill)]" : "text-fg-muted hover:bg-hover hover:text-fg hover:[--mark-overlay:var(--hover)]",
+			)}
+		>
+			{/* The open chat keeps its pill: selection is shown by the checkboxes, not by the row. */}
+			{active && <span aria-hidden className="absolute inset-0 -z-10 rounded-md bg-pill shadow-(--shadow-pill)" />}
+			<Checkbox id={inputId} checked={checked} onCheckedChange={onCheckedChange} aria-label={title} aria-describedby={statusId} data-select-chat={chat.tabId} />
+			{/* The label's overlay makes the whole row toggle the checkbox. */}
+			<label htmlFor={inputId} className="flex min-w-0 flex-1 cursor-default items-center gap-2 after:absolute after:inset-0 after:rounded-md">
+				<ChatStatusMark id={statusId} status={liveView.status} label={t(`sidebar.status.${liveView.status}`)} unseen={unseen} />
+				<SessionTitle title={title} />
+			</label>
+		</div>
+	);
+});
+
 interface ProjectGroupProps {
 	group: SidebarGroup;
 	now: number;
@@ -779,7 +815,47 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [announcement, setAnnouncement] = useState({ text: "", sequence: 0 });
 	const sectionRef = useRef<HTMLElement>(null);
+	const menuTrigger = useRef<HTMLButtonElement>(null);
+	const [selecting, setSelecting] = useState(false);
+	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+	/** Where focus goes when selection ends: the menu trigger after Done or Escape; nowhere after a close, whose dialog places it. */
+	const refocusMenu = useRef(false);
 	const displayed = ordered.map(chat => chat.tabId);
+	// Selection is keyed by tab id: closed chats leave it, new chats start unchecked, and chats hidden by search stay selected.
+	const selectedIds = tabs.flatMap(tab => selected.has(tab.id) ? [tab.id] : []);
+	const hiddenSelected = selectedIds.filter(id => !displayed.includes(id)).length;
+	const filtering = chats.length < tabs.length;
+	const visibleSelected = displayed.filter(id => selected.has(id)).length;
+	const announce = (text: string) => setAnnouncement(previous => ({ text, sequence: previous.sequence + 1 }));
+	const endSelection = (refocus: boolean) => {
+		refocusMenu.current = refocus;
+		setSelecting(false);
+		setSelected(new Set());
+		announce(t("sidebar.selectionOff"));
+	};
+	useEffect(() => {
+		const frame = requestAnimationFrame(() => {
+			if (selecting) sectionRef.current?.querySelector<HTMLInputElement>("input[data-select-chat]")?.focus();
+			else if (refocusMenu.current) menuTrigger.current?.focus();
+			refocusMenu.current = false;
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [selecting]);
+	useEffect(() => {
+		if (selecting && tabs.length === 0) endSelection(false);
+	});
+	const toggle = (ids: readonly string[], checked: boolean) =>
+		setSelected(previous => {
+			const next = new Set(previous);
+			for (const id of ids) {
+				if (checked) next.add(id);
+				else next.delete(id);
+			}
+			return next;
+		});
+	const closeSelected = async () => {
+		if ((await closeChats(selectedIds, "selected")) !== null) endSelection(false);
+	};
 	const layoutKey = `${displayed.join("\0")}\0${unseenCount}`;
 	const moveTo = (tabId: string, position: number) => {
 		const state = useApp.getState();
@@ -797,25 +873,58 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 			chatTitle(controllerFor(tabId)?.getSnapshot() ?? null, session?.title ?? state.tabs.find(tab => tab.id === tabId)?.title ?? null) ??
 			session?.preview ??
 			t(session ? "sidebar.untitled" : "chat.newTitle");
-		setAnnouncement(previous => ({
-			text: from === to ? t("sidebar.groupBoundary") : t("sidebar.moved", { title, position: actual + 1, count: ordered.length }),
-			sequence: previous.sequence + 1,
-		}));
+		announce(from === to ? t("sidebar.groupBoundary") : t("sidebar.moved", { title, position: actual + 1, count: ordered.length }));
 	};
-	if (chats.length === 0) return null;
+	// While selecting, a search with no matching chats keeps Done, Close and the hidden-selection note.
+	if (chats.length === 0 && !selecting) return null;
 	return (
-		<section ref={sectionRef} aria-label={t("sidebar.current")} className="mb-stack flex flex-col gap-px">
+		<section
+			ref={sectionRef}
+			aria-label={t("sidebar.current")}
+			data-chat-selection={selecting || undefined}
+			className="mb-stack flex flex-col gap-px"
+			onKeyDown={event => {
+				if (!selecting || event.key !== "Escape") return;
+				event.preventDefault();
+				event.stopPropagation();
+				endSelection(true);
+			}}
+		>
 			<div className="flex h-7 items-center gap-1 pl-row">
 				<SectionLabel as="h2" className="min-w-0 flex-1">{t("sidebar.current")}</SectionLabel>
-				<Menu>
-					<MenuTrigger asChild>
-						<IconButton size="sm" icon={<DotsThree />} label={t("sidebar.currentMenu")} />
-					</MenuTrigger>
-					<MenuContent align="end">
-						<MenuItem icon={<X />} onSelect={() => void closeAllChats()}>{t("sidebar.closeAll")}</MenuItem>
-					</MenuContent>
-				</Menu>
+				{selecting ? (
+					<Button size="sm" variant="ghost" onClick={() => endSelection(true)}>{t("sidebar.selectDone")}</Button>
+				) : (
+					<Menu>
+						<MenuTrigger asChild>
+							<IconButton ref={menuTrigger} size="sm" icon={<DotsThree />} label={t("sidebar.currentMenu")} />
+						</MenuTrigger>
+						<MenuContent align="end">
+							<MenuItem icon={<CheckSquare />} onSelect={() => { setSelecting(true); announce(t("sidebar.selectionOn")); }}>{t("sidebar.selectChats")}</MenuItem>
+							<MenuItem icon={<Broom />} onSelect={() => void closeIdleChats()}>{t("sidebar.closeIdle")}</MenuItem>
+							<MenuItem icon={<X />} onSelect={() => void closeAllChats()}>{t("sidebar.closeAll")}</MenuItem>
+						</MenuContent>
+					</Menu>
+				)}
 			</div>
+			{selecting && (
+				<div className="flex flex-col gap-1 pr-1 pb-1 pl-row">
+					<Checkbox
+						label={<span className="text-sm">{t(filtering ? "sidebar.selectAllVisible" : "sidebar.selectAll")}</span>}
+						checked={visibleSelected > 0 && visibleSelected === displayed.length}
+						indeterminate={visibleSelected > 0 && visibleSelected < displayed.length}
+						disabled={displayed.length === 0}
+						onCheckedChange={checked => toggle(displayed, checked)}
+					/>
+					<div className="flex items-center gap-2">
+						<span className="min-w-0 flex-1 text-sm text-fg-muted" aria-live="polite">{t("sidebar.selectedCount", { count: selectedIds.length, total: tabs.length })}</span>
+						<Button size="sm" variant="secondary" disabled={selectedIds.length === 0} aria-label={t("sidebar.closeSelectedLabel")} onClick={() => void closeSelected()}>
+							{t("sidebar.closeSelected")}
+						</Button>
+					</div>
+					{hiddenSelected > 0 && <p className="text-sm text-fg-muted">{t("sidebar.selectedHidden", { count: hiddenSelected })}</p>}
+				</div>
+			)}
 			<div role="status" aria-live="polite" aria-atomic="true" className="sr-only"><span key={announcement.sequence}>{announcement.text}</span></div>
 			<AnimatePresence initial={false} mode="popLayout">
 				{ordered.map((chat, position) => {
@@ -831,6 +940,9 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 							transition={spring.snappy}
 						>
 							{unseenCount > 0 && position === unseenCount && <div aria-hidden className="mx-row my-1 h-px bg-border" />}
+							{selecting ? (
+								<SelectChatRow chat={chat} checked={selected.has(chat.tabId)} onCheckedChange={checked => toggle([chat.tabId], checked)} />
+							) : (
 							<div
 								draggable
 								onDragStart={event => {
@@ -872,6 +984,7 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 									canMoveDown={position < ordered.length - 1 && Boolean(unseenChats[ordered[position + 1]!.tabId]) === Boolean(unseenChats[chat.tabId])}
 								/>
 							</div>
+							)}
 						</motion.div>
 					);
 				})}

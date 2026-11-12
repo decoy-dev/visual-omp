@@ -98,7 +98,7 @@ export function DialogContent({
 				</div>
 				{children && <div className="min-h-0 flex-1 overflow-y-auto px-card pt-card text-md">{children}</div>}
 				{footer ? (
-					<div className="flex items-center justify-end gap-2 px-card pb-card pt-card">{footer}</div>
+					<div className="flex flex-wrap items-center justify-end gap-2 px-card pb-card pt-card">{footer}</div>
 				) : (
 					<div className="pb-card" />
 				)}

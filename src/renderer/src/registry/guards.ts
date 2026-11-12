@@ -14,15 +14,31 @@ export function confirmTabClose(tabId: string): Promise<boolean> {
 	return guard ? guard(tabId) : Promise.resolve(true);
 }
 
-/** Bulk close always asks once, including when no chat is working. */
-let allTabsGuard: ((tabIds: readonly string[]) => Promise<boolean>) | null = null;
+/** What a bulk close covers: every open chat, the chats selected in Current chats, or only the idle open chats. */
+export type BulkCloseScope = "all" | "selected" | "idle";
 
-export function setAllTabsCloseGuard(next: (tabIds: readonly string[]) => Promise<boolean>): void {
-	allTabsGuard = next;
+/**
+ * The chats a confirmed bulk close may close, in order. `stillIdle` is set when only idle chats close; it is checked
+ * again just before each close, so a chat that starts working meanwhile stays open. `done` hears how many closed and
+ * how many of the asked-about chats are still open.
+ */
+export interface BulkCloseApproval {
+	tabIds: readonly string[];
+	stillIdle: ((tabId: string) => boolean) | null;
+	done?(closed: number, leftOpen: number): void;
 }
 
-export function confirmAllTabsClose(tabIds: readonly string[]): Promise<boolean> {
-	return allTabsGuard ? allTabsGuard(tabIds) : Promise.resolve(false);
+type BulkCloseGuard = (tabIds: readonly string[], scope: BulkCloseScope) => Promise<BulkCloseApproval | null>;
+
+/** Bulk close always asks once, including when no chat is working; without a guard nothing closes. */
+let bulkGuard: BulkCloseGuard | null = null;
+
+export function setBulkCloseGuard(next: BulkCloseGuard): void {
+	bulkGuard = next;
+}
+
+export function confirmBulkClose(tabIds: readonly string[], scope: BulkCloseScope): Promise<BulkCloseApproval | null> {
+	return bulkGuard ? bulkGuard(tabIds, scope) : Promise.resolve(null);
 }
 
 /** A pane can finish its omp-owned interaction before the panel releases its presentation. */

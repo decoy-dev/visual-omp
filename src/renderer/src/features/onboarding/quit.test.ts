@@ -53,10 +53,12 @@ const env = vi.hoisted(() => {
 		attachments: {} as Record<string, unknown[]>,
 		/** init()'s adoption of the running omp processes, which the guard waits for. */
 		adoption: Promise.withResolvers<void>(),
+		toasts: [] as string[],
 	};
 });
 
 vi.mock("../../ui", () => ({}));
+vi.mock("../../ui/toast", () => ({ toast: ({ message }: { message: string }) => { env.toasts.push(message); return "toast"; } }));
 vi.mock("./chat", () => ({ chatTitle: () => null }));
 vi.mock("../../chat/composer/drafts", () => ({ useComposerDrafts: { getState: () => ({ drafts: env.drafts, attachments: env.attachments }) } }));
 vi.mock("../../state/app", () => ({
@@ -132,6 +134,7 @@ beforeEach(() => {
 	env.tabs = env.controllers.map(controller => ({ id: controller.tabId, title: controller.tabId, sessionFile: null }));
 	env.drafts = {};
 	env.attachments = {};
+	env.toasts = [];
 });
 
 afterEach(() => {
@@ -198,7 +201,7 @@ describe("closing a chat", () => {
 
 describe("closing all chats", () => {
 	it("always asks once and records replies, helpers, unchecked rooms and the kind of draft being discarded", async () => {
-		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		const { confirmBulkCloseTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
 		const unknown = new FakeChat("unknown", view(false, [], "connecting"));
 		env.controllers.push(unknown);
 		env.tabs = [
@@ -208,11 +211,13 @@ describe("closing all chats", () => {
 		];
 		env.drafts = { neither: "Unsent text", saved: "Preserved text" };
 		env.attachments = { saved: [{}], unknown: [{}, {}] };
-		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		const result = confirmBulkCloseTabs(env.tabs.map(tab => tab.id), "all");
 		await vi.advanceTimersByTimeAsync(5_000);
 		await flush();
 		expect(useQuitRequest.getState().request).toMatchObject({
-			kind: "all",
+			kind: "bulk",
+			scope: "all",
+			count: 6,
 			chats: [
 				{ controller: chats.reply, work: { replying: true, helpers: 0 } },
 				{ controller: chats.helpers, work: { replying: false, helpers: 2 } },
@@ -224,26 +229,31 @@ describe("closing all chats", () => {
 				{ tabId: "unknown", text: false, attachments: 2 },
 				{ tabId: "saved", text: false, attachments: 1 },
 			],
+			// "neither" and "saved" (no omp yet) are idle while others work, so closing only those is offered.
+			idleDrafts: [
+				{ tabId: "neither", text: true, attachments: 0 },
+				{ tabId: "saved", text: false, attachments: 1 },
+			],
 		});
 		answerQuitRequest(false);
-		expect(await result).toBe(false);
+		expect(await result).toBeNull();
 		env.controllers = [chats.neither];
 		env.tabs = [{ id: "neither", title: "Neither", sessionFile: null }];
 		env.drafts = {};
 		env.attachments = {};
 		env.storage.set("visual-omp:quit.alwaysStop", "1");
-		const idle = confirmCloseAllTabs(["neither"]);
+		const idle = confirmBulkCloseTabs(["neither"], "all");
 		await flush();
-		expect(useQuitRequest.getState().request).toMatchObject({ kind: "all", chats: [], unchecked: [], drafts: [] });
+		expect(useQuitRequest.getState().request).toMatchObject({ kind: "bulk", chats: [], unchecked: [], drafts: [], idleDrafts: null });
 		answerQuitRequest(true);
-		expect(await idle).toBe(true);
+		expect(await idle).toEqual({ tabIds: ["neither"], stillIdle: null });
 	});
 
 	it("names saved text that would fall beyond the ten-entry reopen stack", async () => {
-		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		const { confirmBulkCloseTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
 		env.tabs = Array.from({ length: 12 }, (_, index) => ({ id: `saved${index}`, title: `Saved ${index}`, sessionFile: `/${index}.jsonl` }));
 		env.drafts = Object.fromEntries(env.tabs.map(tab => [tab.id, "Unsent"]));
-		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		const result = confirmBulkCloseTabs(env.tabs.map(tab => tab.id), "all");
 		await flush();
 		expect(useQuitRequest.getState().request?.drafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1"]);
 		answerQuitRequest(false);
@@ -251,11 +261,11 @@ describe("closing all chats", () => {
 	});
 
 	it("keeps the captured close sequence when tabs reorder during the state-check wait", async () => {
-		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		const { confirmBulkCloseTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
 		env.tabs = Array.from({ length: 12 }, (_, index) => ({ id: `saved${index}`, title: `Saved ${index}`, sessionFile: `/${index}.jsonl` }));
 		env.drafts = Object.fromEntries(env.tabs.map(tab => [tab.id, "Unsent"]));
 		env.controllers = [new FakeChat("saved0", view(false, [], "connecting"))];
-		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		const result = confirmBulkCloseTabs(env.tabs.map(tab => tab.id), "all");
 		await flush();
 		env.tabs = env.tabs.toReversed();
 		await vi.advanceTimersByTimeAsync(5_000);
@@ -263,6 +273,58 @@ describe("closing all chats", () => {
 		expect(useQuitRequest.getState().request?.drafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1"]);
 		answerQuitRequest(false);
 		await result;
+	});
+
+	it("closes only idle chats when asked, figuring their drafts separately and checking each again as it closes", async () => {
+		const { confirmBulkCloseTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		// Twelve saved idle chats, then a saved chat where omp is replying, all with unsent text.
+		env.controllers = [chats.reply];
+		env.tabs = [
+			...Array.from({ length: 12 }, (_, index) => ({ id: `saved${index}`, title: `Saved ${index}`, sessionFile: `/${index}.jsonl` })),
+			{ id: "reply", title: "Reply", sessionFile: "/reply.jsonl" },
+		];
+		env.drafts = Object.fromEntries(env.tabs.map(tab => [tab.id, "Unsent"]));
+		const ids = env.tabs.map(tab => tab.id);
+		const result = confirmBulkCloseTabs(ids, "selected");
+		await flush();
+		// Closing all thirteen keeps text for the last ten files; closing the twelve idle ones keeps saved2's as well.
+		expect(useQuitRequest.getState().request).toMatchObject({ scope: "selected", count: 13, chats: [{ controller: chats.reply }] });
+		expect(useQuitRequest.getState().request?.drafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1", "saved2"]);
+		expect(useQuitRequest.getState().request?.idleDrafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1"]);
+		// The reply ends while the dialog is open: its draft was never listed under the idle choice, so it stays open.
+		chats.reply.set(view(false, []));
+		answerQuitRequest("idle");
+		const approval = (await result)!;
+		expect(approval.tabIds).toEqual(ids.slice(0, 12));
+		expect(approval.stillIdle!("reply")).toBe(true);
+		chats.reply.set(view(true, []));
+		expect(approval.stillIdle!("reply")).toBe(false);
+		approval.done!(12, 1);
+		expect(env.toasts).toEqual(["Closed 12 idle chats. 1 selected chat stays open."]);
+	});
+
+	it("asks about idle chats only when there are some, and never lets one bulk close answer another", async () => {
+		const { confirmBulkCloseTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		env.controllers = [chats.reply];
+		env.tabs = [{ id: "reply", title: "Reply", sessionFile: null }];
+		expect(await confirmBulkCloseTabs(["reply"], "idle")).toBeNull();
+		expect(useQuitRequest.getState().request).toBeNull();
+		expect(env.toasts).toEqual(["No idle chats to close."]);
+
+		env.controllers = [chats.reply, chats.neither];
+		env.tabs = [...env.tabs, { id: "neither", title: "Neither", sessionFile: null }];
+		const idle = confirmBulkCloseTabs(["reply", "neither"], "idle");
+		const selected = confirmBulkCloseTabs(["reply"], "selected");
+		await flush();
+		// An idle close names the chats it will close and offers no second choice.
+		expect(useQuitRequest.getState().request).toMatchObject({ scope: "idle", count: 1, idleDrafts: null });
+		chats.reply.set(view(false, []));
+		answerQuitRequest(true);
+		expect(await idle).toMatchObject({ tabIds: ["neither"] });
+		await flush();
+		expect(useQuitRequest.getState().request).toMatchObject({ scope: "selected", count: 1 });
+		answerQuitRequest(false);
+		expect(await selected).toBeNull();
 	});
 });
 

@@ -10,7 +10,7 @@ const fake = vi.hoisted(() => {
 	return { transport: "classic" as "classic" | "tsp" | undefined, open: vi.fn(), terminalTabId: null as string | null, tabs: [] as { id: string }[], closeAll: vi.fn(), activate: vi.fn(), focused: "tab" };
 });
 vi.mock("../../state/app", () => ({
-	canReopenChat: () => false, closeAllChats: fake.closeAll, closeChat: vi.fn(),
+	canReopenChat: () => false, closeAllChats: fake.closeAll, closeChat: vi.fn(), closeIdleChats: vi.fn(),
 	controllerFor: () => ({ tabId: "tab", getSnapshot: () => ({ host: { transport: fake.transport } }) }),
 	focusedTabId: () => fake.focused,
 	useApp: { getState: () => ({ terminalTabId: fake.terminalTabId, openTerminal: fake.open, tabs: fake.tabs, activateTab: fake.activate }) },

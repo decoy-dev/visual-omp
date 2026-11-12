@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeAllChats, controllerFor, useApp } from "../state/app";
 import type { SessionView } from "../state/session";
 import { useComposerDrafts } from "../chat/composer/drafts";
-import { setAllTabsCloseGuard } from "../registry/guards";
-import { answerQuitRequest, confirmCloseAllTabs, confirmCloseTab, quitAfterConfirm, QuitDialog, useQuitRequest } from "../features/onboarding/quit";
+import { setBulkCloseGuard } from "../registry/guards";
+import { answerQuitRequest, confirmBulkCloseTabs, confirmCloseTab, quitAfterConfirm, QuitDialog, useQuitRequest } from "../features/onboarding/quit";
 import { PaletteHost } from "../features/palette/Palette";
+import { Shortcuts } from "../features/palette/Shortcuts";
 import "../features/palette/commands";
 import { TooltipProvider } from "../ui";
 import { Sidebar } from "./Sidebar";
@@ -151,7 +152,7 @@ it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats un
 	useComposerDrafts.getState().setDraft("row3", "Unsent note");
 	useComposerDrafts.getState().addAttachments("row0", [{ path: "/image.png", name: "image.png" }]);
 	useApp.setState(state => ({ tabs: state.tabs.map(tab => tab.id === "row3" ? { ...tab, sessionFile: null } : tab) }));
-	setAllTabsCloseGuard(confirmCloseAllTabs);
+	setBulkCloseGuard(confirmBulkCloseTabs);
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Fragment, null, createElement(Sidebar, { width: 200 }), createElement("main", { id: "vo-main", tabIndex: -1 }), createElement(QuitDialog)))));
 	const before = useApp.getState().tabs;
 	const trigger = section().querySelector<HTMLButtonElement>('button[aria-label="Current chats options"]')!;
@@ -168,7 +169,9 @@ it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats un
 	expect(dialog.textContent).toContain("omp was replying in 1 chat");
 	expect(dialog.textContent).toContain("1 helper was working");
 	expect(dialog.textContent).toContain("could not check whether omp is working in 1 chat");
-	for (const label of ["Seen A", "Unseen A", "Seen B", "Not checked", "Drafts that will be discarded", "Unseen B", "Text", "1 attachment"]) expect(dialog.textContent).toContain(label);
+	// Unseen B (row3) is idle while the others work or can't be checked, so the dialog offers to close only it.
+	for (const label of ["Seen A", "Unseen A", "Seen B", "Not checked", "Drafts discarded by closing idle chats", "Drafts discarded by closing all chats", "Unseen B", "Text", "1 attachment"]) expect(dialog.textContent).toContain(label);
+	expect([...dialog.querySelectorAll("button")].map(button => button.textContent)).toEqual(["Cancel", "Close idle chats", "Close all chats"]);
 	const cancel = [...dialog.querySelectorAll("button")].find(button => button.textContent === "Cancel")!;
 	expect(document.activeElement).toBe(cancel);
 	expect(useQuitRequest.getState().request?.opener).toBe(trigger);
@@ -190,9 +193,66 @@ it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats un
 	expect(useApp.getState().tabs.at(-1)?.sessionFile).toBe("/chat2.jsonl");
 }, 15_000);
 
+it("selects chats to close, keeps a working one open on Close idle chats, and leaves selection with Escape", async () => {
+	await act(async () => { await useApp.getState().init(); });
+	const controller = controllerFor("row0") as unknown as { view: SessionView };
+	controller.view = { mode: "live", host: { phase: "running" }, working: true, queue: [], guest: { phase: "live", agents: [], progress: new Map(), lifecycle: new Map() } } as unknown as SessionView;
+	setBulkCloseGuard(confirmBulkCloseTabs);
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Fragment, null, createElement(Sidebar, { width: 200 }), createElement("main", { id: "vo-main", tabIndex: -1 }), createElement(QuitDialog), createElement(Shortcuts)))));
+	const menuItem = async (label: string) => {
+		const trigger = section().querySelector<HTMLButtonElement>('button[aria-label="Current chats options"]')!;
+		await act(async () => { trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 })); });
+		await act(async () => { await frame(); });
+		await act(async () => { [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(element => element.textContent === label)!.click(); await frame(); await frame(); });
+		return trigger;
+	};
+	await menuItem("Select chats");
+	const boxes = () => [...section().querySelectorAll<HTMLInputElement>("input[data-select-chat]")];
+	expect(boxes().map(box => box.getAttribute("aria-label"))).toEqual(["Unseen A", "Unseen B", "Seen A", "Seen B"]);
+	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(boxes()[0])); });
+	expect(section().querySelector('[role="status"]')?.textContent).toBe("Chat selection on. Select chats to close.");
+	// Selection replaces the rows' open, drag and menu controls.
+	expect(rows()).toEqual([]);
+	expect(section().querySelector('[draggable="true"]')).toBeNull();
+	const close = section().querySelector<HTMLButtonElement>('button[aria-label="Close selected chats"]')!;
+	expect(close.disabled).toBe(true);
+	await act(async () => { boxes()[0]!.click(); boxes()[2]!.click(); });
+	expect(section().textContent).toContain("2 of 4 selected");
+	// ⌘1 from a selection checkbox does not open a chat.
+	const active = useApp.getState().activeTabId;
+	await act(async () => { boxes()[1]!.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1", key: "1", metaKey: true, bubbles: true, cancelable: true })); });
+	expect(useApp.getState().activeTabId).toBe(active);
+	// A search with no matches keeps the selection controls and counts the hidden selection.
+	await act(async () => { useApp.setState({ search: "no chat has this title" }); });
+	expect(boxes()).toEqual([]);
+	expect(section().textContent).toContain("2 selected chats are hidden by search.");
+	expect(section().querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
+	expect(section().textContent).toContain("Select all visible chats");
+	await act(async () => { useApp.setState({ search: "" }); });
+	await act(async () => { close.click(); });
+	await act(async () => { await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull()); });
+	const dialog = document.querySelector('[role="dialog"]')!;
+	expect(dialog.textContent).toContain("Close 2 chats?");
+	expect(dialog.textContent).toContain("When you chose to close the selected chats, omp was replying in 1 chat.");
+	expect([...dialog.querySelectorAll("button")].map(button => button.textContent)).toEqual(["Cancel", "Close idle chats", "Close selected chats"]);
+	await act(async () => { [...dialog.querySelectorAll("button")].find(button => button.textContent === "Close idle chats")!.click(); });
+	await act(async () => { await vi.waitFor(() => expect(useApp.getState().tabs.map(tab => tab.id)).toEqual(["row0", "row2", "row3"])); });
+	await act(async () => { await vi.waitFor(() => expect(boxes()).toEqual([])); });
+	expect(titles()).toEqual(["Unseen B", "Seen A", "Seen B"]);
+
+	const trigger = await menuItem("Select chats");
+	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(boxes()[0])); });
+	await act(async () => { boxes()[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); await frame(); await frame(); });
+	expect(boxes()).toEqual([]);
+	const restored = section().querySelector<HTMLButtonElement>('button[aria-label="Current chats options"]')!;
+	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(restored)); });
+	expect(restored).not.toBe(trigger);
+	expect(section().querySelector('[role="status"]')?.textContent).toBe("Chat selection off.");
+});
+
 it("returns focus to the header menu after Escape", async () => {
 	await act(async () => { await useApp.getState().init(); });
-	setAllTabsCloseGuard(confirmCloseAllTabs);
+	setBulkCloseGuard(confirmBulkCloseTabs);
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Fragment, null, createElement(Sidebar, { width: 200 }), createElement(QuitDialog)))));
 	const trigger = section().querySelector<HTMLButtonElement>('button[aria-label="Current chats options"]')!;
 	await act(async () => { trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 })); });
@@ -223,7 +283,7 @@ it.each(["tab", "quit"] as const)("restores the invoking control when cancelling
 
 it("returns palette-invoked cancellation to the surviving main area", async () => {
 	await act(async () => { await useApp.getState().init(); });
-	setAllTabsCloseGuard(confirmCloseAllTabs);
+	setBulkCloseGuard(confirmBulkCloseTabs);
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Fragment, null,
 		createElement(Sidebar, { width: 200 }), createElement("main", { id: "vo-main", tabIndex: -1 }), createElement(PaletteHost), createElement(QuitDialog)))));
 	await act(async () => { useApp.getState().setPaletteOpen(true); await frame(); });
