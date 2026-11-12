@@ -3,7 +3,7 @@
  * data sources: `src/shared/contracts/config.ts`.
  */
 import { type Stats, unwatchFile, watchFile } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -203,9 +203,25 @@ async function listSettings(cwd: string | undefined): Promise<ConfigSnapshot> {
 	return { cwd: cwd ?? null, agentDir, globalFile: layers.globalFile, projectFile: layers.projectFile, settings };
 }
 
-async function getSetting(key: string, cwd: string | undefined): Promise<SettingInfo> {
-	const [leaf, layers] = await Promise.all([readLeaf(key, cwd), readLayers(cwd)]);
-	return settingInfo(leaf, leaf, leaf.source, layers);
+export async function getSetting(key: string, cwd: string | undefined): Promise<SettingInfo> {
+	try {
+		const [leaf, layers] = await Promise.all([readLeaf(key, cwd), readLayers(cwd)]);
+		return settingInfo(leaf, leaf, leaf.source, layers);
+	} catch (error) {
+		if (!cwd) throw error;
+		// Saved worktrees can disappear. Only a missing/non-directory cwd removes project scope;
+		// invalid config, executable failures and permission errors retain their original failure.
+		let missing = false;
+		try {
+			missing = !(await stat(cwd)).isDirectory();
+		} catch (folderError) {
+			const code = (folderError as NodeJS.ErrnoException).code;
+			if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+			missing = true;
+		}
+		if (!missing) throw error;
+		return getSetting(key, undefined);
+	}
 }
 
 async function writeResult(key: string, scope: SettingScope, cwd: string | undefined): Promise<SettingWriteResult> {
@@ -221,7 +237,7 @@ async function setSetting(key: string, value: JsonValue, scope: SettingScope, cw
 	await setConfigPath(scope, cwd, leaf.key.split("."), value);
 	configWritten();
 	const result = await writeResult(leaf.key, scope, cwd);
-	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills" || leaf.key === "display.shellVisualization") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
 	return result;
 }
 
@@ -230,7 +246,7 @@ async function resetSetting(key: string, scope: SettingScope, cwd: string | unde
 	await deleteConfigPath(scope, cwd, leaf.key.split("."));
 	configWritten();
 	const result = await writeResult(leaf.key, scope, cwd);
-	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills" || leaf.key === "display.shellVisualization") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
 	return result;
 }
 

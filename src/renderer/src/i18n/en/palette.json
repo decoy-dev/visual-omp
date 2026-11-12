@@ -67,6 +67,7 @@
 		"hookClosing": "This chat is closing.",
 		"hookClosed": "This question has closed. Waiting for omp to update its screen.",
 		"unsupportedKind": "visual-omp cannot display omp content type {{kind}}.",
+		"shellUnavailable": "Shell visualization is unavailable for this data.",
 		"unsupportedAction": "visual-omp cannot perform the omp action {{action}}.",
 		"unavailableAction": "Unavailable action",
 		"otherOutput": "Other omp output",

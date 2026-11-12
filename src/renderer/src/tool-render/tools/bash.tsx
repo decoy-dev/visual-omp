@@ -1,7 +1,8 @@
 /** `bash` — shell command execution: prompt line with env prefix, badges, output tail. */
 import type { ReactNode } from "react";
 import { formatBytes } from "../../features/projects/format";
-import { Badge, Badges, InvalidArg, PathText, ResultImages, ResultText, Row } from "../parts";
+import { fmtDuration } from "../../collab/lib/format";
+import { Badge, InvalidArg, PathText, ResultImages, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, display, isRecord, normalizeWs, num, resultTextOf, str, truncate } from "../util";
 
@@ -48,7 +49,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	return result?.isError ? <span className="tv-err-text">{text}</span> : <span>{text}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+function Body({ args, result, host }: ToolRenderProps): ReactNode {
 	const command = args.command === undefined ? "…" : str(args.command);
 	const prefix = isRecord(args.env) ? envPrefix(args.env) : "";
 	const cwd = str(args.cwd);
@@ -66,43 +67,41 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 
 	const stats: string[] = [];
 	if (wallTimeMs !== null) {
-		stats.push(wallTimeMs < 1000 ? `wall ${Math.round(wallTimeMs)}ms` : `wall ${(wallTimeMs / 1000).toFixed(1)}s`);
+		stats.push(`Duration ${fmtDuration(wallTimeMs)}`);
 	}
 	if (requestedTimeoutSeconds !== null && requestedTimeoutSeconds !== timeoutSeconds) {
-		stats.push(`requested timeout ${requestedTimeoutSeconds}s clamped`);
+		stats.push(`Requested timeout ${requestedTimeoutSeconds}s was clamped`);
 	}
-	if (job?.jobId) stats.push(`job ${job.jobId}`);
-	if (artifactId) stats.push(`artifact ${artifactId}`);
+	if (job?.jobId) stats.push(`Job ${job.jobId}`);
+	if (artifactId) stats.push(`Artifact ${artifactId}`);
+
+	const plainCommand = (
+		<div className="tv-cmd">
+			<span className="tv-cmd-prompt">$</span>
+			<span className="tv-cmd-text">
+				{prefix && <span className="tv-cmd-env">{`${prefix} `}</span>}
+				{command ?? <InvalidArg what="command" />}
+			</span>
+		</div>
+	);
 
 	return (
 		<>
-			<div className="tv-cmd">
-				<span className="tv-cmd-prompt">$</span>
-				<span className="tv-cmd-text">
-					{prefix && <span className="tv-cmd-env">{`${prefix} `}</span>}
-					{command ?? <InvalidArg what="command" />}
-				</span>
+			{command !== null ? host?.renderShellCommand?.(command, plainCommand, prefix, { cwd: str(details?.cwd) ?? cwd ?? undefined, cdSeparator: details?.cdSeparator === ";" ? ";" : undefined, trace: isRecord(details?.trace) ? details.trace : undefined }) ?? plainCommand : plainCommand}
+			<div className="tv-bash-meta">
+				{cwd && <Badge>Folder <PathText path={cwd} kind="folder" /></Badge>}
+				{timeoutSeconds !== null && <Badge>Timeout {timeoutSeconds}s</Badge>}
+				{args.pty === true && <Badge tone="accent">Terminal</Badge>}
+				{!job && args.async === true && <Badge tone="accent">Background requested</Badge>}
+				{head !== null && <Badge>First {head} {head === 1 ? "line" : "lines"}</Badge>}
+				{tail !== null && <Badge>Last {tail} {tail === 1 ? "line" : "lines"}</Badge>}
+				{exitCode !== null && <Badge tone={exitCode === 0 ? "ok" : "err"}>Exit {exitCode}</Badge>}
+				{job && <Badge tone={job.state === "failed" ? "err" : job.state === "running" ? "accent" : job.state === "completed" ? "ok" : undefined}>Background {job.state}</Badge>}
 			</div>
-			<Badges
-				items={[
-					cwd && <Badge>cwd=<PathText path={cwd} kind="folder" /></Badge>,
-					timeoutSeconds !== null && <Badge>timeout={timeoutSeconds}s</Badge>,
-					args.pty === true && <Badge tone="accent">pty</Badge>,
-					!job && args.async === true && <Badge tone="accent">async</Badge>,
-					head !== null && <Badge>head={head}</Badge>,
-					tail !== null && <Badge>tail={tail}</Badge>,
-					exitCode !== null && <Badge tone="err">exit {exitCode}</Badge>,
-					job && (
-						<Badge tone={job.state === "failed" ? "err" : job.state === "running" ? "accent" : job.state === "completed" ? "ok" : undefined}>
-							async {job.state}
-						</Badge>
-					),
-				]}
-			/>
 			<ResultImages result={result} />
 			<ResultText result={result} maxLines={12} />
 			{minimized && <Row><span className="tv-bash-minimized">{minimized}</span></Row>}
-			{stats.length > 0 && <Row>{stats.join(" · ")}</Row>}
+			{stats.length > 0 && <Row><span className="tv-bash-meta">{stats.join(" · ")}</span></Row>}
 		</>
 	);
 }

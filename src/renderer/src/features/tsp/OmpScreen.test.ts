@@ -32,10 +32,10 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
 it("enumerates every advertised kind, failing when the wire vocabulary grows", () => {
 	expect(Object.keys(KIND_GROUPS).sort()).toEqual([...TSP_KINDS].sort());
-	expect(Object.keys(KIND_GROUPS)).toHaveLength(45);
+	expect(Object.keys(KIND_GROUPS)).toHaveLength(46);
 	expect(KIND_GROUPS.button).toBe("form");
 });
-it("mounts a renderer for all 45 kinds without invoking application input", async () => {
+it("mounts a renderer for all 46 kinds without invoking application input", async () => {
 	for (const k of TSP_KINDS) {
 		await render({ id: `kind-${k}`, k } as TspNode);
 		expect(element.querySelector("[data-tsp-kind]")?.getAttribute("data-tsp-kind")).toBe(k);

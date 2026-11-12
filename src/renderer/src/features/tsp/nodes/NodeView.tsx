@@ -1,4 +1,5 @@
 import type { TspKind, TspNode } from "@shared/tsp";
+import { shellProps } from "@shared/tsp/shell";
 import type { TerminalColors } from "@shared/contracts/native";
 import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS } from "@shared/tsp/roles";
 import { HookDialog } from "../interactive/HookDialog";
@@ -20,15 +21,21 @@ import type { NodeContext, NodeProps } from "./context";
 import { Live } from "./Live";
 import { Table } from "./Table";
 import { KeyCombinations } from "../../../ui/KeyCombinations";
+import { lazyView, LoadFailedNotice } from "../../../registry/lazy";
 
 const FieldTree = lazy(() => import("../../../tool-render/structured").then(module => ({ default: module.FieldTree })));
+function ShellLoading() {
+	const { t } = useTranslation("session");
+	return <p className="max-h-24 overflow-auto rounded-sm bg-inset p-card text-sm text-fg-muted">{t("common.loading")}</p>;
+}
+const ShellView = lazyView(() => import("../../shell-visualization/ShellView").then(module => module.ShellView), ShellLoading, LoadFailedNotice);
 export const KIND_GROUPS = {
 	col: "container", row: "container", card: "container", section: "container", rule: "container", spacer: "container", overlay: "container",
 	text: "text", md: "text", code: "text", diff: "text", math: "text", kbd: "text", badge: "text", icon: "text", status: "text", seg: "text",
 	list: "choice", item: "choice", picker: "choice", tabs: "choice", checklist: "choice", tree: "choice", table: "choice", kv: "choice",
 	prefs: "form", input: "form", editor: "form", effort: "form", button: "form",
 	spinner: "live", shimmer: "live", elapsed: "live", progress: "live", meter: "live", rate: "live", chart: "live",
-	tool: "work", agent: "work", json: "work", image: "media", media: "media", toast: "notice", rows: "fallback", ansi: "fallback",
+	tool: "work", agent: "work", json: "work", shell: "work", image: "media", media: "media", toast: "notice", rows: "fallback", ansi: "fallback",
 } as const satisfies Record<TspKind, string>;
 const warned = new Set<string>();
 function copyText(node: TspNode): string {
@@ -91,6 +98,11 @@ function Body({ node, context }: NodeProps) {
 		case "seg": return <span className="whitespace-pre-wrap">{plain(node.p?.spans)}</span>;
 		case "md": return <Markdown text={node.p?.text ?? ""} />;
 		case "code": return <Code p={node.p} />;
+		case "shell": {
+			const props = shellProps(node.p);
+			if (!props) return <p className="max-h-24 overflow-auto rounded-sm bg-inset p-card text-sm text-fg-muted">{t("tsp.shellUnavailable")}</p>;
+			return <ShellView key={`${context.sf}:${node.id}`} props={props} disabled={context.readOnly} onAction={value => { if (!context.readOnly) context.send({ ev: "action", sf: context.sf, id: node.id, act: "shell-viz", value }); }} />;
+		}
 		case "diff": return <DiffBlock diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
 		case "math": return <Markdown text={`$$\n${node.p?.text ?? ""}\n$$`} />;
 		case "kbd": return node.p?.keys.length ? <KeyCombinations value={[{ t: node.p.keys.join("+"), s: "key" }]} /> : null;
@@ -131,7 +143,7 @@ export function NodeView({ node, context }: NodeProps) {
 	const click = !Array.isArray(actions) ? actions?.click : undefined;
 	const unsupportedClick = !!click && !isKnownAction(click);
 	const content = <Body node={node} context={childContext} />;
-	const actionable = click && !["button", "list", "picker", "tree", "item", "tool", "agent", "json"].includes(node.k);
+	const actionable = click && !["button", "list", "picker", "tree", "item", "tool", "agent", "json", "shell"].includes(node.k);
 	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
 	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly || unsupportedClick} title={unsupportedClick ? t("tsp.unsupportedAction", { action: click }) : undefined} onClick={() => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));

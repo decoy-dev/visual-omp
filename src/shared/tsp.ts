@@ -23,6 +23,9 @@
  * here is optional.
  */
 
+import type { TspShellProps } from "./tsp/shell";
+export type { TspShellProps } from "./tsp/shell";
+
 /** Protocol version this build speaks. */
 export const TSP_VERSION = 1;
 /** APC identifier: every TSP message body starts with `tsp;`. */
@@ -50,6 +53,7 @@ export const TSP_KINDS = [
 	"text",
 	"md",
 	"code",
+	"shell",
 	"diff",
 	"ansi",
 	"math",
@@ -912,6 +916,7 @@ export interface TspPropsByKind {
 	text: TspTextProps;
 	md: TspMarkdownProps;
 	code: TspCodeProps;
+	shell: TspShellProps;
 	diff: TspDiffProps;
 	ansi: TspAnsiProps;
 	math: TspMathProps;

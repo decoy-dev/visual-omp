@@ -21,6 +21,8 @@ export interface SegmentedProps<V extends string> {
 	"aria-label": string;
 	size?: "sm" | "md";
 	disabled?: boolean;
+	/** Use a local selected fill where scrolling or virtualization can invalidate shared layout geometry. */
+	indicatorMotion?: boolean;
 	className?: string;
 }
 
@@ -34,6 +36,7 @@ export function Segmented<V extends string>({
 	options,
 	size = "md",
 	disabled,
+	indicatorMotion = true,
 	className,
 	...aria
 }: SegmentedProps<V>) {
@@ -70,13 +73,13 @@ export function Segmented<V extends string>({
 						disabledData,
 					)}
 				>
-					{o.value === value && (
+					{o.value === value && (indicatorMotion ? (
 						<motion.span
 							aria-hidden
 							layoutId={indicatorId}
 							className="pointer-events-none absolute inset-0 rounded-sm border border-border bg-panel shadow-(--shadow-card)"
 						/>
-					)}
+					) : <span aria-hidden className="pointer-events-none absolute inset-0 rounded-sm border border-border bg-panel shadow-(--shadow-card)" />)}
 					<span className="relative inline-flex items-center gap-[inherit]">
 						{o.icon}
 						{o.label}

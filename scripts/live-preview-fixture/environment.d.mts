@@ -1,3 +1,10 @@
-export function fixtureEnvironment(root: string): NodeJS.ProcessEnv & { HOME: string; PI_CODING_AGENT_DIR: string; VOMP_DEV_PROFILE: string };
-export function initializeFixture(root: string, baseUrl: string): Promise<ReturnType<typeof fixtureEnvironment>>;
-export function requireFixture(root: string): Promise<ReturnType<typeof fixtureEnvironment>>;
+export type FixtureEnvironment = NodeJS.ProcessEnv & {
+  HOME: string;
+  USERPROFILE: string;
+  PI_CODING_AGENT_DIR: string;
+  TMPDIR: string;
+  VOMP_DEV_PROFILE: string;
+};
+export function fixtureEnvironment(root: string): FixtureEnvironment;
+export function initializeFixture(root: string, baseUrl: string): Promise<FixtureEnvironment>;
+export function requireFixture(root: string): Promise<FixtureEnvironment>;

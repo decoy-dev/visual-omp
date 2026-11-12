@@ -7,6 +7,7 @@ import { attachAttentionWindow, setAppUserModelId } from "./attention";
 import { buildTextContextMenu } from "./contextMenu";
 import { registerHandlers } from "./handlers";
 import { ensureNewUserApproval } from "./features/config";
+import { stopShellVisualizations } from "./features/shell-visualization";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
 import { listHosts, stopAllHosts } from "./omp/host";
@@ -152,12 +153,14 @@ async function shutdown(): Promise<void> {
 	if (quitting) return;
 	quitting = true;
 	try {
+		const visualizationsStopped = stopShellVisualizations();
 		await stopSavedSessionHandoffs();
 		await stopAllHosts();
 		await stopPreviewOffice();
 		stopWatchingSessions();
 		followSessions([]);
 		killAllTerminals();
+		if (!await visualizationsStopped) console.warn("[visual-omp] Bash visualization cleanup could not be confirmed before quitting.");
 		await flushDiagnostics();
 		shutdownComplete = true;
 		app.quit();

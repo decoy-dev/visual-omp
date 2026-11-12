@@ -61,10 +61,18 @@ export function composer(surfaces: TspSurfaces): TspNodeTarget | null {
 }
 /** Keep whole unclaimed subtrees; replicated transcript and the app composer never appear twice. */
 export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>, feedback?: ReadonlyMap<string, string>): readonly TspNode[] {
+	// Shell presentations supplement collab's bash row. Keep an unmatched exact node inspectable.
+	const shellDescendants = (node: TspNode): TspNode[] => {
+		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface)) return [];
+		if (node.k === "shell") return [node];
+		return node.c?.flatMap(shellDescendants) ?? [];
+	};
 	const project = (node: TspNode, inUserRun: boolean): TspNode[] => {
 		const version = area === "main" ? feedback?.get(node.id) : undefined;
+		// A visible shell makes this subtree ineligible for a feedback fingerprint.
 		if (version !== undefined && version === mainOutputFingerprint(node)) return [];
-		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface) || (area === "main" && !inUserRun && isReplicatedRole(node.p?.role))) return [];
+		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface)) return [];
+		if (area === "main" && !inUserRun && isReplicatedRole(node.p?.role)) return shellDescendants(node);
 		if (node.p?.role === TSP_ROLES.editor) return [];
 		// User-run bodies reuse omp.tool.* roles without being replicated assistant tool messages.
 		const userRun = inUserRun || node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython;

@@ -48,7 +48,8 @@ import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toa
 import { useDisplayedEntries } from "../branch";
 import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
 import { useComposerDrafts } from "../composer/drafts";
-import { FileRefContext, LinkedMarkdown, useFileRefs } from "./FileLinks";
+import { LinkedMarkdown, useFileRefs } from "./FileLinks";
+import { FileRefContext } from "./fileRefScope";
 import { MentionText } from "./MentionText";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
@@ -71,6 +72,8 @@ import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 import { isExecutionMessage, SavedRunRow } from "./RunRow";
 import { nativeRuns, type RunProjection } from "./localRuns";
 import { NativeRunRows } from "./NativeRunRows";
+import { LiveShellProvider } from "../../features/shell-visualization/context";
+import { ObservedShellProvider, type ObservedShellStore } from "../../features/shell-visualization/observed";
 import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, turnFiles, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
@@ -863,7 +866,22 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const onSent = useCallback((listener: () => void) => session.onEvent(event => { if (event.kind === "sent") listener(); }), [session]);
 	const onCommand = useCallback((id: string, entryId: string) => { void getCommand(id)?.run({ session, projectPath: session.projectPath, entryId }); }, [session]);
 	const onHelper = useCallback((helper: Helper) => openHelper(session, helper), [session]);
-	return <TranscriptBody
+	const observedIdentity = JSON.stringify([view.host?.hostId, view.host?.generation, guest?.header?.id, view.displayLeaf]);
+	const observedStore = useMemo<ObservedShellStore>(() => {
+		const hostId = view.host?.hostId;
+		const generation = view.host?.generation;
+		const sessionId = guest?.header?.id;
+		const leaf = view.displayLeaf;
+		return {
+			subscribe: session.subscribe,
+			getSnapshot: () => {
+				const current = session.getSnapshot();
+				return current.mode === "live" && current.guest?.phase === "live" && current.host?.hostId === hostId
+					&& current.host?.generation === generation && current.guest.header?.id === sessionId && current.displayLeaf === leaf ? current.guest : null;
+			},
+		};
+	}, [session, view.host?.hostId, view.host?.generation, guest?.header?.id, view.displayLeaf]);
+	const body = <TranscriptBody
 		scope={session} entries={entries} mode={mode} working={view.working}
 		sessionFile={session.sessionFile}
 		outputIdentity={`${view.host?.hostId ?? ""}:${view.host?.generation ?? ""}:${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}`}
@@ -880,6 +898,11 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		onSent={onSent} onCommand={onCommand} onDismissResult={id => dismissCommandResult(session, id)}
 		onHelper={onHelper}
 	/>;
+	const observedBody = view.mode === "live" && guest?.phase === "live"
+		? <ObservedShellProvider store={observedStore} identity={observedIdentity} cwd={session.projectPath}>{body}</ObservedShellProvider> : body;
+	return tspHost && tspHost.tspEpoch !== undefined && view.mode === "live" && view.guest?.phase === "live"
+		? <LiveShellProvider hostId={tspHost.hostId} generation={tspHost.generation} epoch={tspHost.tspEpoch} readOnly={view.readOnly}>{observedBody}</LiveShellProvider>
+		: observedBody;
 }
 
 export function TranscriptBody({
@@ -1233,7 +1256,7 @@ export function TranscriptBody({
 		<SavedToolOutputContext.Provider value={savedOutputScope}>
 		<TargetContextMenu projectPath={scope.projectPath} tabId={scope.tabId}>
 		<div className="relative min-h-0 flex-1">
-			<div
+			<motion.div layoutScroll
 				ref={rootRef}
 				onClick={onClick}
 				onKeyDown={onKeyDown}
@@ -1330,7 +1353,7 @@ export function TranscriptBody({
 						</FileRefContext.Provider>
 					</PlayoutPaused.Provider>
 				</PlayoutRegistry.Provider>
-			</div>
+			</motion.div>
 			<ReplyAnnouncer
 				entries={entries}
 				stream={stream}

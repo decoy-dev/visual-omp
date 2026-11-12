@@ -112,6 +112,9 @@ for (const module of [
 	"src/renderer/src/features/panes/helperConversation.ts",
 	"src/renderer/src/state/sessionFiles.ts",
 	"src/renderer/src/i18n/en/helperFocus.json",
+	"src/renderer/src/features/shell-visualization/ShellView.tsx",
+	"src/renderer/src/features/shell-visualization/LiveShellContent.tsx",
+	"src/renderer/src/i18n/en/shellVisualization.json",
 	"C:\\checkout\\src\\renderer\\src\\features\\panes\\HelperFocusView.tsx",
 ]) {
 	test(`CLI preserves the conversation lazy boundary: ${module}`, async t => {

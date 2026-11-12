@@ -525,6 +525,21 @@
 	font-family: var(--font-ui, sans-serif);
 }
 
+.tv-bash-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	margin-block: 6px;
+	color: var(--tv-muted);
+	font-family: var(--font-ui, sans-serif);
+	font-size: var(--text-xs, 11px);
+	line-height: var(--text-xs--line-height, 16px);
+	overflow-wrap: anywhere;
+}
+.tv-bash-meta:empty { display: none; }
+.tv-bash-meta > .tv-badge { padding: 2px 6px; font-size: inherit; line-height: inherit; }
+
 /* ---- notes ---- */
 
 .tv-note {

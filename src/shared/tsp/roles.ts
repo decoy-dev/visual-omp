@@ -4,6 +4,7 @@ import { projectPlanReview } from "./plan-review";
 import { advisorScope } from "./advisor";
 import { commandReport } from "./reports";
 import { settledCommandPanel } from "./command-panels";
+import { shellProps } from "./shell";
 
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
@@ -51,6 +52,7 @@ export const TSP_ACTIONS = {
 	copyPlan: "copyPlan", externalEditor: "externalEditor", save: "save",
 	btwFollowUp: "follow-up", btwSend: "send", btwDiscard: "discard", btwStop: "stop", btwCopy: "copy-answer", btwInject: "inject",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
+	shellViz: "shell-viz",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 /** Form controls are enabled only for declared targets inside a current ask root. */
@@ -159,6 +161,7 @@ export function askFormPresentation(node: TspNode): AskFormPresentation | null {
 }
 
 export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolean {
+	if (node.k === "shell") return !node.p?.hidden && shellProps(node.p) !== null;
 	if (node.p?.role === TSP_ROLES.report) return commandReport(node) !== null;
 	if (node.p?.role === TSP_ROLES.cleanse || node.p?.role === TSP_ROLES.omfg) return settledCommandPanel(node) !== null;
 	if (isTreeSelectorNode(node)) return true;

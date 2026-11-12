@@ -1,11 +1,11 @@
-import { appendFile, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import type * as FsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { helperSessionFile } from "./helper-file";
 import { sessionsDir } from "./paths";
-import { loadSavedToolOutput, SAVED_TOOL_OUTPUT_LIMITS } from "./session-tool-output";
+import { loadSavedShellTrace, loadSavedToolOutput, SAVED_TOOL_OUTPUT_LIMITS } from "./session-tool-output";
 
 const mocks = vi.hoisted(() => ({
 	root: "",
@@ -619,5 +619,95 @@ describe("loadSavedToolOutput", () => {
 			await save([header("replacement"), result()], helper);
 		};
 		expect(await loadSavedToolOutput(registered!, "wanted")).toEqual({ status: "unavailable" });
+	});
+});
+
+describe("main-only shell trace recovery", () => {
+	const trace = { v: 1, seq: 1, t_ns: 0, script: 'printf "café"', units: [{ syntax: "opaque native archive" }], history: [] };
+	it("retains string and byte-array run values without decoding native trace data", async () => {
+		const bytes = [255, 195, 169];
+		const candidate = { ...trace, units: [{ source: bytes, nodes: [{ argv: ["printf", bytes], env: [["NAME", bytes], [bytes, "value"]], redirs: [{ fd: 1, op: ">", target: bytes }] }] }],
+			history: [{ seq: 1, t_ns: 0, kind: "Assign", name: bytes, value: bytes, assigns: [["NAME", bytes]], argv: [bytes], redirs: [{ fd: 1, op: ">", target: bytes }], text: bytes }],
+			diags: [{ code: "fixture", message: bytes }] };
+		await save([header(), result("wanted", undefined, { details: { trace: candidate, cwd: "/", cdSeparator: ";" } })]);
+		expect(await loadSavedShellTrace(file, "wanted")).toMatchObject({ status: "ready", json: JSON.stringify(candidate), cwd: header().cwd, executionCwd: "/", cdSeparator: ";" });
+	});
+
+	it("shares reported-directory authorization with content recovery without borrowing another request's grant", async () => {
+		const hosted = join(dir, "reported", "hosted.jsonl");
+		await mkdir(dirname(hosted), { recursive: true });
+		await save([header(), result("wanted", undefined, { details: { trace } })], hosted);
+		const reports = () => [hosted];
+		const [content, authorizedTrace, deniedTrace] = await Promise.all([
+			loadSavedToolOutput(hosted, "wanted", false, reports),
+			loadSavedShellTrace(hosted, "wanted", reports),
+			loadSavedShellTrace(hosted, "wanted", () => []),
+		]);
+		expect(content.status).toBe("ready");
+		expect(authorizedTrace).toMatchObject({ status: "ready", json: JSON.stringify(trace) });
+		expect(deniedTrace).toEqual({ status: "unavailable" });
+	});
+
+	it("rechecks current report authority after reading a trace", async () => {
+		const hosted = join(dir, "reported", "hosted.jsonl");
+		await mkdir(dirname(hosted), { recursive: true });
+		await save([header(), result("wanted", undefined, { details: { trace } })], hosted);
+		let reported = [hosted];
+		mocks.afterRead = async () => { reported = []; mocks.afterRead = undefined; };
+		expect(await loadSavedShellTrace(hosted, "wanted", () => reported)).toEqual({ status: "unavailable" });
+	});
+
+	it("coalesces exact trace and content recovery in the same physical file scan without leaking details", async () => {
+		await save([header(), result("other", [], { details: { trace: { ...trace, script: "wrong call" } } }), result("wanted", undefined, { details: { trace } })]);
+		const [content, source] = await Promise.all([loadSavedToolOutput(file, "wanted"), loadSavedShellTrace(file, "wanted")]);
+		expect(content).toEqual({ status: "ready", content: [{ type: "text", text: "complete output" }] });
+		expect(source).toMatchObject({ status: "ready", json: JSON.stringify(trace), cwd: header().cwd, sessionId: "saved-chat" });
+		const physical = await stat(file);
+		if (source.status === "ready") expect(source.identity).toBe(`${physical.dev}:${physical.ino}:saved-chat`);
+		expect(mocks.openedFiles).toEqual([file]);
+		expect(mocks.readSizes).toHaveLength(2);
+	});
+
+	it("reads a registered read-only helper without changing the file, timestamps or lease", async () => {
+		const helper = join(bucket, "chat", "Atlas", "Atlas.Child.jsonl");
+		await mkdir(dirname(helper), { recursive: true });
+		await save([header("helper"), result("wanted", undefined, { details: { trace } })], helper);
+		const registered = await helperSessionFile(file, "Atlas.Child");
+		const lease = `${helper}.lease`;
+		await writeFile(lease, "external owner remains in control");
+		const before = await readFile(helper);
+		const metadata = await stat(helper);
+		await chmod(helper, 0o400);
+		try {
+			expect(await loadSavedShellTrace(registered!, "wanted")).toMatchObject({ status: "ready", json: JSON.stringify(trace), sessionId: "helper" });
+			expect(await readFile(helper)).toEqual(before);
+			expect((await stat(helper)).mtimeMs).toBe(metadata.mtimeMs);
+			expect(await readFile(lease, "utf8")).toBe("external owner remains in control");
+		} finally { await chmod(helper, 0o600); }
+	});
+
+	it.each(["unregistered", "wrong-call", "wrong-tool", "version", "shrunk"] as const)("refuses an ineligible %s source", async kind => {
+		const destination = kind === "unregistered" ? join(dir, "outside.jsonl") : file;
+		const candidate = kind === "version" ? { ...trace, v: 2 } : kind === "shrunk" ? { ...trace, units: ["…[3 items elided for collab session]"] } : trace;
+		await save([header(), result(kind === "wrong-call" ? "other" : "wanted", undefined, { toolName: kind === "wrong-tool" ? "python" : "bash", details: { trace: candidate } })], destination);
+		expect(await loadSavedShellTrace(destination, "wanted")).toEqual({ status: "unavailable" });
+	});
+
+	it.each(["replace", "header"] as const)("rejects trace recovery after a physical %s change", async kind => {
+		await save([header(), result("wanted", undefined, { details: { trace } })]);
+		mocks.afterRead = async () => {
+			mocks.afterRead = undefined;
+			if (kind === "replace") await rename(file, `${file}.old`);
+			await save([header("replacement"), result("wanted", undefined, { details: { trace } })]);
+		};
+		expect(await loadSavedShellTrace(file, "wanted")).toEqual({ status: "unavailable" });
+	});
+
+	it("preserves C28 content recovery when trace data is unsupported or the trace record exceeds the existing line cap", async () => {
+		await save([header(), result("wanted", undefined, { details: { trace: { ...trace, v: 999 } } })]);
+		expect(await loadSavedShellTrace(file, "wanted")).toEqual({ status: "unavailable" });
+		expect(await loadSavedToolOutput(file, "wanted")).toEqual({ status: "ready", content: [{ type: "text", text: "complete output" }] });
+		await save([header(), result("wanted", undefined, { details: { trace: { ...trace, script: "x".repeat(SAVED_TOOL_OUTPUT_LIMITS.lineBytes) } } })]);
+		expect(await loadSavedShellTrace(file, "wanted")).toEqual({ status: "too-large" });
 	});
 });

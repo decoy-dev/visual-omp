@@ -42,6 +42,11 @@ encoder in src/main/omp/tsp/ are adapted from oh-my-pi v18.15.0, commit
 3fedf8d53267e32a6d7521ce725fdcc4a36fdc67, packages/wire and packages/tui.
 They use the same MIT License reproduced above and in src/main/omp/tsp/LICENSE.
 
+The shell presentation contracts in src/shared/tsp/shell.ts are adapted from
+packages/wire/src/shell-viz.ts and packages/wire/src/tsp.ts in oh-my-pi
+v18.17.0, commit 75e7801e247d4e3263439d4cc08ccad60dc64bdd. They use the same
+MIT License reproduced above.
+
 omp and oh-my-pi are projects of their respective authors; visual-omp is an
 independent desktop interface and is not affiliated with or endorsed by them.
 

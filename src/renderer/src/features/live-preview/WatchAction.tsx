@@ -1,7 +1,7 @@
 import { Eye } from "@phosphor-icons/react";
 import { useContext } from "react";
 import { useTranslation } from "react-i18next";
-import { FileRefContext } from "../../chat/transcript/FileLinks";
+import { FileRefContext } from "../../chat/transcript/fileRefScope";
 import { useApp } from "../../state/app";
 import { IconButton } from "../../ui";
 import { isVisualCall } from "./subjects";

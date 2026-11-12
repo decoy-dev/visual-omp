@@ -10,7 +10,7 @@ describe("bash async status", () => {
 			result: { content: [], details: { async: { state: "cancelled", jobId: "bg_1" } } },
 			running: false,
 		}));
-		expect(html).toContain("async cancelled");
+		expect(html).toContain("Background cancelled");
 		expect(html).not.toContain("tv-badge--ok");
 		expect(html).not.toContain("tv-badge--err");
 	});
@@ -36,7 +36,7 @@ describe("bash minimized output metadata", () => {
 		const note = "omp&#x27;s git filter changed this output from 120.4 KB to 3.2 KB.";
 		expect(html).toContain(note);
 		expect(html.indexOf(note)).toBeGreaterThan(html.indexOf("3 files changed"));
-		expect(html.indexOf(note)).toBeLessThan(html.indexOf("wall 1.4s"));
+		expect(html.indexOf(note)).toBeLessThan(html.indexOf("Duration 1.4s"));
 	});
 
 	it("handles chain filters and a rewrite to empty output", () => {
@@ -61,7 +61,7 @@ describe("bash minimized output metadata", () => {
 	])("leaves older and malformed details unchanged (%j)", details => {
 		const html = renderDetails(details, "Full output\n[raw output: artifact://42]");
 		expect(html).toContain("Full output");
-		expect(html).toContain("artifact 42");
+		expect(html).toContain("Artifact 42");
 		expect(html).not.toContain("filter changed this output");
 	});
 
@@ -89,7 +89,7 @@ describe("bash minimized output metadata", () => {
 	it("keeps a raw-output artifact reference as text without inventing a viewer link", () => {
 		const html = renderDetails(minimizedDetails, "3 files changed\n[raw output: artifact://bash-original-42]");
 		expect(html).toContain("omp&#x27;s git filter changed this output");
-		expect(html).toContain("artifact bash-original-42");
+		expect(html).toContain("Artifact bash-original-42");
 		expect(html).not.toContain("data-context-tool-path");
 		expect(html).not.toContain("<a");
 		expect(html).not.toContain("<button");

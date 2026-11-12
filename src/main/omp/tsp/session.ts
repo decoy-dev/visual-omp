@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
+import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspNode, type TspOpen } from "../../../shared/tsp";
 import type { TspAvailability, TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { TspRendererEvent } from "../../../shared/tsp-host.schema";
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
@@ -15,6 +15,7 @@ import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
 import { composerFacts } from "./composer";
 import { assertBtwEvent, BTW_SEND_BLOCKED_REASON, projectBtw } from "../../../shared/tsp/btw";
+import { assertShellEvent, shellProps } from "../../../shared/tsp/shell";
 
 const Query = z.object({ q: z.string(), v: z.array(z.number()).optional(), features: z.array(z.string()).optional() });
 const Open = z.object({ id: z.string().min(1), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });
@@ -45,7 +46,7 @@ interface Surface {
 	open: TspOpen;
 	doc: TspDocument;
 	sequence: number;
-	editorVersions: Map<string, number>;
+	nodeVersions: Map<string, number>;
 	closed: boolean;
 }
 
@@ -110,6 +111,7 @@ export class TspSession {
 	#cols: number;
 	#dark: boolean;
 	#reduceMotion: boolean;
+	readonly #publishedNodes = new WeakMap<TspNode, TspNode>();
 	readonly #waiters = new Set<() => void>();
 
 	constructor(options: {
@@ -140,9 +142,9 @@ export class TspSession {
 		if (!surface || !facts.editorId) throw new TspInputStateError("omp screen: The main editor is not available.");
 		const editorId = facts.editorId;
 		const epoch = this.#epoch;
-		const version = surface.editorVersions.get(editorId);
+		const version = surface.nodeVersions.get(editorId);
 		const ended = () => epoch !== this.#epoch || this.#surfaces.get(surface.open.id) !== surface || surface.closed
-			|| surface.editorVersions.get(editorId) !== version || surface.doc.get(editorId)?.k !== "editor";
+			|| surface.nodeVersions.get(editorId) !== version || surface.doc.get(editorId)?.k !== "editor";
 		return { surfaceId: surface.open.id, editorId, epoch, ended, assertCurrent: () => {
 			if (ended()) throw new TspInputStateError("omp screen: The original editor changed.");
 			if (surface.doc.suspended || !surfaceAllowed(surface.open.id)) throw new TspInputStateError("omp screen: The original editor is temporarily unavailable.");
@@ -151,9 +153,9 @@ export class TspSession {
 		} };
 	}
 
-	#registerEditors(surface: Surface, node: WireNode): void {
-		if (node.k === "editor") surface.editorVersions.set(node.id, (surface.editorVersions.get(node.id) ?? 0) + 1);
-		for (const child of node.c ?? []) this.#registerEditors(surface, child);
+	#registerInputNodes(surface: Surface, node: WireNode): void {
+		if (node.k === "editor" || node.k === "shell") surface.nodeVersions.set(node.id, (surface.nodeVersions.get(node.id) ?? 0) + 1);
+		for (const child of node.c ?? []) this.#registerInputNodes(surface, child);
 	}
 
 	imageCount(surfaceId: string): number {
@@ -204,13 +206,27 @@ export class TspSession {
 		for (const check of this.#waiters) check();
 	}
 
+	/** Bound shell data before snapshots and their derived patches can cross renderer IPC. */
+	#snapshotNode(node: TspNode): TspNode {
+		const cached = this.#publishedNodes.get(node);
+		if (cached) return cached;
+		const children = node.c?.map(child => this.#snapshotNode(child));
+		const changed = children?.some((child, index) => child !== node.c![index]);
+		// An omitted presentation is an unavailable marker. Keep identity and hidden state for matching and recovery.
+		const result: TspNode = node.k === "shell" && !shellProps(node.p)
+			? { id: node.id, k: "shell", ...(node.p?.hidden ? { p: { hidden: true } } : {}), ...(children ? { c: children } : {}) } as TspNode
+			: changed ? { ...node, c: children } as TspNode : node;
+		this.#publishedNodes.set(node, result);
+		return result;
+	}
+
 	snapshot(): { negotiated: boolean; epoch: number; surfaces: TspSurfaceSnapshot[] } {
 		return {
 			negotiated: this.#negotiated,
 			epoch: this.#epoch,
 			surfaces: [...this.#surfaces.values()].map(surface => ({
 				open: { ...surface.open }, sequence: surface.sequence, closed: surface.closed,
-				document: surface.doc.snapshot(), focus: surface.doc.focus,
+				document: this.#snapshotNode(surface.doc.snapshot()), focus: surface.doc.focus,
 				suspended: surface.doc.suspended, settled: [...surface.doc.settled],
 			})),
 		};
@@ -256,7 +272,7 @@ export class TspSession {
 					previous.open = open.data;
 					previous.closed = false;
 				} else {
-					this.#surfaces.set(open.data.id, { open: open.data, doc: new TspDocument(open.data.id), sequence: 0, closed: false, editorVersions: new Map() });
+					this.#surfaces.set(open.data.id, { open: open.data, doc: new TspDocument(open.data.id), sequence: 0, closed: false, nodeVersions: new Map() });
 				}
 				this.#updated("open", open.data.id);
 				return;
@@ -270,7 +286,7 @@ export class TspSession {
 				if (!surface || surface.closed) { this.#report("Frame for an unavailable TSP surface", frame.data.sf, frame.data.s); return; }
 				if (frame.data.s > surface.sequence) {
 					const errors = surface.doc.applyFrame(frame.data as TspFrame);
-					for (const [index, op] of frame.data.ops.entries()) if (op[0] === "add" && !errors.some(error => error.op === index)) this.#registerEditors(surface, op[4]);
+					for (const [index, op] of frame.data.ops.entries()) if (op[0] === "add" && !errors.some(error => error.op === index)) this.#registerInputNodes(surface, op[4]);
 					surface.sequence = frame.data.s;
 					for (const error of errors) this.#report(error.msg, frame.data.sf, error.s, error.op);
 					this.#updated("frame", frame.data.sf);
@@ -297,6 +313,9 @@ export class TspSession {
 		if (!parsed.success) return Promise.reject(new Error("omp screen: Invalid renderer event."));
 		const event = parsed.data;
 		const epoch = this.#epoch;
+		const initialSurface = this.#surfaces.get(event.sf);
+		const shellTarget = "id" in event && initialSurface?.doc.get(event.id)?.k === "shell"
+			? { surface: initialSurface, version: initialSurface.nodeVersions.get(event.id) } : null;
 		return this.#enqueue(async () => {
 			assertCurrent?.();
 			if (epoch !== this.#epoch) throw new TspInputStateError("omp screen: The semantic screen restarted.");
@@ -309,6 +328,13 @@ export class TspSession {
 			if ("id" in event) {
 				const node = surface.doc.get(event.id);
 				if (!node) throw new TspInputStateError("omp screen: The target node is no longer available.");
+				if (shellTarget || node.k === "shell" || event.ev === "action" && event.act === TSP_ACTIONS.shellViz) {
+					assertShellEvent({ open: surface.open, sequence: surface.sequence, closed: surface.closed,
+						document: surface.doc.snapshot(), focus: surface.doc.focus, suspended: surface.doc.suspended, settled: [] }, event);
+					if (!shellTarget || shellTarget.surface !== surface || surface.nodeVersions.get(event.id) !== shellTarget.version || node.k !== "shell") {
+						throw new TspInputStateError("omp screen: The original shell visualization changed.");
+					}
+				}
 				if (event.ev === "action" && (event.act === TSP_ACTIONS.model || event.act === TSP_ACTIONS.thinkingCycle)
 					&& node.p?.actions?.click !== event.act) throw new TspInputStateError("omp screen: The target no longer offers this model or thinking action.");
 				if (event.ev === "action" && isAskFormAction(event.act)) {

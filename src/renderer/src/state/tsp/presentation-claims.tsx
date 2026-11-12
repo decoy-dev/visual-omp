@@ -45,6 +45,11 @@ export function PresentationVisibility({ visible, tabId, children }: PropsWithCh
 	return <visiblePresentation.Provider value={parent && visible}>{children}</visiblePresentation.Provider>;
 }
 
+/** Optional native viewers share the layout owner's hidden/inert state before mounting heavy content. */
+export function usePresentationVisible(): boolean {
+	return useContext(visiblePresentation);
+}
+
 /** Renderer-only ownership. Multiple visible consumers share one target until the last releases it. */
 class PresentationClaimRegistry {
 	#owners = new Map<string, { target: PresentationTarget; count: number }>();

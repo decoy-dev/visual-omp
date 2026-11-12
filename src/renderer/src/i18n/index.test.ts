@@ -16,6 +16,7 @@ const pairs = [
 	["context", "extensions", "mcp.subtitle", "mcp.title"],
 	["projectDetails", "projects", "instructions.subtitle", "instructions.title"],
 	["helperFocus", "panes", "tasks.focus.placeholder", "tasks.send"],
+	["shellVisualization", "tools", "pseudoExplanation", "bash.savedOutput.load"],
 ] as const;
 
 function leaves(messages: Messages, prefix = ""): string[] {

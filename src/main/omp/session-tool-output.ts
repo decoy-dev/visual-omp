@@ -5,15 +5,33 @@ import type { SavedOutputBlock, SavedToolOutput } from "@shared/session-output";
 import { userEnv } from "../env";
 import { helperFileValidation } from "./helper-file";
 import { sessionsDir } from "./paths";
+import { hasShellTraceElision } from "./shell-visualization-source";
 
 const SCAN_BYTES = 64 * 1024 * 1024;
 const LINE_BYTES = 16 * 1024 * 1024;
 const CHUNK_BYTES = 64 * 1024;
 const AUTO_BYTES = 256 * 1024;
 const MANUAL_BYTES = 1024 * 1024;
-const unavailable: SavedToolOutput = { status: "unavailable" };
+const unavailable = { status: "unavailable" } as const;
 export const SAVED_TOOL_OUTPUT_LIMITS = { scanBytes: SCAN_BYTES, lineBytes: LINE_BYTES, autoBytes: AUTO_BYTES, manualBytes: MANUAL_BYTES } as const;
-const tooLarge: SavedToolOutput = { status: "too-large" };
+const tooLarge = { status: "too-large" } as const;
+
+/** Main-only envelope. This type and API never enter sessions:toolOutput IPC. */
+export type SavedShellTrace = { status: "ready"; json: string; cwd: string; executionCwd?: string; cdSeparator?: ";"; sessionId: string; identity: string }
+	| { status: "unavailable" | "too-large" };
+type ScanResult = SavedToolOutput | SavedShellTrace;
+export const SAVED_SHELL_TRACE_BYTES = 16 * 1024 * 1024;
+
+function traceOf(message: RecordValue, cwd: string, sessionId: string, physical: string): SavedShellTrace {
+	const trace = record(message.details) ? message.details.trace : undefined;
+	if (!record(trace) || trace.v !== 1) return unavailable;
+	const json = JSON.stringify(trace);
+	if (Buffer.byteLength(json, "utf8") > SAVED_SHELL_TRACE_BYTES) return tooLarge;
+	// Shrunk collab replicas cannot establish complete native source, including opaque syntax.
+	if (hasShellTraceElision(json)) return unavailable;
+	return { status: "ready", json, cwd, executionCwd: record(message.details) && typeof message.details.cwd === "string" ? message.details.cwd : undefined,
+		cdSeparator: record(message.details) && message.details.cdSeparator === ";" ? ";" : undefined, sessionId, identity: `${physical}:${sessionId}` };
+}
 
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): value is RecordValue {
@@ -100,23 +118,24 @@ const BATCH_CALLS = 16;
 type OutputRequest = {
 	file: string;
 	toolCallId: string;
+	kind: "output" | "trace";
 	manual: boolean;
 	reportedFiles?: ReportedFiles;
-	resolve: (result: SavedToolOutput) => void;
+	resolve: (result: ScanResult) => void;
 };
 const pendingRequests: OutputRequest[] = [];
 let draining = false;
 
-/** Read one exact physical session once for a bounded batch. Never return details/trace. */
-async function scanSavedToolOutputs(file: string, requests: readonly OutputRequest[]): Promise<SavedToolOutput[]> {
-	const results: (SavedToolOutput | undefined)[] = requests.map(() => undefined);
+/** Read one exact physical session once for a bounded content/trace batch. */
+async function scanSavedToolOutputs(file: string, requests: readonly OutputRequest[]): Promise<ScanResult[]> {
+	const results: (ScanResult | undefined)[] = requests.map(() => undefined);
 	const wanted = new Map<string, number[]>();
 	for (const [index, request] of requests.entries()) {
 		const indices = wanted.get(request.toolCallId);
 		if (indices) indices.push(index);
 		else wanted.set(request.toolCallId, [index]);
 	}
-	const finishPending = (result: SavedToolOutput): void => {
+	const finishPending = (result: ScanResult): void => {
 		for (const indices of wanted.values()) for (const index of indices) results[index] = result;
 		wanted.clear();
 	};
@@ -135,6 +154,8 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 		let position = 0;
 		let header: Buffer | undefined;
 		let headerEnd = 0;
+		let cwd = "";
+		let sessionId = "";
 		let titleSeen = false;
 		const consume = (line: Buffer, lineEnd: number): void => {
 			const text = line.toString("utf8");
@@ -148,6 +169,8 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 					typeof entry.cwd !== "string" || !isAbsolute(entry.cwd)) { finishPending(unavailable); return; }
 				header = Buffer.from(line);
 				headerEnd = lineEnd;
+				cwd = entry.cwd;
+				sessionId = entry.id;
 				return;
 			}
 			if (entry.type === "session") { finishPending(unavailable); return; }
@@ -158,10 +181,13 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 			if (!indices) return;
 			let automatic: SavedToolOutput | undefined;
 			let manual: SavedToolOutput | undefined;
+			let trace: SavedShellTrace | undefined;
 			for (const index of indices) {
-				results[index] = requests[index]!.manual
-					? (manual ??= contentOf(message.content, MANUAL_BYTES))
-					: (automatic ??= contentOf(message.content, AUTO_BYTES));
+				results[index] = requests[index]!.kind === "trace"
+					? (trace ??= traceOf(message, cwd, sessionId, `${initial.dev}:${initial.ino}`))
+					: requests[index]!.manual
+						? (manual ??= contentOf(message.content, MANUAL_BYTES))
+						: (automatic ??= contentOf(message.content, AUTO_BYTES));
 			}
 			wanted.delete(message.toolCallId);
 		};
@@ -202,7 +228,7 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 		}
 		await validate(handle);
 		// Every index was filled by its matched record or finishPending above.
-		return results as SavedToolOutput[];
+		return results as ScanResult[];
 	} catch {
 		return requests.map(() => unavailable);
 	} finally {
@@ -227,20 +253,30 @@ async function drainRequests(): Promise<void> {
 	}
 }
 
-/** Queue bounded work globally, coalescing exact-file callers with the same main-owned authority provider. */
-export async function loadSavedToolOutput(file: string, toolCallId: string, manual?: boolean, reportedFiles?: ReportedFiles): Promise<SavedToolOutput> {
+/** Queue exact-file work only with the same main-owned authority provider. */
+async function queueRead(file: string, toolCallId: string, kind: "output" | "trace", manual?: boolean, reportedFiles?: ReportedFiles): Promise<ScanResult> {
 	if (typeof file !== "string" || !isAbsolute(file) || file.includes("\0") || !file.endsWith(".jsonl") ||
 		typeof toolCallId !== "string" || !toolCallId || toolCallId.includes("\0") || toolCallId.length > 4096 ||
 		(manual !== undefined && typeof manual !== "boolean") ||
 		(reportedFiles !== undefined && typeof reportedFiles !== "function")) return unavailable;
 	if (pendingRequests.length >= QUEUED_REQUESTS) return unavailable;
 	file = resolve(file);
-	const request = Promise.withResolvers<SavedToolOutput>();
-	pendingRequests.push({ file, toolCallId, manual: manual === true, reportedFiles, resolve: request.resolve });
+	const request = Promise.withResolvers<ScanResult>();
+	pendingRequests.push({ file, toolCallId, kind, manual: manual === true, reportedFiles, resolve: request.resolve });
 	if (!draining) {
 		draining = true;
 		// Gather concurrent IPC deliveries before taking the first bounded batch.
 		setImmediate(() => { void drainRequests(); });
 	}
 	return request.promise;
+}
+
+/** Content-only recovery retains its original caps and never returns details. */
+export async function loadSavedToolOutput(file: string, toolCallId: string, manual?: boolean, reportedFiles?: ReportedFiles): Promise<SavedToolOutput> {
+	return await queueRead(file, toolCallId, "output", manual, reportedFiles) as SavedToolOutput;
+}
+
+/** Local inspection does not acquire a session lease or contact its owning host. */
+export async function loadSavedShellTrace(file: string, toolCallId: string, reportedFiles?: ReportedFiles): Promise<SavedShellTrace> {
+	return await queueRead(file, toolCallId, "trace", undefined, reportedFiles) as SavedShellTrace;
 }

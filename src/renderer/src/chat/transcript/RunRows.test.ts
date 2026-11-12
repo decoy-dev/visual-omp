@@ -23,8 +23,8 @@ const data = vi.hoisted(() => {
 vi.mock("../../state/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: data.snapshot }) }));
 vi.mock("./FileLinks", async () => {
 	// Vitest hoists mock factories before static imports, so load React within this factory.
-	const { createContext, createElement } = await import("react");
-	return { FileRefContext: createContext(null), useFileRefs: () => null, LinkedMarkdown: ({ text }: { text: string }) => createElement("p", null, text) };
+	const { createElement } = await import("react");
+	return { useFileRefs: () => null, LinkedMarkdown: ({ text }: { text: string }) => createElement("p", null, text) };
 });
 vi.mock("motion/react", async importOriginal => {
 	const original = await importOriginal<typeof MotionModule>();

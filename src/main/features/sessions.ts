@@ -10,7 +10,7 @@ import { listHosts } from "../omp/host";
 import { followedSessionFiles } from "../omp/follow";
 
 /** Current main-owned reports only; asking to read a file never registers it. */
-function reportedSessionFiles(): readonly string[] {
+export function reportedSessionFiles(): readonly string[] {
 	return [
 		...listHosts().flatMap(host => host.sessionFile === null ? [] : [host.sessionFile]),
 		...followedSessionFiles(),

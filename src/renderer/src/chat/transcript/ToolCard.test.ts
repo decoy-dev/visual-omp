@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AppPreferences } from "@shared/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FileRefContext } from "./FileLinks";
+import { FileRefContext } from "./fileRefScope";
 import { ToolCard, type ToolCardProps } from "./ToolCard";
 import { useApp } from "../../state/app";
 import { useLivePreview } from "../../features/live-preview/store";

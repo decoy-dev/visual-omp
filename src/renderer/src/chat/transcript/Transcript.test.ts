@@ -34,10 +34,9 @@ vi.mock("./pace", async importOriginal => ({
 }));
 vi.mock("./FileLinks", async () => {
 	// Vitest hoists this factory before static imports; load its dependencies inside the factory.
-	const { createContext, createElement } = await import("react");
+	const { createElement } = await import("react");
 	const { renderMarkdown } = await import("../../transcript/render");
 	return {
-		FileRefContext: createContext(null),
 		useFileRefs: (_reply: number | null, texts: readonly string[]) => { links.texts = texts; return links.refs; },
 		LinkedMarkdown: ({ text, refs }: { text: string; refs: readonly (FileRef | null)[] | undefined }) => {
 			links.drawn.push({ text, refs });

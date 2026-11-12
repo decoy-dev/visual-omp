@@ -18,8 +18,8 @@ vi.mock('../../features/projects/folders/homeDir', () => ({ useHomeDir: () => nu
 vi.mock('./pace', async importOriginal => ({ ...await importOriginal<typeof PaceModule>(), usePlayout: () => null }));
 vi.mock('./FileLinks', async () => {
 	// Vitest hoists mock factories before static value imports.
-	const { createContext, createElement } = await import('react');
-	return { FileRefContext: createContext(null), useFileRefs: () => null, LinkedMarkdown: ({ text }: { text: string }) => createElement('span', null, text) };
+	const { createElement } = await import('react');
+	return { useFileRefs: () => null, LinkedMarkdown: ({ text }: { text: string }) => createElement('span', null, text) };
 });
 vi.mock('../../ui/motion', async importOriginal => {
 	const actual = await importOriginal<typeof MotionModule>();

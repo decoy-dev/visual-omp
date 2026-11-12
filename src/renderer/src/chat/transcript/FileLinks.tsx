@@ -4,24 +4,14 @@
  * (`ReplyRefCache`); only names found on disk when checked are linked.
  */
 import type { FileRef } from "@shared/contracts/fileRefs";
-import { createContext, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
+import { memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMarkdownHtml } from "../../transcript/Markdown";
 import { renderMarkdown } from "../../transcript/render";
 import { useRichContent } from "../../ui/rich-content";
 import { ReplyRefCache, type ReplyRefs } from "./fileRefs";
 import { fillThumbnails, linkHtml, occurrences, parse } from "./fileLinkMarkup";
-
-/** The chat a transcript shows and where its relative names are looked up after the folders a reply names. */
-export interface FileRefScope {
-	/** Identifies the chat (its tab), so replies in different chats never share results. */
-	chat: string;
-	/** The chat's folder. Other candidates come from this reply's directory spans and known turn files. */
-	bases: readonly string[];
-	canonicalProjectPath?: string | null;
-}
-
-export const FileRefContext = createContext<FileRefScope | null>(null);
+import { FileRefContext } from "./fileRefScope";
 
 const cache = new ReplyRefCache(request => window.vomp.invoke("fs:resolveRefs", request));
 

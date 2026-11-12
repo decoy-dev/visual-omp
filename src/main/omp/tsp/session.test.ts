@@ -51,7 +51,7 @@ describe("TSP session", () => {
 		h.hello();
 		await h.flush();
 		expect(h.bodies()[0]).toEqual({ r: "hello", v: 1, term: "visual-omp", kinds: [...TSP_KINDS], features: [], apc: 65536, credits: 2, cols: 110, dark: true, reduceMotion: true });
-		expect(TSP_KINDS).toHaveLength(45);
+		expect(TSP_KINDS).toHaveLength(46);
 		expect(TSP_KINDS).toContain("button");
 		await h.session.resize(120);
 		await h.session.theme(false);

@@ -10,7 +10,7 @@ const tspModule = id => /(?:^|\/)src\/renderer\/src\/features\/tsp\//.test(id.re
 /** The bundled changelog loads with the release notes viewer; in the entry, every release would grow startup. */
 const changelogModule = id => /(?:^|\/)CHANGELOG\.md(?:\?|$)/.test(id.replaceAll("\\", "/"));
 /** Transcript implementation, helper controls and their text load on demand; focus state may remain eager. */
-const conversationModule = id => /(?:^|\/)src\/renderer\/src\/(?:chat\/transcript\/Transcript\.tsx|features\/panes\/(?:HelperFocusView\.tsx|helperConversation\.ts)|state\/sessionFiles\.ts|i18n\/[^/]+\/helperFocus\.json)(?:\?|$)/.test(id.replaceAll("\\", "/"));
+const conversationModule = id => /(?:^|\/)src\/renderer\/src\/(?:chat\/transcript\/Transcript\.tsx|features\/panes\/(?:HelperFocusView\.tsx|helperConversation\.ts)|features\/shell-visualization\/(?:ShellView|LiveShellContent)\.tsx|state\/sessionFiles\.ts|i18n\/[^/]+\/(?:helperFocus|shellVisualization)\.json)(?:\?|$)/.test(id.replaceAll("\\", "/"));
 const officeModule = id => /(?:^|\/)node_modules\/(?:docx-preview|jszip|xlsx|fflate|pako|@xmldom\/xmldom)\//.test(id.replaceAll("\\", "/"));
 
 /** Validate emitted Rollup membership, including synchronous dependencies of the entry. */

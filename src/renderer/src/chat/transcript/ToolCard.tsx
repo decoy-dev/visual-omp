@@ -30,6 +30,7 @@ import { Button, cn, Expand, PulseDot, Rise } from "../../ui";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 import { LoadFailedSilently, lazyView } from "../../registry/lazy";
 import { useSavedBashOutput } from "./savedBashOutput";
+import { useShellCommandHost } from "../../features/shell-visualization/ToolCommandHost";
 
 // An optional action over the card row: if it does not load, the card keeps working without it.
 const WatchAction = lazyView(() => import("../../features/live-preview/WatchAction").then(module => module.WatchAction), null, LoadFailedSilently);
@@ -122,6 +123,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	const recovered = useSavedBashOutput({ name: props.name, running: props.running, result: props.result, toolCallId: props.toolCallId });
 	const liveResult = recovered.result ?? (props.running ? partialToolResult(props.partialResult) : undefined);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: liveResult, running: props.running, intent: props.intent });
+	const shell = useShellCommandHost(call.name, props.toolCallId, props.host, call.running, !!props.result);
 	const summary = props.summary && (call.result || props.summary.status !== "ok") ? props.summary : friendlySummary(call);
 	const reference = toolContextReference(call);
 	const renderer = resolveToolRenderer(call.name, call.result?.details);
@@ -141,6 +143,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 				if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
 			}}
 		>
+			{shell.availability}
 			<div className="group/watch relative">
 				<button
 					type="button"
@@ -211,10 +214,10 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 				)}
 				<div className="tv-card tv-embedded">
 					{renderer.Body ? (
-						<renderer.Body name={call.name} args={call.args} result={call.result} running={call.running} host={props.host} />
+						<renderer.Body name={call.name} args={call.args} result={call.result} running={call.running} host={shell.host} />
 					) : (
 						<div className="tv-body">
-							<renderer.Summary name={call.name} args={call.args} result={call.result} running={call.running} host={props.host} />
+							<renderer.Summary name={call.name} args={call.args} result={call.result} running={call.running} host={shell.host} />
 						</div>
 					)}
 				</div>

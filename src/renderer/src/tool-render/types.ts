@@ -11,7 +11,7 @@
  * runtime, node builtins) and must tolerate partial/malformed `args` and
  * `details` — these arrive as plain JSON over the wire.
  */
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 export interface ToolResultText {
 	type: "text";
@@ -34,6 +34,9 @@ export interface ToolResultLike {
 	isError?: boolean;
 }
 
+/** Execution context reported by omp after a leading cd has been hoisted. */
+export interface ShellCommandContext { cwd?: string; cdSeparator?: ";"; trace?: object }
+
 /**
  * Capabilities the embedding host exposes to renderers. Functions are live
  * objects (passed via property assignment or the payload store) — they cannot
@@ -44,6 +47,8 @@ export interface ToolRenderHost {
 	hasAgent?(id: string): boolean;
 	/** Open the sub-session/transcript view for an agent id. */
 	openAgent?(id: string): void;
+	/** Optional app-owned command pane. Ordinary output and metadata remain in the bash renderer. */
+	renderShellCommand?(command: string, fallback: ReactNode, envPrefix: string, context?: ShellCommandContext): ReactNode;
 }
 
 export interface ToolRenderProps {
