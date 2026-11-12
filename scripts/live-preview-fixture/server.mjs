@@ -104,6 +104,19 @@ export function bashTraceCalls() {
 }
 
 /**
+ * Short bash calls for omp's shell visualization: leading `cd /` with both separators, a value with a newline and an
+ * invalid UTF-8 byte, and a script with assignments, a branch, a pipeline whose first command fails and a loop that
+ * leaves replay several events to step through.
+ */
+export function bashVisualizationCalls() {
+  return [
+    { name: "bash", args: { i: "Checking leading and separator", command: 'cd / && VALUE="café"; printf "%s\\n" "$VALUE"; sleep 0.4', timeout: 10 }, slow: false },
+    { name: "bash", args: { i: "Checking separator and byte values", command: 'cd /; VALUE=$\'café\\n\\xff\'; printf "%s\\n" "$VALUE"; sleep 0.4', timeout: 10 }, slow: false },
+    { name: "bash", args: { i: "Running a short release script", command: 'NAME="release"; COUNT=3; if [ "$COUNT" -gt 2 ]; then echo "many $NAME checks"; else echo "few $NAME checks"; fi; false | true; for i in 1 2 3; do echo "step $i of $COUNT"; sleep 0.3; done', timeout: 20 }, slow: false },
+  ];
+}
+
+/**
  * Context summaries stream over several seconds, like a real model, so the app's progress
  * during /handoff and /compact can be checked. omp sends both as one-shot requests whose last
  * user message carries its own instructions (and, for /compact, the earlier conversation).
@@ -296,7 +309,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-visualization|grep-patterns|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -413,7 +426,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "cfg-save" ? [
+      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "bash-visualization" ? bashVisualizationCalls() : fixture === "cfg-save" ? [
         // omp 18.18+ asks before a cfg:// write; the dialog's title quotes the setting path in Markdown code marks.
         { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
       ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [

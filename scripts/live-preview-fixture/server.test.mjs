@@ -219,6 +219,15 @@ test("bash trace fixture runs each output shape once and finishes after their re
   assert.deepEqual(followUp, []);
 });
 
+test("bash visualization keeps both leading cd separators, records non-UTF-8 bytes and runs a replayable script", async () => {
+  const calls = await callsFor("fixture bash-visualization");
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.name === "bash"));
+  assert.match(calls[0].args.command, /^cd \/ && VALUE="café";/);
+  assert.match(calls[1].args.command, /^cd \/; VALUE=\$'café\\n\\xff';/);
+  assert.match(calls[2].args.command, /if \[ "\$COUNT" -gt 2 \]; then .*false \| true; for i in 1 2 3;/);
+});
+
 test("grep patterns writes local samples before searches and includes single-file and empty results", async () => {
   const messages = [{ role: "user", content: "fixture grep-patterns" }];
   const writes = await callsFor("", messages);
