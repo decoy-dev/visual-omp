@@ -1,6 +1,6 @@
 /** `github` — gh CLI dispatch: repo views, PRs, searches, Actions run watch. */
 import { Hourglass } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Badge, InvalidArg, Kv, KvGrid, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, shortenPath, str, truncate } from "../util";
@@ -15,6 +15,90 @@ const FAILURE_CONCLUSIONS: Record<string, string> = {
 };
 const RUNNING_STATUSES: Record<string, true> = { in_progress: true };
 const PENDING_STATUSES: Record<string, true> = { queued: true, requested: true, waiting: true, pending: true };
+const STEP_COMPLETE_STATUSES: Record<string, true> = { completed: true };
+
+/** Own-key membership, so a GitHub state named like an Object property (`constructor`) stays unknown. */
+function inTable(table: Record<string, unknown>, key: string | undefined): boolean {
+	return key !== undefined && Object.hasOwn(table, key);
+}
+
+export interface GithubRunWatchStep {
+	number: number;
+	name: string;
+	status?: string;
+	conclusion?: string;
+	durationSeconds?: number;
+}
+
+export interface GithubStepProgress {
+	steps: GithubRunWatchStep[];
+	total: number;
+	completed: number;
+	currentStep?: GithubRunWatchStep;
+	currentPosition?: number;
+	failedStep?: GithubRunWatchStep;
+	allSuccessful: boolean;
+	label: string;
+	tone: "success" | "error" | "warning" | "muted";
+}
+
+function parseGithubRunWatchSteps(value: unknown): GithubRunWatchStep[] {
+	if (!Array.isArray(value)) return [];
+	const steps: GithubRunWatchStep[] = [];
+	for (const candidate of value) {
+		if (!isRecord(candidate) || typeof candidate.number !== "number" || !Number.isSafeInteger(candidate.number) || candidate.number < 1 || typeof candidate.name !== "string") continue;
+		const step: GithubRunWatchStep = { number: candidate.number, name: candidate.name };
+		if (typeof candidate.status === "string") step.status = candidate.status;
+		if (typeof candidate.conclusion === "string") step.conclusion = candidate.conclusion;
+		if (typeof candidate.durationSeconds === "number" && Number.isFinite(candidate.durationSeconds) && candidate.durationSeconds >= 0) step.durationSeconds = candidate.durationSeconds;
+		steps.push(step);
+	}
+	return steps;
+}
+
+/** A step's tone as omp's `getStepTone`: a state GitHub adds later stays muted, never a failure. */
+export function getGithubStepTone(step: GithubRunWatchStep): GithubStepProgress["tone"] {
+	if (inTable(SUCCESS_CONCLUSIONS, step.conclusion)) return "success";
+	if (inTable(FAILURE_CONCLUSIONS, step.conclusion)) return "error";
+	if (!step.conclusion && inTable(RUNNING_STATUSES, step.status)) return "warning";
+	return "muted";
+}
+
+const TONE_CLASS: Record<GithubStepProgress["tone"], string> = { success: "tv-ok-text", error: "tv-err-text", warning: "tv-warn-text", muted: "tv-muted" };
+
+function githubStepStateLabel(step: GithubRunWatchStep): string {
+	return (step.conclusion || step.status || "unknown").replaceAll("_", " ");
+}
+
+/** omp 18.19.0's step progress for one job (`getStepProgress` in pi-tui tools/github.ts); undefined without steps. */
+export function getGithubStepProgress(value: unknown): GithubStepProgress | undefined {
+	const steps = parseGithubRunWatchSteps(value);
+	if (steps.length === 0) return undefined;
+	const completed = steps.filter(step => Boolean(step.conclusion) || inTable(STEP_COMPLETE_STATUSES, step.status)).length;
+	const currentIndex = steps.findIndex(step => !step.conclusion && inTable(RUNNING_STATUSES, step.status));
+	const failedStep = steps.find(step => inTable(FAILURE_CONCLUSIONS, step.conclusion));
+	const nextIndex = currentIndex >= 0
+		? currentIndex
+		: failedStep
+			? -1
+			: steps.findIndex(step => !step.conclusion && step.status !== "completed" && inTable(PENDING_STATUSES, step.status));
+	const currentStep = nextIndex >= 0 ? steps[nextIndex] : undefined;
+	const currentPosition = currentStep ? nextIndex + 1 : undefined;
+	const allSuccessful = steps.every(step => inTable(SUCCESS_CONCLUSIONS, step.conclusion));
+	let label: string;
+	let tone: GithubStepProgress["tone"];
+	if (currentStep && currentPosition !== undefined) {
+		label = `${currentPosition}/${steps.length} #${currentStep.number} ${currentStep.name} · ${githubStepStateLabel(currentStep)}`;
+		tone = getGithubStepTone(currentStep);
+	} else if (failedStep) {
+		label = `#${failedStep.number} ${failedStep.name} · ${githubStepStateLabel(failedStep)} · ${completed}/${steps.length}`;
+		tone = getGithubStepTone(failedStep);
+	} else {
+		label = `${completed}/${steps.length} steps complete`;
+		tone = allSuccessful ? "success" : "muted";
+	}
+	return { steps, total: steps.length, completed, currentStep, currentPosition, failedStep, allSuccessful, label, tone };
+}
 
 /** `123`, a PR/issue URL, or a branch name → `#123` or a truncated literal. */
 function issueId(value: string): string | null {
@@ -125,10 +209,10 @@ function ArgsGrid({ args }: { args: Record<string, unknown> }): ReactNode {
 function jobVisual(job: Record<string, unknown>): { icon: ReactNode; cls: string; label: string } {
 	const conclusion = str(job.conclusion);
 	const status = str(job.status);
-	if (conclusion && SUCCESS_CONCLUSIONS[conclusion]) return { icon: "✓", cls: "tv-ok-text", label: SUCCESS_CONCLUSIONS[conclusion] };
-	if (conclusion && FAILURE_CONCLUSIONS[conclusion]) return { icon: "✕", cls: "tv-err-text", label: FAILURE_CONCLUSIONS[conclusion] };
-	if (status && RUNNING_STATUSES[status]) return { icon: "●", cls: "tv-warn-text", label: "Running" };
-	if (status && PENDING_STATUSES[status]) return { icon: <Hourglass size={14} aria-hidden="true" />, cls: "tv-muted", label: "Pending" };
+	if (conclusion && inTable(SUCCESS_CONCLUSIONS, conclusion)) return { icon: "✓", cls: "tv-ok-text", label: SUCCESS_CONCLUSIONS[conclusion] };
+	if (conclusion && inTable(FAILURE_CONCLUSIONS, conclusion)) return { icon: "✕", cls: "tv-err-text", label: FAILURE_CONCLUSIONS[conclusion] };
+	if (status && inTable(RUNNING_STATUSES, status)) return { icon: "●", cls: "tv-warn-text", label: "Running" };
+	if (status && inTable(PENDING_STATUSES, status)) return { icon: <Hourglass size={14} aria-hidden="true" />, cls: "tv-muted", label: "Pending" };
 	return { icon: "○", cls: "tv-faint", label: "Unknown status" };
 }
 
@@ -144,11 +228,11 @@ function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
 	const conclusion = str(run.conclusion);
 	const status = str(run.status);
 	const tone =
-		conclusion && SUCCESS_CONCLUSIONS[conclusion]
+		conclusion && inTable(SUCCESS_CONCLUSIONS, conclusion)
 			? ("ok" as const)
-			: conclusion && FAILURE_CONCLUSIONS[conclusion]
+			: conclusion && inTable(FAILURE_CONCLUSIONS, conclusion)
 				? ("err" as const)
-				: status && RUNNING_STATUSES[status]
+				: status && inTable(RUNNING_STATUSES, status)
 					? ("warn" as const)
 					: undefined;
 	const jobs = Array.isArray(run.jobs) ? run.jobs : [];
@@ -167,11 +251,27 @@ function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
 				if (!isRecord(job)) return null;
 				const visual = jobVisual(job);
 				const duration = num(job.durationSeconds);
+				const progress = getGithubStepProgress(job.steps);
 				return (
-					<Row key={num(job.id) ?? index}>
-						<span className={`tv-job-state ${visual.cls}`} role="img" aria-label={visual.label}>{visual.icon}</span> <span>{str(job.name) ?? "job"}</span>
-						{duration !== null && <span className="tv-faint"> {duration}s</span>}
-					</Row>
+					<Fragment key={num(job.id) ?? index}>
+						<Row>
+							<span className={`tv-job-state ${visual.cls}`} role="img" aria-label={visual.label}>{visual.icon}</span> <span>{str(job.name) ?? "job"}</span>
+							{duration !== null && <span className="tv-faint"> {duration}s</span>}
+						</Row>
+						{progress && <details className="tv-gh-steps">
+							<summary className={`tv-gh-step-progress ${TONE_CLASS[progress.tone]}`}>{progress.label}</summary>
+							<div className="tv-gh-step-list">
+								{progress.steps.map(step => {
+									const toneClass = TONE_CLASS[getGithubStepTone(step)];
+									return <div className="tv-gh-step" key={step.number}>
+										<span className="tv-faint">#{step.number}</span> <span className={toneClass}>{step.name}</span>{" "}
+										<span className={toneClass}>{githubStepStateLabel(step)}</span>
+										{step.durationSeconds !== undefined && <span className="tv-faint"> {step.durationSeconds}s</span>}
+									</div>;
+								})}
+							</div>
+						</details>}
+					</Fragment>
 				);
 			})}
 		</div>

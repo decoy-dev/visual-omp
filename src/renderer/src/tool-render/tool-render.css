@@ -263,6 +263,34 @@
 	vertical-align: text-bottom;
 }
 
+.tv-gh-steps {
+	margin-left: 1.25em;
+	font-size: 10.5px;
+}
+
+.tv-gh-step-progress {
+	width: fit-content;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	cursor: pointer;
+}
+
+.tv-gh-step-progress:focus-visible {
+	outline: 2px solid var(--tv-ring);
+	outline-offset: 2px;
+}
+
+.tv-gh-step-list {
+	display: grid;
+	gap: 2px;
+	padding: 3px 0 2px 1.25em;
+}
+
+.tv-gh-step {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
 .tv-err-text {
 	color: var(--tv-err);
 }
