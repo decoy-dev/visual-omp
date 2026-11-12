@@ -103,8 +103,8 @@ const local = new ShellVisualizationService({
       finally { nativeRequests.push({ op: request.op, handle: request.handle, options: request.op === 'present' ? request.options : undefined, at: started, durationMs: now() - started, ...status }); }
     } };
   },
-  onFrame: frame => { frames.push({ at: now(), ...frame }); send('ipc', { channel: 'shell-viz:frame', value: frame }); },
-  onInvalidated: value => { invalidations.push({ at: now(), ...value, lastSource: sourceSnapshots.at(-1) }); send('ipc', { channel: 'shell-viz:invalidated', value }); },
+  onFrame: frame => { frames.push({ at: now(), ...frame }); send('ipc', { channel: 'shellviz:frame', value: frame }); },
+  onInvalidated: value => { invalidations.push({ at: now(), ...value, lastSource: sourceSnapshots.at(-1) }); send('ipc', { channel: 'shellviz:invalidated', value }); },
 });
 async function persisted() {
   const files = (await readdir(sessionDirectory)).filter(file => file.endsWith('.jsonl'));
@@ -166,16 +166,16 @@ const server = createServer(async (req, res) => {
       let result: unknown;
       if (channel === 'config:get') result = await readSetting(z.string().parse(args[1]));
       else if (channel === 'config:watch' || channel === 'config:unwatch') result = undefined;
-      else if (channel === 'shell-viz:openSnapshot' || channel === 'shell-viz:updateSnapshot') {
-        const request = channel === 'shell-viz:openSnapshot' ? SnapshotOpen.parse(args[0]) : SnapshotUpdate.parse(args[0]);
+      else if (channel === 'shellviz:openSnapshot' || channel === 'shellviz:updateSnapshot') {
+        const request = channel === 'shellviz:openSnapshot' ? SnapshotOpen.parse(args[0]) : SnapshotUpdate.parse(args[0]);
         // Negative acceptance changes only JSON framing; valid-source runs pass exact collab JSON.
         if (refuse === 'too-large') request.json = ' '.repeat(16 * 1024 * 1024) + request.json;
         else if (refuse === 'unavailable') request.json = '{';
-        result = channel === 'shell-viz:openSnapshot' ? await local.openSnapshot(SnapshotOpen.parse(request)) : await local.updateSnapshot(SnapshotUpdate.parse(request));
+        result = channel === 'shellviz:openSnapshot' ? await local.openSnapshot(SnapshotOpen.parse(request)) : await local.updateSnapshot(SnapshotUpdate.parse(request));
       }
-      else if (channel === 'shell-viz:action') result = await local.action(String(args[0]), String(args[1]));
-      else if (channel === 'shell-viz:release') local.release(String(args[0]));
-      else if (channel === 'shell-viz:cancel') local.cancel(String(args[0]));
+      else if (channel === 'shellviz:action') result = await local.action(String(args[0]), String(args[1]));
+      else if (channel === 'shellviz:release') local.release(String(args[0]));
+      else if (channel === 'shellviz:cancel') local.cancel(String(args[0]));
       else throw new Error(`Owning-host operation forbidden: ${channel}`);
       const parsedSource = SnapshotSource.safeParse(args[0]);
       const source = parsedSource.success ? parsedSource.data : undefined;

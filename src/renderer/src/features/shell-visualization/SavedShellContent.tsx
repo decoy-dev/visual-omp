@@ -105,7 +105,7 @@ export function SavedShellContent({ active, cwd, file, identity, toolCallId, com
 		const earlyFrames = new Map<string, ShellFrame>();
 		const invalidated = new Map<string, ShellFailureReason>();
 		const current = () => alive && lifetime.current === scope;
-		const release = (handle: string) => { void window.vomp.invoke("shell-viz:release", handle).catch(() => {}); };
+		const release = (handle: string) => { void window.vomp.invoke("shellviz:release", handle).catch(() => {}); };
 		const fail = (reason: ShellFailureReason) => {
 			if (!current()) return;
 			if (reason === "disabled") { disabledSetting.current = currentSetting.current; refreshSetting(); }
@@ -128,7 +128,7 @@ export function SavedShellContent({ active, cwd, file, identity, toolCallId, com
 			updating = true;
 			requestedSourceRevision = next.sourceRevision;
 			const handle = frame.handle;
-			void window.vomp.invoke("shell-viz:updateSnapshot", { handle, sourceId: next.sourceId, sourceRevision: next.sourceRevision, json: next.json, executionCwd: next.executionCwd, cdSeparator: next.cdSeparator }).then(result => {
+			void window.vomp.invoke("shellviz:updateSnapshot", { handle, sourceId: next.sourceId, sourceRevision: next.sourceRevision, json: next.json, executionCwd: next.executionCwd, cdSeparator: next.cdSeparator }).then(result => {
 				updating = false;
 				if (!current() || frame?.handle !== handle) return;
 				if (next.sourceRevision === source.current?.sourceRevision) {
@@ -145,14 +145,14 @@ export function SavedShellContent({ active, cwd, file, identity, toolCallId, com
 		};
 		updateSource.current = pumpSource;
 		// Subscribe before open: an invalidation or newer frame can precede its invoke reply.
-		const offFrame = window.vomp.on("shell-viz:frame", next => {
+		const offFrame = window.vomp.on("shellviz:frame", next => {
 			if (!current()) return;
 			if (opening) {
 				const old = earlyFrames.get(next.handle);
 				if ((!old || next.revision > old.revision) && (old || earlyFrames.size < 4)) earlyFrames.set(next.handle, next);
 			} else apply(next);
 		});
-		const offInvalidated = window.vomp.on("shell-viz:invalidated", event => {
+		const offInvalidated = window.vomp.on("shellviz:invalidated", event => {
 			if (!current()) return;
 			if (opening) {
 				for (const handle of event.handles) if (invalidated.size < 4) invalidated.set(handle, event.reason);
@@ -170,14 +170,14 @@ export function SavedShellContent({ active, cwd, file, identity, toolCallId, com
 				if (result.status === "ready") apply(result);
 				else if (frame.revision === revision && (!source.current || frame.sourceRevision === source.current.sourceRevision)) fail(result.reason);
 			};
-			void window.vomp.invoke("shell-viz:action", handle, value).then(finish, () => {
+			void window.vomp.invoke("shellviz:action", handle, value).then(finish, () => {
 				if (current() && frame?.handle === handle && action === actionSequence && frame.revision === revision) fail("unavailable");
 			});
 		};
 		const openingSource = source.current;
 		const opened = openingSource
-			? window.vomp.invoke("shell-viz:openSnapshot", { ...openingSource, requestId, toolCallId })
-			: window.vomp.invoke("shell-viz:open", { requestId, file: file!, toolCallId });
+			? window.vomp.invoke("shellviz:openSnapshot", { ...openingSource, requestId, toolCallId })
+			: window.vomp.invoke("shellviz:open", { requestId, file: file!, toolCallId });
 		void opened.then(result => {
 			opening = false;
 			if (!current()) {
@@ -199,7 +199,7 @@ export function SavedShellContent({ active, cwd, file, identity, toolCallId, com
 			dispatch.current = null;
 			updateSource.current = null;
 			offFrame(); offInvalidated();
-			if (opening) void window.vomp.invoke("shell-viz:cancel", requestId).catch(() => {});
+			if (opening) void window.vomp.invoke("shellviz:cancel", requestId).catch(() => {});
 			if (frame) release(frame.handle);
 		};
 	}, [active, enabled, file, toolCallId, scope, failure]);

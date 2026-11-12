@@ -60,7 +60,7 @@ Object.defineProperty(window, "vomp", { configurable: true, value: {
   platform: "darwin",
   on(channel: string, callback: (value: unknown) => void) { const set = listeners.get(channel) ?? new Set(); set.add(callback); listeners.set(channel, set); return () => set.delete(callback); },
   async invoke(channel: string, ...args: unknown[]) {
-    if (!/^(config:|shell-viz:)/.test(channel)) throw new Error(`Owning-host operation forbidden: ${channel}`);
+    if (!/^(config:|shellviz:)/.test(channel)) throw new Error(`Owning-host operation forbidden: ${channel}`);
     const started = performance.now();
     const result = (await post("/invoke", { channel, args })).result;
     const source = args[0] && typeof args[0] === "object" && "json" in args[0] ? args[0] : undefined;
@@ -72,8 +72,8 @@ Object.defineProperty(window, "vomp", { configurable: true, value: {
 const events = new EventSource(bridge + "/events");
 events.addEventListener("ipc", event => {
   const value = JSON.parse(event.data);
-  ipcEvents.push({ at: performance.now(), wallAt: Date.now(), channel: value.channel, value: value.channel === "shell-viz:frame" ? { handle: value.value.handle, revision: value.value.revision, sourceRevision: value.value.sourceRevision } : value.value });
-  if (value.channel === "shell-viz:frame") { const frame = Frame.parse(value.value); lastFrame = frame; pendingFrames.push({ at: performance.now(), frame }); }
+  ipcEvents.push({ at: performance.now(), wallAt: Date.now(), channel: value.channel, value: value.channel === "shellviz:frame" ? { handle: value.value.handle, revision: value.value.revision, sourceRevision: value.value.sourceRevision } : value.value });
+  if (value.channel === "shellviz:frame") { const frame = Frame.parse(value.value); lastFrame = frame; pendingFrames.push({ at: performance.now(), frame }); }
   emit(value.channel, value.value);
 });
 function updateGuest() {

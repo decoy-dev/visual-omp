@@ -46,8 +46,8 @@ export function register(): void {
 				if (shutdown || signal.aborted) throw new ShellWorkerFailure("cancelled");
 				return createInstalledShellWorker({ executable, env, onLoss, signal });
 			},
-			onFrame(frame) { if (!shutdown && !sender.isDestroyed() && services.get(sender.id) === service) sender.send("shell-viz:frame", frame); },
-			onInvalidated(event) { if (!shutdown && !sender.isDestroyed() && services.get(sender.id) === service) sender.send("shell-viz:invalidated", event); },
+			onFrame(frame) { if (!shutdown && !sender.isDestroyed() && services.get(sender.id) === service) sender.send("shellviz:frame", frame); },
+			onInvalidated(event) { if (!shutdown && !sender.isDestroyed() && services.get(sender.id) === service) sender.send("shellviz:invalidated", event); },
 		});
 		services.set(sender.id, service);
 		const dispose = (): void => {
@@ -74,12 +74,12 @@ export function register(): void {
 		return service;
 	}
 	const cancelled = () => ({ status: "unavailable", reason: "cancelled" } as const);
-	handleWithEvent("shell-viz:open", (event, request) => shutdown ? cancelled() : controller(event.sender).open(request));
-	handleWithEvent("shell-viz:openSnapshot", (event, request) => shutdown ? cancelled() : controller(event.sender).openSnapshot(request));
-	handleWithEvent("shell-viz:updateSnapshot", (event, request) => shutdown ? cancelled() : controller(event.sender).updateSnapshot(request));
-	handleWithEvent("shell-viz:action", (event, handle, value) => shutdown ? cancelled() : controller(event.sender).action(handle, value));
-	handleWithEvent("shell-viz:release", (event, handle) => { if (!shutdown) services.get(event.sender.id)?.release(handle); });
-	handleWithEvent("shell-viz:cancel", (event, requestId) => { if (!shutdown) services.get(event.sender.id)?.cancel(requestId); });
+	handleWithEvent("shellviz:open", (event, request) => shutdown ? cancelled() : controller(event.sender).open(request));
+	handleWithEvent("shellviz:openSnapshot", (event, request) => shutdown ? cancelled() : controller(event.sender).openSnapshot(request));
+	handleWithEvent("shellviz:updateSnapshot", (event, request) => shutdown ? cancelled() : controller(event.sender).updateSnapshot(request));
+	handleWithEvent("shellviz:action", (event, handle, value) => shutdown ? cancelled() : controller(event.sender).action(handle, value));
+	handleWithEvent("shellviz:release", (event, handle) => { if (!shutdown) services.get(event.sender.id)?.release(handle); });
+	handleWithEvent("shellviz:cancel", (event, requestId) => { if (!shutdown) services.get(event.sender.id)?.cancel(requestId); });
 	onBroadcast("config:changed", event => {
 		if (shutdown) return;
 		for (const service of services.values()) void service.settingsChanged(event.cwd).catch(() => {

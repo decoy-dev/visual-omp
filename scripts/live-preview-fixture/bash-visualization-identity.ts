@@ -194,13 +194,13 @@ const provider = createServer(async (req, res) => {
       let result: unknown;
       if (op === 'config:get') result = await effectiveSetting(z.string().parse(args[1]));
       else if (op === 'config:watch' || op === 'config:unwatch') result = undefined;
-      else if (op === 'shell-viz:open' && local) {
+      else if (op === 'shellviz:open' && local) {
         const request = z.object({ requestId: z.string(), file: z.string(), toolCallId: z.string() }).parse(args[0]) satisfies ShellOpenRequest;
         if (!sources.some(source => source.file === request.file)) throw new Error('Only fixture source files are allowed.');
         result = await local.open(request);
-      } else if (op === 'shell-viz:action' && local) result = await local.action(z.string().parse(args[0]), z.string().parse(args[1]));
-      else if (op === 'shell-viz:release') local?.release(z.string().parse(args[0]));
-      else if (op === 'shell-viz:cancel') local?.cancel(z.string().parse(args[0]));
+      } else if (op === 'shellviz:action' && local) result = await local.action(z.string().parse(args[0]), z.string().parse(args[1]));
+      else if (op === 'shellviz:release') local?.release(z.string().parse(args[0]));
+      else if (op === 'shellviz:cancel') local?.cancel(z.string().parse(args[0]));
       else if (op === 'sessions:read') {
         const file = z.string().parse(args[0]);
         if (!sources.some(source => source.file === file)) throw new Error('Only fixture source files are allowed.');
@@ -385,8 +385,8 @@ try {
       loadTrace: (file, toolCallId) => loadSavedShellTrace(file, toolCallId, () => sources.filter(source => source.mode !== 'helper').map(source => source.file)),
       getSetting: (_key, cwd) => effectiveSetting(cwd),
       createWorker: (onLoss, signal) => createInstalledShellWorker({ executable, env, onLoss, signal }),
-      onFrame: frame => publish('shell-viz:frame', frame),
-      onInvalidated: event => publish('shell-viz:invalidated', event),
+      onFrame: frame => publish('shellviz:frame', frame),
+      onInvalidated: event => publish('shellviz:invalidated', event),
     });
     sourceBaseline = await sourceEvidence();
     baselineModelRequests = requests.length;

@@ -57,7 +57,7 @@ Object.defineProperty(window, "vomp", { configurable: true, value: {
 			for (const file of identities.keys()) if (!followed.includes(file)) identities.delete(file);
 			await readFollowed(); return;
 		}
-		if (!/^(config:|shell-viz:)/.test(channel)) throw new Error(`Owning-host operation is forbidden: ${channel}`);
+		if (!/^(config:|shellviz:)/.test(channel)) throw new Error(`Owning-host operation is forbidden: ${channel}`);
 		try {
 			const result = await local(channel, args);
 			invocation.result = result;

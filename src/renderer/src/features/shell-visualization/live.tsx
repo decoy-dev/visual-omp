@@ -7,6 +7,7 @@ import { usePresentationClaim, usePresentationVisible } from "../../state/tsp/pr
 import { LoadFailedNotice, lazyView } from "../../registry/lazy";
 import { errorText } from "@shared/errors";
 import { toast } from "../../ui/toast";
+import { ShellViewBoundary } from "./boundary";
 import { useLiveShellScope } from "./context";
 import type { ShellCommandContext } from "../../tool-render/types";
 
@@ -110,6 +111,6 @@ export function LiveShellCommand({ projection, act, command, fallback, envPrefix
 	const active = visible && !covered;
 	const style = useShellHeight(ref, active);
 	return <div ref={ref} style={style}>{active
-		? <ShellContent projection={projection} command={command} act={act} fallback={fallback} envPrefix={envPrefix} context={context} />
+		? <ShellViewBoundary fallback={fallback}><ShellContent projection={projection} command={command} act={act} fallback={fallback} envPrefix={envPrefix} context={context} /></ShellViewBoundary>
 		: fallback}</div>;
 }

@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { LoadFailedNotice, lazyView } from "../../registry/lazy";
 import { useApp } from "../../state/app";
+import { ShellViewBoundary } from "./boundary";
 import { useShellHeight, useShellVisibility } from "./live";
 import type { ShellCommandContext } from "../../tool-render/types";
 
@@ -33,5 +34,5 @@ export function SavedShellCommand(props: SavedShellCommandProps) {
 	const mounted = useRef(false);
 	if (active) mounted.current = true;
 	// Keep a failed attempt until explicit retry, including across temporary view hiding.
-	return <div ref={ref} style={style}>{mounted.current ? <SavedContent {...props} active={active} onReady={setReady} /> : props.fallback}</div>;
+	return <div ref={ref} style={style}>{mounted.current ? <ShellViewBoundary fallback={props.fallback}><SavedContent {...props} active={active} onReady={setReady} /></ShellViewBoundary> : props.fallback}</div>;
 }

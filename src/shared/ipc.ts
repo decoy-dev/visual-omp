@@ -420,6 +420,16 @@ export interface IpcEventMap {
 export type InvokeChannel = keyof IpcInvokeMap;
 export type EventChannel = keyof IpcEventMap;
 
+// The preload bridge admits only channels matching `^[a-z]+:[a-zA-Z:.-]+$` (`CHANNEL_RE` in src/preload/index.ts) and
+// refuses the rest at runtime. These types reject a declared channel the bridge would refuse, at compile time.
+type LowerLetter = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z";
+type ActionChar = LowerLetter | Uppercase<LowerLetter> | ":" | "." | "-";
+type Spelled<S extends string, Char extends string> = S extends `${Char}${infer Rest}` ? Rest extends "" ? true : Spelled<Rest, Char> : false;
+type RefusedChannel<C extends string> = C extends `${infer Area}:${infer Action}` ? Spelled<Area, LowerLetter> extends true ? Spelled<Action, ActionChar> extends true ? never : C : C : C;
+type Admitted<Refused extends never> = Refused;
+/** Fails to compile, naming the channel, while a declared channel would be refused by the preload bridge. */
+export type PreloadAdmitsEveryChannel = Admitted<RefusedChannel<InvokeChannel | EventChannel>>;
+
 export interface VompBridge {
 	invoke<C extends InvokeChannel>(channel: C, ...args: IpcInvokeMap[C]["args"]): Promise<IpcInvokeMap[C]["result"]>;
 	on<C extends EventChannel>(channel: C, listener: (payload: IpcEventMap[C]) => void): () => void;

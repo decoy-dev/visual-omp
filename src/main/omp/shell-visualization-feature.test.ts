@@ -39,31 +39,31 @@ afterEach(async () => { await feature.stopShellVisualizations(); vi.useRealTimer
 
 describe("shell visualization feature ownership", () => {
 	it("uses the same current session-directory authority as content recovery", async () => {
-		invoke("shell-viz:open", sender(1), { requestId: "one" });
+		invoke("shellviz:open", sender(1), { requestId: "one" });
 		await state.services[0]!.options.loadTrace("/reported/current.jsonl", "exact-call");
 		expect(loadSavedShellTrace).toHaveBeenCalledWith("/reported/current.jsonl", "exact-call", reportedSessionFiles);
 	});
 	it("scopes actions and emitted frames to the invoking webContents", () => {
 		const first = sender(1); const second = sender(2);
-		invoke("shell-viz:open", first, { requestId: "one", file: "/a", toolCallId: "call" });
-		invoke("shell-viz:open", second, { requestId: "two", file: "/b", toolCallId: "call" });
-		invoke("shell-viz:action", second, "first-window-handle", "play");
+		invoke("shellviz:open", first, { requestId: "one", file: "/a", toolCallId: "call" });
+		invoke("shellviz:open", second, { requestId: "two", file: "/b", toolCallId: "call" });
+		invoke("shellviz:action", second, "first-window-handle", "play");
 		expect(state.services[0]!.action).not.toHaveBeenCalled();
 		expect(state.services[1]!.action).toHaveBeenCalledWith("first-window-handle", "play");
 		const event = { handles: ["first-window-handle"], reason: "crash" as const };
 		state.services[0]!.options.onInvalidated!(event);
-		expect(first.send).toHaveBeenCalledWith("shell-viz:invalidated", event);
+		expect(first.send).toHaveBeenCalledWith("shellviz:invalidated", event);
 		expect(second.send).not.toHaveBeenCalled();
 	});
 
 	it("drops controller authority on reload and closes the old worker before another can start", async () => {
 		const source = sender(1);
-		invoke("shell-viz:open", source, { requestId: "one" });
+		invoke("shellviz:open", source, { requestId: "one" });
 		const stopped = Promise.withResolvers<void>();
 		state.services[0]!.close.mockReturnValue(stopped.promise);
 		source.emit("did-start-navigation", {}, "app://reload", false, true);
 		expect(state.services[0]!.close).toHaveBeenCalledOnce();
-		invoke("shell-viz:open", source, { requestId: "two" });
+		invoke("shellviz:open", source, { requestId: "two" });
 		const pending = state.services[1]!.options.createWorker(() => {}, new AbortController().signal);
 		await Promise.resolve();
 		expect(state.workers).not.toHaveBeenCalled();
@@ -75,13 +75,13 @@ describe("shell visualization feature ownership", () => {
 
 	it("releases on destruction, retains same-document navigation, and forwards config invalidation", () => {
 		const source = sender(1);
-		invoke("shell-viz:open", source, { requestId: "one" });
+		invoke("shellviz:open", source, { requestId: "one" });
 		source.emit("did-start-navigation", {}, "app://hash", true, true);
 		expect(state.services[0]!.close).not.toHaveBeenCalled();
 		state.broadcasts.get("config:changed")!({ cwd: "/project" });
 		expect(state.services[0]!.settingsChanged).toHaveBeenCalledWith("/project");
-		invoke("shell-viz:release", source, "handle");
-		invoke("shell-viz:cancel", source, "request");
+		invoke("shellviz:release", source, "handle");
+		invoke("shellviz:cancel", source, "request");
 		expect(state.services[0]!.release).toHaveBeenCalledWith("handle");
 		expect(state.services[0]!.cancel).toHaveBeenCalledWith("request");
 		source.emit("destroyed");
@@ -90,8 +90,8 @@ describe("shell visualization feature ownership", () => {
 
 	it("awaits active and already-closing services once and detaches their window listeners", async () => {
 		const active = sender(1); const destroyed = sender(2);
-		invoke("shell-viz:open", active, {});
-		invoke("shell-viz:open", destroyed, {});
+		invoke("shellviz:open", active, {});
+		invoke("shellviz:open", destroyed, {});
 		const first = Promise.withResolvers<void>(); const second = Promise.withResolvers<void>();
 		state.services[0]!.close.mockReturnValue(first.promise);
 		state.services[1]!.close.mockReturnValue(second.promise);
@@ -113,15 +113,15 @@ describe("shell visualization feature ownership", () => {
 
 	it("refuses every new inspection request and config event as soon as shutdown begins", async () => {
 		const source = sender(1);
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const cleanup = Promise.withResolvers<void>();
 		state.services[0]!.close.mockReturnValue(cleanup.promise);
 		const stopped = feature.stopShellVisualizations();
 		for (const name of ["open", "openSnapshot", "updateSnapshot", "action"]) {
-			expect(await invoke(`shell-viz:${name}`, sender(2), {}, "play")).toEqual({ status: "unavailable", reason: "cancelled" });
+			expect(await invoke(`shellviz:${name}`, sender(2), {}, "play")).toEqual({ status: "unavailable", reason: "cancelled" });
 		}
-		invoke("shell-viz:release", source, "handle");
-		invoke("shell-viz:cancel", source, "request");
+		invoke("shellviz:release", source, "handle");
+		invoke("shellviz:cancel", source, "request");
 		state.broadcasts.get("config:changed")!({ cwd: "/project" });
 		state.services[0]!.options.onFrame!({} as never);
 		expect(state.services).toHaveLength(1);
@@ -134,11 +134,11 @@ describe("shell visualization feature ownership", () => {
 
 	it("does not let deferred startup await its own close after a reload and quit", async () => {
 		const source = sender(1);
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const previous = Promise.withResolvers<void>();
 		state.services[0]!.close.mockReturnValue(previous.promise);
 		source.emit("destroyed");
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const abort = new AbortController();
 		// The scheduler has queued startup, but disposal runs before that microtask.
 		const startup = Promise.resolve().then(() => state.services[1]!.options.createWorker(() => {}, abort.signal));
@@ -153,12 +153,12 @@ describe("shell visualization feature ownership", () => {
 
 	it("retains failed cleanup ownership across reloads and reports shutdown failure", async () => {
 		const source = sender(1);
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const failure = new Error("Unconfirmed descendant cleanup");
 		state.services[0]!.close.mockRejectedValue(failure);
 		source.emit("destroyed");
 		await Promise.resolve();
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		await expect(state.services[1]!.options.createWorker(() => {}, new AbortController().signal)).rejects.toBe(failure);
 		expect(state.workers).not.toHaveBeenCalled();
 		expect(await feature.stopShellVisualizations()).toBe(false);
@@ -167,11 +167,11 @@ describe("shell visualization feature ownership", () => {
 	it.each(["settled", "deadline"])("awaits current cleanup despite a rejected predecessor until %s", async finish => {
 		vi.useFakeTimers();
 		const source = sender(1);
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const failure = new Error("Unconfirmed predecessor cleanup");
 		state.services[0]!.close.mockRejectedValue(failure);
 		source.emit("destroyed");
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		await expect(state.services[1]!.options.createWorker(() => {}, new AbortController().signal)).rejects.toBe(failure);
 		const cleanup = Promise.withResolvers<void>();
 		state.services[1]!.close.mockReturnValue(cleanup.promise);
@@ -190,7 +190,7 @@ describe("shell visualization feature ownership", () => {
 	it("bounds an unresponsive cleanup without claiming success or reopening requests", async () => {
 		vi.useFakeTimers();
 		const source = sender(1);
-		invoke("shell-viz:open", source, {});
+		invoke("shellviz:open", source, {});
 		const cleanup = Promise.withResolvers<void>();
 		state.services[0]!.close.mockReturnValue(cleanup.promise);
 		source.emit("destroyed");
@@ -199,6 +199,6 @@ describe("shell visualization feature ownership", () => {
 		expect(await stopped).toBe(false);
 		cleanup.resolve(); await Promise.resolve();
 		expect(await feature.stopShellVisualizations()).toBe(false);
-		expect(await invoke("shell-viz:open", source, {})).toEqual({ status: "unavailable", reason: "cancelled" });
+		expect(await invoke("shellviz:open", source, {})).toEqual({ status: "unavailable", reason: "cancelled" });
 	});
 });

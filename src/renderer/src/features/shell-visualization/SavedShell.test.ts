@@ -92,12 +92,12 @@ beforeEach(() => {
 			if (env.setting === undefined) throw new Error("Unknown setting");
 			return { key: "display.shellVisualization", type: "boolean", value: env.setting };
 		}
-		if (channel === "shell-viz:open") {
-			expect(env.listeners.get("shell-viz:frame")?.size).toBe(1);
-			expect(env.listeners.get("shell-viz:invalidated")?.size).toBe(1);
+		if (channel === "shellviz:open") {
+			expect(env.listeners.get("shellviz:frame")?.size).toBe(1);
+			expect(env.listeners.get("shellviz:invalidated")?.size).toBe(1);
 			return ready();
 		}
-		if (channel === "shell-viz:action") return ready("handle", 2, "local raw");
+		if (channel === "shellviz:action") return ready("handle", 2, "local raw");
 	});
 	Object.defineProperty(window, "vomp", { configurable: true, value: {
 		platform: "darwin", invoke: env.invoke,
@@ -114,14 +114,14 @@ afterEach(async () => { await act(async () => root.unmount()); element.remove();
 describe("saved shell command capability", () => {
 	it.each([undefined, false])("keeps missing or disabled settings on ordinary output (%s)", async setting => {
 		env.setting = setting; await render();
-		expect(calls("shell-viz:open")).toHaveLength(0);
+		expect(calls("shellviz:open")).toHaveLength(0);
 		expect(element.textContent).toBe("ordinary commandordinary result output");
 		expect(element.querySelector("button")).toBeNull();
 	});
 	it("does no optional work for a closed card", async () => {
 		open = false; await render(); expect(env.invoke).not.toHaveBeenCalled();
-		open = true; await render(); expect(calls("shell-viz:open")).toHaveLength(1);
-		open = false; await render(); expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "handle"]]);
+		open = true; await render(); expect(calls("shellviz:open")).toHaveLength(1);
+		open = false; await render(); expect(calls("shellviz:release")).toEqual([["shellviz:release", "handle"]]);
 	});
 	it.each(["running", "result", "file", "identity", "call"])("requires a settled exact saved source (%s)", async missing => {
 		if (missing === "running") running = true;
@@ -133,16 +133,16 @@ describe("saved shell command capability", () => {
 	});
 	it("waits for the helper result before opening its persisted trace", async () => {
 		hasResult = false; await render();
-		expect(calls("shell-viz:open")).toHaveLength(0);
+		expect(calls("shellviz:open")).toHaveLength(0);
 		expect(element.textContent).not.toContain("saved.failure");
 		hasResult = true; await render();
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:open")).toHaveLength(1);
 		expect(element.querySelector("[data-shell]")).not.toBeNull();
 	});
 	it("opens the exact file and call using the first file-reference base", async () => {
 		await render();
 		expect(calls("config:get")).toEqual([["config:get", "display.shellVisualization", "/source/cwd"]]);
-		expect(calls("shell-viz:open")).toEqual([["shell-viz:open", { requestId: expect.any(String), file, toolCallId: call }]]);
+		expect(calls("shellviz:open")).toEqual([["shellviz:open", { requestId: expect.any(String), file, toolCallId: call }]]);
 		expect(element.textContent).toContain("ENV=recorded");
 		expect(element.textContent).toContain("saved.recorded");
 		expect(element.textContent).toContain("ordinary result output");
@@ -152,7 +152,7 @@ describe("saved shell command capability", () => {
 		file = source;
 		env.invoke.mockImplementation(async (channel: string) => {
 			if (channel === "config:get") return { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:open") return { ...ready(), props: { ...props, cwd: "/" }, cdSeparator: ";" };
+			if (channel === "shellviz:open") return { ...ready(), props: { ...props, cwd: "/" }, cdSeparator: ";" };
 		});
 		await render();
 		expect(element.querySelector("[data-shell]")?.getAttribute("data-cwd")).toBe("/");
@@ -163,16 +163,16 @@ describe("saved shell command capability", () => {
 	it("allows read-only local Raw and replay without host events or session writes", async () => {
 		await render();
 		await act(async () => { element.querySelectorAll("button")[0]!.click(); element.querySelectorAll("button")[1]!.click(); });
-		expect(calls("shell-viz:action")).toEqual([["shell-viz:action", "handle", "view:raw"], ["shell-viz:action", "handle", "play"]]);
-		expect(env.invoke.mock.calls.every(args => /^(config:|shell-viz:)/.test(args[0]))).toBe(true);
+		expect(calls("shellviz:action")).toEqual([["shellviz:action", "handle", "view:raw"], ["shellviz:action", "handle", "play"]]);
+		expect(env.invoke.mock.calls.every(args => /^(config:|shellviz:)/.test(args[0]))).toBe(true);
 	});
 	it("resamples config changes and releases before disabled presentation disappears", async () => {
 		await render(); env.setting = false;
 		await emit("config:changed", { scope: "global", cwd: null });
 		expect(element.textContent).toBe("ordinary commandordinary result output");
-		expect(calls("shell-viz:release")).toHaveLength(1);
+		expect(calls("shellviz:release")).toHaveLength(1);
 		env.setting = true; await emit("config:changed", { scope: "project", cwd: "/source/cwd" });
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 	});
 	it("recovers when a confirmed re-enable supersedes the disabled sample without retrying stale configuration", async () => {
 		await render();
@@ -180,26 +180,26 @@ describe("saved shell command capability", () => {
 		let reads = 0;
 		env.invoke.mockImplementation(async (channel: string) => {
 			if (channel === "config:get") return ++reads === 1 ? disabledRead.promise : { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:open") return ready("resumed");
+			if (channel === "shellviz:open") return ready("resumed");
 			return undefined;
 		});
-		await emit("shell-viz:invalidated", { handles: ["handle"], reason: "disabled" });
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		await emit("shellviz:invalidated", { handles: ["handle"], reason: "disabled" });
+		expect(calls("shellviz:open")).toHaveLength(1);
 		await emit("config:changed", { scope: "global", cwd: null });
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		expect(element.querySelector("[data-shell]")).not.toBeNull();
 		await act(async () => disabledRead.resolve({ key: "display.shellVisualization", type: "boolean", value: false }));
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		expect(element.querySelector("[data-shell]")).not.toBeNull();
 	});
 	it("restores after a production disabled invalidation followed by re-enabling the setting", async () => {
 		await render(); env.setting = false;
-		await emit("shell-viz:invalidated", { handles: ["handle"], reason: "disabled" });
+		await emit("shellviz:invalidated", { handles: ["handle"], reason: "disabled" });
 		await emit("config:changed", { scope: "global", cwd: null });
 		expect(element.querySelector("[data-shell]")).toBeNull();
 		env.setting = true;
 		await emit("config:changed", { scope: "global", cwd: null });
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		expect(element.querySelector("[data-shell]")).not.toBeNull();
 	});
 	it("does not reopen on its own true refresh when the saved header folder disables visualization", async () => {
@@ -212,61 +212,61 @@ describe("saved shell command capability", () => {
 				expect(folder).not.toBe(savedHeaderFolder);
 				return { key: "display.shellVisualization", type: "boolean", value: true };
 			}
-			if (channel === "shell-viz:open") {
+			if (channel === "shellviz:open") {
 				serviceReads++;
 				return serviceReads === 1 ? ready() : { status: "unavailable", reason: "disabled" };
 			}
 			return undefined;
 		});
 		await render();
-		await emit("shell-viz:invalidated", { handles: ["handle"], reason: "disabled" });
+		await emit("shellviz:invalidated", { handles: ["handle"], reason: "disabled" });
 		expect(calls("config:get")).toHaveLength(2);
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:open")).toHaveLength(1);
 		expect(element.textContent).toBe("ordinary commandordinary result output");
 		await render();
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:open")).toHaveLength(1);
 		await emit("config:changed", { scope: "global", cwd: null });
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		expect(calls("config:get")).toHaveLength(4);
 		expect(element.textContent).toBe("ordinary commandordinary result output");
 		await render();
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 	});
 	it("recovers a disabled saved trace when its differing recorded folder is re-enabled", async () => {
 		let serviceEnabled = false;
 		env.invoke.mockImplementation(async (channel: string) => {
 			if (channel === "config:get") return { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:open") return serviceEnabled ? ready("recorded-folder-enabled") : { status: "unavailable", reason: "disabled" };
+			if (channel === "shellviz:open") return serviceEnabled ? ready("recorded-folder-enabled") : { status: "unavailable", reason: "disabled" };
 			return undefined;
 		});
 		await render();
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:open")).toHaveLength(1);
 		expect(element.querySelector("[data-shell]")).toBeNull();
 		serviceEnabled = true;
 		await emit("config:changed", { scope: "project", cwd: "/recorded/disabled-project" });
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		expect(element.querySelector("[data-shell]")).not.toBeNull();
 	});
 	it("keeps fallback visible while opening and releases a late open after collapse", async () => {
 		const pending = deferred<ShellResult>();
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? pending.promise : undefined);
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? pending.promise : undefined);
 		await render(); expect(element.textContent).toBe("ordinary commandordinary result output");
-		const request = calls("shell-viz:open")[0]![1];
+		const request = calls("shellviz:open")[0]![1];
 		open = false; await render();
-		expect(calls("shell-viz:cancel")).toEqual([["shell-viz:cancel", request.requestId]]);
+		expect(calls("shellviz:cancel")).toEqual([["shellviz:cancel", request.requestId]]);
 		await act(async () => pending.resolve(ready("late")));
-		expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "late"]]);
+		expect(calls("shellviz:release")).toEqual([["shellviz:release", "late"]]);
 		expect(element.querySelector("[data-shell]")).toBeNull();
 	});
 	it("cancels opening work when the card goes offscreen", async () => {
 		const pending = deferred<ShellResult>();
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? pending.promise : undefined);
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? pending.promise : undefined);
 		await render();
 		await act(async () => { for (const callback of env.observers) callback([{ isIntersecting: false }]); });
-		expect(calls("shell-viz:cancel")).toHaveLength(1);
+		expect(calls("shellviz:cancel")).toHaveLength(1);
 		expect(element.textContent).toBe("ordinary commandordinary result output");
 		await act(async () => pending.resolve(ready("offscreen-late")));
-		expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "offscreen-late"]]);
+		expect(calls("shellviz:release")).toEqual([["shellviz:release", "offscreen-late"]]);
 	});
 	it.each(["covered", "pane", "window"])("releases a ready viewer when %s hides it", async hidden => {
 		await render(); const oldAction = env.action;
@@ -276,26 +276,26 @@ describe("saved shell command capability", () => {
 			vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
 			await act(async () => document.dispatchEvent(new Event("visibilitychange")));
 		}
-		expect(calls("shell-viz:release")).toHaveLength(1);
+		expect(calls("shellviz:release")).toHaveLength(1);
 		expect(element.textContent).toBe("ordinary commandordinary result output");
-		await act(async () => oldAction?.("play")); expect(calls("shell-viz:action")).toHaveLength(0);
+		await act(async () => oldAction?.("play")); expect(calls("shellviz:action")).toHaveLength(0);
 		vi.restoreAllMocks();
 	});
 	it("applies only matching newer revisions, including events before open resolves", async () => {
 		const pending = deferred<ShellResult>();
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? pending.promise : undefined);
-		await render(); await emit("shell-viz:frame", ready("handle", 3, "newest event"));
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? pending.promise : undefined);
+		await render(); await emit("shellviz:frame", ready("handle", 3, "newest event"));
 		await act(async () => pending.resolve(ready("handle", 1, "old open")));
-		await emit("shell-viz:frame", ready("other", 99, "wrong handle"));
-		await emit("shell-viz:frame", ready("handle", 2, "old event"));
+		await emit("shellviz:frame", ready("other", 99, "wrong handle"));
+		await emit("shellviz:frame", ready("handle", 2, "old event"));
 		expect(element.textContent).toContain("newest event");
 		expect(element.textContent).not.toContain("old open"); expect(element.textContent).not.toContain("wrong handle");
 	});
 	it("rejects late action replies after a newer frame", async () => {
 		const pending = deferred<ShellResult>(); await render();
-		env.invoke.mockImplementation(async (channel: string) => channel === "shell-viz:action" ? pending.promise : undefined);
+		env.invoke.mockImplementation(async (channel: string) => channel === "shellviz:action" ? pending.promise : undefined);
 		await act(async () => env.action?.("view:raw"));
-		await emit("shell-viz:frame", ready("handle", 5, "new frame"));
+		await emit("shellviz:frame", ready("handle", 5, "new frame"));
 		await act(async () => pending.resolve(ready("handle", 2, "late action")));
 		expect(element.textContent).toContain("new frame"); expect(element.textContent).not.toContain("late action");
 	});
@@ -303,7 +303,7 @@ describe("saved shell command capability", () => {
 		await render();
 		const old = deferred<ShellResult>();
 		const newest = deferred<ShellResult>();
-		env.invoke.mockImplementation((channel: string, _handle: string, value: string) => channel === "shell-viz:action" ? value === "seek:0" ? old.promise : newest.promise : Promise.resolve(undefined));
+		env.invoke.mockImplementation((channel: string, _handle: string, value: string) => channel === "shellviz:action" ? value === "seek:0" ? old.promise : newest.promise : Promise.resolve(undefined));
 		await act(async () => { env.action?.("seek:0"); env.action?.("seek:1"); });
 		await act(async () => old.resolve(ready("handle", 2, "obsolete seek")));
 		expect(element.textContent).not.toContain("obsolete seek");
@@ -315,11 +315,11 @@ describe("saved shell command capability", () => {
 		const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 480 } as DOMRect);
 		await render();
 		await act(async () => { for (const callback of env.observers) callback([{ isIntersecting: false }]); });
-		expect(calls("shell-viz:release")).toHaveLength(1);
+		expect(calls("shellviz:release")).toHaveLength(1);
 		expect(element.querySelector<HTMLElement>('[style*="min-height"]')?.style.minHeight).toBe("480px");
 		expect(element.textContent).toContain("ordinary result output");
 		const pending = deferred<ShellResult>();
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? pending.promise : undefined);
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? pending.promise : undefined);
 		measure.mockReturnValue({ height: 20 } as DOMRect);
 		await act(async () => { for (const callback of env.observers) callback([{ isIntersecting: true }]); });
 		expect(element.querySelector<HTMLElement>('[style*="min-height"]')?.style.minHeight).toBe("480px");
@@ -331,40 +331,40 @@ describe("saved shell command capability", () => {
 	it("releases source replacements and refuses captured callbacks and events", async () => {
 		await render(); const oldAction = env.action;
 		file = "/saved/replacement.jsonl"; identity = "other-result";
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? ready("replacement", 1, "replacement source") : undefined);
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? ready("replacement", 1, "replacement source") : undefined);
 		await render(); await act(async () => oldAction?.("play"));
-		await emit("shell-viz:frame", ready("handle", 100, "stale source"));
-		expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "handle"]]);
-		expect(calls("shell-viz:action")).toHaveLength(0);
+		await emit("shellviz:frame", ready("handle", 100, "stale source"));
+		expect(calls("shellviz:release")).toEqual([["shellviz:release", "handle"]]);
+		expect(calls("shellviz:action")).toHaveLength(0);
 		expect(element.textContent).toContain("replacement source"); expect(element.textContent).not.toContain("stale source");
-		expect(calls("shell-viz:open")[1]![1]).toMatchObject({ file, toolCallId: call });
+		expect(calls("shellviz:open")[1]![1]).toMatchObject({ file, toolCallId: call });
 	});
 	it.each(["crash", "timeout", "memory", "too-large"] as const)("requires explicit retry after %s, including across hidden views", async reason => {
 		await render(); const oldAction = env.action;
-		await emit("shell-viz:invalidated", { handles: ["handle"], reason });
+		await emit("shellviz:invalidated", { handles: ["handle"], reason });
 		expect(element.textContent).toContain("ordinary command"); expect(element.textContent).toContain(`saved.failure.${reason}`);
-		await act(async () => oldAction?.("play")); expect(calls("shell-viz:action")).toHaveLength(0);
+		await act(async () => oldAction?.("play")); expect(calls("shellviz:action")).toHaveLength(0);
 		visible = false; await render(); visible = true; await render();
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:open")).toHaveLength(1);
 		await act(async () => element.querySelector("button")!.click());
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:open")).toHaveLength(2);
 	});
 	it("keeps invalidation delivered during open terminal until manual retry", async () => {
 		const pending = deferred<ShellResult>();
-		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shell-viz:open" ? pending.promise : undefined);
-		await render(); await emit("shell-viz:invalidated", { handles: ["early"], reason: "crash" });
+		env.invoke.mockImplementation(async (channel: string) => channel === "config:get" ? { key: "display.shellVisualization", type: "boolean", value: true } : channel === "shellviz:open" ? pending.promise : undefined);
+		await render(); await emit("shellviz:invalidated", { handles: ["early"], reason: "crash" });
 		await act(async () => pending.resolve(ready("early")));
-		expect(element.textContent).toContain("saved.failure.crash"); expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "early"]]);
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(element.textContent).toContain("saved.failure.crash"); expect(calls("shellviz:release")).toEqual([["shellviz:release", "early"]]);
+		expect(calls("shellviz:open")).toHaveLength(1);
 	});
 	it("rebinds when output identity changes within the same file", async () => {
 		await render(); const oldAction = env.action;
 		identity = "new-branch:result";
 		await render();
-		expect(calls("shell-viz:release")).toEqual([["shell-viz:release", "handle"]]);
-		expect(calls("shell-viz:open")).toHaveLength(2);
+		expect(calls("shellviz:release")).toEqual([["shellviz:release", "handle"]]);
+		expect(calls("shellviz:open")).toHaveLength(2);
 		await act(async () => oldAction?.("play"));
-		expect(calls("shell-viz:action")).toHaveLength(0);
+		expect(calls("shellviz:action")).toHaveLength(0);
 	});
 });
 
@@ -374,22 +374,22 @@ describe("observed classic trace continuity", () => {
 		await traceFrame(1);
 		env.invoke.mockImplementation(async (channel: string, request: ShellSnapshotOpenRequest) => {
 			if (channel === "config:get") return { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:openSnapshot") return { ...ready("observed", 1, "background state"), sourceRevision: request.sourceRevision };
-			if (channel === "shell-viz:open") return ready("file");
+			if (channel === "shellviz:openSnapshot") return { ...ready("observed", 1, "background state"), sourceRevision: request.sourceRevision };
+			if (channel === "shellviz:open") return ready("file");
 			return undefined;
 		});
 		await render();
-		expect(calls("shell-viz:open")).toHaveLength(0);
-		expect(calls("shell-viz:openSnapshot")[0]![1]).toMatchObject({ sourceId: JSON.stringify(["host:1:session:branch", "call-exact"]), toolCallId: "call-exact", cwd: "/source/cwd", sourceRevision: 1 });
+		expect(calls("shellviz:open")).toHaveLength(0);
+		expect(calls("shellviz:openSnapshot")[0]![1]).toMatchObject({ sourceId: JSON.stringify(["host:1:session:branch", "call-exact"]), toolCallId: "call-exact", cwd: "/source/cwd", sourceRevision: 1 });
 		expect(element.textContent).toContain("background state");
 		expect(element.textContent).toContain("ordinary result output");
 		expect(activeTools.size).toBe(0);
 		expect(running).toBe(false);
-		expect(env.invoke.mock.calls.every(args => /^(config:|shell-viz:)/.test(args[0]))).toBe(true);
+		expect(env.invoke.mock.calls.every(args => /^(config:|shellviz:)/.test(args[0]))).toBe(true);
 		backgroundTools.clear();
 		await act(async () => { for (const listener of sourceListeners) listener(); });
-		expect(calls("shell-viz:release")).toContainEqual(["shell-viz:release", "observed"]);
-		expect(calls("shell-viz:open")).toHaveLength(1);
+		expect(calls("shellviz:release")).toContainEqual(["shellviz:release", "observed"]);
+		expect(calls("shellviz:open")).toHaveLength(1);
 	});
 
 	it("skips identical observed snapshots without superseding the pending native response", async () => {
@@ -398,20 +398,20 @@ describe("observed classic trace continuity", () => {
 		const update = deferred<ShellResult>();
 		env.invoke.mockImplementation(async (channel: string, request: ShellSnapshotOpenRequest | ShellSnapshotUpdateRequest) => {
 			if (channel === "config:get") return { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:openSnapshot") return { ...ready("observed", 1, "initial state"), sourceRevision: request.sourceRevision };
-			if (channel === "shell-viz:updateSnapshot") return request.sourceRevision === 2 ? update.promise : { ...ready("observed", 3, "third state"), sourceRevision: request.sourceRevision };
+			if (channel === "shellviz:openSnapshot") return { ...ready("observed", 1, "initial state"), sourceRevision: request.sourceRevision };
+			if (channel === "shellviz:updateSnapshot") return request.sourceRevision === 2 ? update.promise : { ...ready("observed", 3, "third state"), sourceRevision: request.sourceRevision };
 			return undefined;
 		});
 		await render();
 		await traceFrame(1); await traceFrame(1);
-		expect(calls("shell-viz:updateSnapshot")).toHaveLength(0);
+		expect(calls("shellviz:updateSnapshot")).toHaveLength(0);
 		await traceFrame(2); await traceFrame(2);
-		expect(calls("shell-viz:updateSnapshot")).toHaveLength(1);
+		expect(calls("shellviz:updateSnapshot")).toHaveLength(1);
 		await act(async () => update.resolve({ ...ready("observed", 2, "second state"), sourceRevision: 2 }));
 		expect(element.textContent).toContain("second state");
-		expect(calls("shell-viz:updateSnapshot")).toHaveLength(1);
+		expect(calls("shellviz:updateSnapshot")).toHaveLength(1);
 		await traceFrame(3);
-		expect(calls("shell-viz:updateSnapshot")[1]![1].sourceRevision).toBe(3);
+		expect(calls("shellviz:updateSnapshot")[1]![1].sourceRevision).toBe(3);
 		expect(element.textContent).toContain("third state");
 	});
 
@@ -422,22 +422,22 @@ describe("observed classic trace continuity", () => {
 		const latest = deferred<ShellResult>();
 		env.invoke.mockImplementation(async (channel: string, request: ShellSnapshotOpenRequest | ShellSnapshotUpdateRequest) => {
 			if (channel === "config:get") return { key: "display.shellVisualization", type: "boolean", value: true };
-			if (channel === "shell-viz:openSnapshot") return { ...ready("observed", 1, "initial state"), sourceRevision: request.sourceRevision };
-			if (channel === "shell-viz:updateSnapshot") return request.sourceRevision === 2 ? older.promise : latest.promise;
+			if (channel === "shellviz:openSnapshot") return { ...ready("observed", 1, "initial state"), sourceRevision: request.sourceRevision };
+			if (channel === "shellviz:updateSnapshot") return request.sourceRevision === 2 ? older.promise : latest.promise;
 			return undefined;
 		});
 		await render();
 		await traceFrame(2); await traceFrame(3); await traceFrame(4);
-		expect(calls("shell-viz:updateSnapshot")).toHaveLength(1);
-		await emit("shell-viz:frame", { ...ready("observed", 2, "obsolete event"), sourceRevision: 2 });
+		expect(calls("shellviz:updateSnapshot")).toHaveLength(1);
+		await emit("shellviz:frame", { ...ready("observed", 2, "obsolete event"), sourceRevision: 2 });
 		await act(async () => older.resolve({ ...ready("observed", 2, "obsolete result"), sourceRevision: 2 }));
 		expect(element.textContent).toContain("initial state");
 		expect(element.textContent).not.toContain("obsolete");
-		expect(calls("shell-viz:updateSnapshot")).toHaveLength(2);
-		expect(calls("shell-viz:updateSnapshot")[1]![1].sourceRevision).toBe(4);
+		expect(calls("shellviz:updateSnapshot")).toHaveLength(2);
+		expect(calls("shellviz:updateSnapshot")[1]![1].sourceRevision).toBe(4);
 		await act(async () => latest.resolve({ ...ready("observed", 4, "latest observed state"), sourceRevision: 4 }));
 		expect(element.textContent).toContain("latest observed state");
-		expect(calls("shell-viz:openSnapshot")).toHaveLength(1);
+		expect(calls("shellviz:openSnapshot")).toHaveLength(1);
 		expect(element.textContent).toContain("ordinary result output");
 	});
 });

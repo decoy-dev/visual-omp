@@ -2,15 +2,15 @@ import type { ShellFrame, ShellInvalidation, ShellOpenRequest, ShellResult, Shel
 
 declare module "../ipc" {
 	interface IpcInvokeMap {
-		"shell-viz:open": { args: [request: ShellOpenRequest]; result: ShellResult };
-		"shell-viz:openSnapshot": { args: [request: ShellSnapshotOpenRequest]; result: ShellResult };
-		"shell-viz:updateSnapshot": { args: [request: ShellSnapshotUpdateRequest]; result: ShellResult };
-		"shell-viz:action": { args: [handle: string, value: string]; result: ShellResult };
-		"shell-viz:release": { args: [handle: string]; result: void };
-		"shell-viz:cancel": { args: [requestId: string]; result: void };
+		"shellviz:open": { args: [request: ShellOpenRequest]; result: ShellResult };
+		"shellviz:openSnapshot": { args: [request: ShellSnapshotOpenRequest]; result: ShellResult };
+		"shellviz:updateSnapshot": { args: [request: ShellSnapshotUpdateRequest]; result: ShellResult };
+		"shellviz:action": { args: [handle: string, value: string]; result: ShellResult };
+		"shellviz:release": { args: [handle: string]; result: void };
+		"shellviz:cancel": { args: [requestId: string]; result: void };
 	}
 	interface IpcEventMap {
-		"shell-viz:frame": ShellFrame;
-		"shell-viz:invalidated": ShellInvalidation;
+		"shellviz:frame": ShellFrame;
+		"shellviz:invalidated": ShellInvalidation;
 	}
 }
