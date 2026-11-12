@@ -159,5 +159,17 @@
 		"noProject": "Open or create a project to get started.",
 		"openFolder": "Open folder…",
 		"newProject": "Create project…"
+	},
+	"health": {
+		"slowTitle": "visual-omp is responding slowly",
+		"slowBody": "The window is taking longer to respond.",
+		"delayedTitle": "Chat updates are delayed",
+		"delayedOne": "Updates for {{title}} are waiting to reach this window.",
+		"delayedMany": "Updates for {{count}} chats are waiting to reach this window.",
+		"resyncingOne": "The connection for {{title}} has restarted repeatedly because its updates were delayed.",
+		"resyncingMany": "The connections for {{count}} chats have restarted repeatedly because their updates were delayed.",
+		"reload": "Reloading the window reconnects your open chats.",
+		"reloadWindow": "Reload window",
+		"closeIdle": "Close idle chats"
 	}
 }

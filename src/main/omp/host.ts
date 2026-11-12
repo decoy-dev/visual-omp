@@ -242,7 +242,10 @@ export class SessionHost {
 					this.#openRoom(roomId);
 				},
 				onHostClose: roomId => this.#onRoomClosed(roomId),
-				onGuestDropped: (_roomId, behindBytes) => writeDiagnostic({ event: "collab-resync", chatId: this.id, behindBytes }),
+				onGuestDropped: (_roomId, behindBytes) => {
+					writeDiagnostic({ event: "collab-resync", chatId: this.id, behindBytes });
+					for (const listener of resyncListeners) listener(this.id);
+				},
 			};
 			// Owner-only directory: the debug socket accepts keystrokes, so nobody else may reach it.
 			this.#privateDir = await mkdtemp(join(tmpdir(), "vomp-"));
@@ -1328,6 +1331,11 @@ export class SessionHost {
 		return this.#debug.info().catch(() => null);
 	}
 
+	/** The largest number of bytes waiting to reach one of the windows following this chat. */
+	guestBacklogBytes(): number {
+		return this.#relay.guestBacklogBytes();
+	}
+
 	/** Learn the session file once omp creates it (new chats) so reattaching renderers can match it. */
 	async refreshSessionFile(): Promise<void> {
 		const initial = this.state;
@@ -1823,6 +1831,23 @@ export class SessionHost {
 
 const hosts = new Map<string, SessionHost>();
 const hostStateListeners = new Set<(state: HostState) => void>();
+const resyncListeners = new Set<(hostId: string) => void>();
+
+/** Hears each chat whose window connection was dropped for falling behind and has to resync. */
+export function onCollabResync(listener: (hostId: string) => void): () => void {
+	resyncListeners.add(listener);
+	return () => resyncListeners.delete(listener);
+}
+
+/** The bytes waiting to reach the window, per running chat with any waiting. */
+export function hostBacklogs(): Map<string, number> {
+	const backlogs = new Map<string, number>();
+	for (const host of hosts.values()) {
+		const bytes = host.guestBacklogBytes();
+		if (bytes > 0) backlogs.set(host.id, bytes);
+	}
+	return backlogs;
+}
 
 /** Main-process lifecycle observers, including live sharing across room rotations. */
 export function onHostState(listener: (state: HostState) => void): () => void {

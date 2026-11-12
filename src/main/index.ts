@@ -8,6 +8,7 @@ import { buildTextContextMenu } from "./contextMenu";
 import { registerHandlers } from "./handlers";
 import { ensureNewUserApproval } from "./features/config";
 import { stopShellVisualizations } from "./features/shell-visualization";
+import { attachWindowHealth } from "./features/window-health";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
 import { listHosts, stopAllHosts } from "./omp/host";
@@ -128,6 +129,7 @@ function createWindow(): void {
 		revokeAllPreviews();
 	});
 	attachWindowDiagnostics(mainWindow);
+	attachWindowHealth(mainWindow);
 	mainWindow.webContents.on("did-finish-load", () => {
 		if (!askOnLoad) return;
 		askOnLoad = false;

@@ -29,6 +29,7 @@ vi.mock("./attention", () => ({ attachAttentionWindow: vi.fn(), setAppUserModelI
 vi.mock("./contextMenu", () => ({ buildTextContextMenu: vi.fn() }));
 vi.mock("./handlers", () => ({ registerHandlers: (approve: (allow: boolean) => void) => { fake.approve = approve; } }));
 vi.mock("./features/config", () => ({ ensureNewUserApproval: vi.fn() }));
+vi.mock("./features/window-health", () => ({ attachWindowHealth: vi.fn() }));
 vi.mock("./ipc", () => ({ broadcast: fake.broadcast }));
 vi.mock("./menu", () => ({ buildMenu: vi.fn() }));
 vi.mock("./omp/host", () => ({ listHosts: () => [], stopAllHosts: fake.stopHosts }));

@@ -220,6 +220,15 @@
 			"title": "Close chat",
 			"hint": "Stop omp for this chat and close it. The chat stays saved.",
 			"keywords": "close, stop, hide"
+		},
+		"testSlowWindow": {
+			"title": "Test slow-window warning",
+			"hint": "Release tours only. Holds the window's heartbeat answers for 45 seconds so the slow-window warning appears."
+		},
+		"reloadWindow": {
+			"title": "Reload window",
+			"hint": "Reload visual-omp's window when it is slow. Open chats reconnect; omp keeps running.",
+			"keywords": "reload, refresh, slow, frozen, not responding, reconnect"
 		}
 	}
 }

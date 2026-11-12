@@ -255,6 +255,23 @@ Each SessionHost:
    upstream sends are not covered. Before this, an unread backlog grew to about 800 MB in main, the
    chat showed state 45 minutes old, and main stalled long enough for omp to drop its relay
    connection.
+   **Slow-window warning.** `main/features/window-health.ts` watches the main window with
+   `WindowHealth` (`main/services/window-health.ts`): a `window:ping` heartbeat every 2 s, at most
+   one unanswered, answered by the renderer through `window:heartbeat`. Heartbeats start only after
+   the page reports `window:ready` (its listener is installed) and stop while a new page loads, so a
+   slow load is never judged. It also samples every chat's largest guest
+   `bufferedAmount` (`hostBacklogs`, sampled with each heartbeat since `GuestBacklog` only checks
+   before a send); and `collab-resync` drops (`onCollabResync`). A slowdown starts when a heartbeat
+   is unanswered for 10 s or three answers in a row take over 2 s, when one chat keeps more than
+   4 MiB waiting for 15 s (a snapshot that drains sooner does not count), or when one chat resyncs
+   twice within 60 s. It ends after 10 s of answers under 500 ms, every backlog under 1 MiB and no
+   new resync. Main sends `window:health` (the slowdown or null); a heartbeat unanswered for 30 s
+   also gets one native dialog per slowdown (Keep waiting, Reload window). Memory and CPU are not
+   judged: the past slowdowns were updates the window could not keep up with, and the RAM figure
+   (working sets) missed the 2.4 GB footprint of the 0.7.8 incident. A hidden or minimized window
+   is not judged, and showing it, sleep or a new page start over with 10 s of grace. Reloading
+   (`window:reload`, asked natively first since omp form text is not kept) and Close idle chats
+   (`window:healthActed`) hold off a new warning for 60 s, across the reload.
    **Host-directed resync from omp 18.18.7** uses the existing protocol 3 error frame with
    `resync: true`; relay close codes and snapshot chunk grammar are unchanged. The guest sends
    `hello` on that same socket, clears question authority and in-flight transcript reads, and

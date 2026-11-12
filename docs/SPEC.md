@@ -76,6 +76,15 @@ be able to use it, and it exposes the features that set omp apart from other cod
   current state, including any open question, instead of working through the backlog. If omp
   replaces its room after a lost connection, the chat joins the replacement and keeps trying while
   omp runs.
+- When the window falls behind (it stops answering main's heartbeat for 10 seconds or answers
+  slowly three times in a row, a chat's updates stay more than 4 MiB behind for 15 seconds, or a
+  chat has to reconnect twice within a minute), a sticky warning names the problem and offers
+  Reload window and Close idle chats. Reload window asks first, natively, and reconnects every open
+  chat while omp keeps running. The warning goes away once the window keeps up for 10 seconds, a
+  dismissed one stays dismissed for that slowdown, and after either action a new one waits a
+  minute. A window that does not answer for 30 seconds gets a native dialog with Keep waiting and
+  Reload window. The command palette has Reload window as well, and development builds have Test
+  slow-window warning, which holds the heartbeat answers for 45 seconds.
   omp 18.18.7 can also discard one guest's host-side backlog while keeping its relay connection
   open. The app answers that resync request with a fresh join, retaining the displayed transcript
   until the replacement snapshot finishes and retiring old question answers immediately.

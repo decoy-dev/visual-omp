@@ -140,6 +140,15 @@ export class LoopbackRelay {
 		return this.#rooms.has(roomId);
 	}
 
+	/** The largest number of bytes waiting to reach one of this relay's window connections. */
+	guestBacklogBytes(): number {
+		let largest = 0;
+		for (const room of this.#rooms.values()) {
+			for (const guest of room.guests.values()) largest = Math.max(largest, guest.bufferedAmount);
+		}
+		return largest;
+	}
+
 	/** The bridge publishing `roomId` upstream, or null when the room is private. */
 	bridgeFor(roomId: string): RoomBridge | null {
 		return this.#rooms.get(roomId)?.bridge ?? null;
