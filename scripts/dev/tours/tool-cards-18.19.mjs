@@ -1,7 +1,7 @@
 // Recorded examples of omp 18.19.0 argument and result shapes, without contacting GitHub or starting a browser.
 // Sources: coding-agent/src/tools/gh-run-watch.ts (buildRunWatchJobDetails steps), tui/src/tools/github.ts
-// (GhRunWatchViewDetails), coding-agent/src/tools/browser.ts (string `app`, top-level `target`), tui/src/tools/read.ts
-// (colon range lists) and coding-agent/src/task/types.ts (`steps` spawns).
+// (GhRunWatchViewDetails), coding-agent/src/tools/browser.ts (string `app`, top-level `target`) and
+// coding-agent/src/task/types.ts (`steps` spawns).
 const text = value => [{ type: "text", text: value }];
 
 const job = (id, name, status, conclusion, durationSeconds, steps) => ({ id, name, status, ...(conclusion ? { conclusion } : {}), durationSeconds, ...(steps ? { steps } : {}) });
@@ -40,10 +40,6 @@ export default [
   {
     name: "browser", args: { action: "open", name: "main", url: "https://example.invalid/", app: "own" },
     result: { content: text("Opened tab \"main\" on omp's headless WebKit browser."), details: { action: "open", name: "main", url: "https://example.invalid/", browser: "webkit" } },
-  },
-  {
-    name: "read", args: { path: "src/release.ts:20:24,30:32" },
-    result: { content: text("20|export const channel = \"stable\";\n21|export const version = \"0.7.19\";\n22|\n23|export function label() {\n24|  return `${channel} ${version}`;\n…\n30|export function notes() {\n31|  return \"Release notes\";\n32|}") },
   },
   {
     name: "task", args: { i: "Checking stepped helpers", context: "Recorded example. No helper ran.", tasks: [
