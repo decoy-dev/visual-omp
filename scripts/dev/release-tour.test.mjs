@@ -134,15 +134,17 @@ test("0.8.0 remains available and checks bash visualizations, helper steps and o
 test("0.8.1 is the default and checks a form question's footer and closing idle or selected chats", () => {
   assert.equal(defaultRelease, "0.8.1");
   assert.equal(release081.version, "0.8.1");
-  assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form", "close-chats", "spare-chat"]);
+  assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form", "close-chats", "spare-chat", "slow-window"]);
   const [form, close] = release081.chats;
   assert.ok(release081.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
   assert.match(form.prompts[0], /fixture form/);
   // The close check needs a chat that keeps working while the owner opens the dialogs.
   assert.match(close.prompts[0], /fixture helper-work/);
   assert.match(close.prompts[0], /03 Spare chat/);
+  // The slow-window check uses the development-only test command, not a fixture.
+  assert.match(release081.chats[3].prompts[0], /Test slow-window warning/);
   assert.ok(release081.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
-  assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
+  assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {

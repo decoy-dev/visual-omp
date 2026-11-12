@@ -27,5 +27,15 @@ export default {
         "This chat stays idle so the 02 Close chats check has a chat to close.",
       ].join("\n")],
     },
+    {
+      id: "slow-window", title: "04 Slow-window warning", pane: "files",
+      prompts: [[
+        "fixture notes",
+        "Open the command palette and run Test slow-window warning. It holds the window's answers to visual-omp's heartbeat for 45 seconds while the window keeps working, so the real warning appears.",
+        "After about 10 seconds a warning says visual-omp is responding slowly, with Close idle chats and Reload window. Choose Reload window: a dialog asks first, and Reload window there reloads the window and reconnects the open chats.",
+        "Wait a minute, since the warning stays away for a minute after you act on it. Run the test again and leave it: after 30 seconds a dialog says visual-omp is not responding; choose Keep waiting. When the test ends, the warning goes away about 10 seconds later.",
+        "Reload window is also in the command palette, and asks first in the same way.",
+      ].join("\n")],
+    },
   ],
 };
