@@ -1,6 +1,8 @@
+import { createElement, Fragment } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Helper } from "../../features/panes/derive";
-import { helperRunsSummary, taskRowContextEqual, taskRuns } from "./task";
+import { helperRunsSummary, taskRenderer, taskRowContextEqual, taskRuns } from "./task";
 
 function helper(id: string, status: Helper["status"], messageable = false): Helper {
 	return {
@@ -70,6 +72,22 @@ describe("taskRuns activity", () => {
 
 	const assignment = "# Target\nTranscript dialog only.\n\n# Change\nClassify messages.";
 
+	it("uses the first streamed step as activity and skips partial non-string steps", () => {
+		const args = { name: "StepHelper", steps: ["Inspect the issue", 12, null, "Fix the issue"] };
+		expect(taskRuns(args, null, true)).toMatchObject([{ name: "StepHelper", activity: "Inspect the issue" }]);
+	});
+
+	it("supports flat and batched stepped spawns with per-task agent types", () => {
+		expect(taskRuns({ name: "Flat", steps: ["First step"] }, null, true)).toMatchObject([{ name: "Flat", activity: "First step" }]);
+		expect(taskRuns({ tasks: [
+			{ name: "One", agent: "reviewer", steps: ["Review"] },
+			{ name: "Two", agent: "task", steps: ["Implement"] },
+		] }, null, true)).toMatchObject([
+			{ name: "One", agentType: "reviewer", activity: "Review" },
+			{ name: "Two", agentType: "task", activity: "Implement" },
+		]);
+	});
+
 	it("shows each spawn's name and assignment before omp reports progress", () => {
 		const runs = taskRuns({ context: "ctx", tasks: [{ name: "HelperMarkup", agent: "task", task: assignment }] }, null, true);
 		expect(runs.map(run => [run.name, run.activity])).toEqual([["HelperMarkup", "Transcript dialog only."]]);
@@ -108,5 +126,26 @@ describe("taskRowContextEqual", () => {
 			["Reviewer", "done"],
 		]);
 		expect(taskRowContextEqual(args, details, working, { ...working, recorded: other })).toBe(true);
+	});
+});
+
+describe("task card steps", () => {
+	const render = (args: Record<string, unknown>) => renderToStaticMarkup(createElement(Fragment, null,
+		createElement(taskRenderer.Summary, { name: "task", args }),
+		createElement(taskRenderer.Body!, { name: "task", args })));
+	it("shows a stepped spawn's stages and labels the card with its first step", () => {
+		const html = render({ agent: "task", steps: ["Inspect the failing test.", "Fix it."] });
+		expect(html).toContain("Inspect the failing test.");
+		expect(html).toContain("Step 1/2");
+		expect(html).toContain("Step 2/2");
+		expect(html).toContain("2 steps");
+	});
+	it("badges each agent of a mixed batch and keeps older assignment calls", () => {
+		const mixed = render({ context: "ctx", tasks: [{ name: "One", agent: "reviewer", task: "Review." }, { name: "Two", agent: "task", steps: ["Build."] }] });
+		expect(mixed).toContain("reviewer");
+		expect(mixed).toContain("2 tasks");
+		const older = render({ agent: "task", id: "Legacy", description: "Older call", assignment: "Do the old thing." });
+		expect(older).toContain("Older call");
+		expect(older).toContain("Do the old thing.");
 	});
 });

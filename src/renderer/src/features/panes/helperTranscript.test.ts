@@ -1,5 +1,6 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
+import stepPrompts from "./fixtures/step-prompts-18.19.0.json";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
 
 let seq = 0;
@@ -58,3 +59,34 @@ describe("helperTranscript", () => {
 	});
 });
 
+
+// Each message omp 18.19.0 sends a stepped helper, rendered by omp's own template engine (utils/src/prompt.ts) with
+// renderStepPrompts and renderSubagentUserPrompt from coding-agent/src/task; checked against a live 18.19.0 helper.
+const rendered: { name: string; steps: string[]; messages: string[] }[] = stepPrompts;
+
+describe("helperTranscript step prompts (omp 18.19.0)", () => {
+	it.each(rendered.filter(sample => !sample.name.startsWith("ambiguous")).map(sample => [sample.name, sample] as const))("shows every step of %s without omp's closing instruction", (_name, sample) => {
+		const items = strip(helperTranscript(sample.messages.map(user)));
+		expect(items.every(item => item.kind === "step")).toBe(true);
+		const steps = items.flatMap(item => item.kind === "step" ? item.steps : []);
+		expect(steps).toEqual(sample.steps.map((text, index) => ({ number: index + 1, total: sample.steps.length, text: text.trim() })));
+	});
+	it.each(["ambiguous-grouped-yield", "ambiguous-grouped-message"])("keeps a grouped prompt whose step text repeats the next heading whole (%s)", name => {
+		const sample = rendered.find(entry => entry.name === name)!;
+		const items = strip(helperTranscript(sample.messages.map(user)));
+		expect(items[0]).toEqual({ kind: "assignment", text: sample.messages[0]!.replace("Complete assignment thoroughly:\n\n", "") });
+		expect(items.slice(1).flatMap(item => item.kind === "step" ? item.steps.map(step => step.number) : [])).toEqual([3, 4, 5]);
+	});
+	it.each([
+		["a step number of zero", "# Step 0 of 0\nWork.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."],
+		["a grouping omp never sends", "# Step 1 of 3\nOne.\n\n# Step 2 of 3\nTwo.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 3 arrives after; NEVER start it early."],
+		["a closing line naming the wrong next step", "# Step 1 of 2\nOne.\n\nDo ONLY this step, then report with a terminal `yield`. Step 3 arrives after; NEVER start it early."],
+		["a final closing line before the last step", "# Step 1 of 2\nOne.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."],
+		["a reworded closing line", "# Step 1 of 2\nOne.\n\nDo ONLY this step, then report as your final message. Step 2 arrives after; start it early."],
+		["no blank line before the closing line", "# Step 2 of 2\nTwo.\nLast step: your final message is the result of the whole assignment and MUST cover every step."],
+		["ordinary prose", "Please also check the Windows build."],
+	])("keeps %s as a plain prompt", (_name, text) => {
+		const items = strip(helperTranscript([user("Complete assignment thoroughly:\n\nBegin."), user(text)]));
+		expect(items[1]).toEqual({ kind: "prompt", text });
+	});
+});

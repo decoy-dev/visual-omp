@@ -341,6 +341,7 @@
 		"transcriptLoading": "Loading the conversation…",
 		"transcriptEmpty": "Nothing in this conversation yet.",
 		"assignment": "Assignment",
+		"step": "Step {{number}} of {{total}}",
 		"transcriptMessage": "Message",
 		"transcriptMessageFrom": "Message from {{name}}",
 		"transcriptInterrupted": "Interrupted its wait",

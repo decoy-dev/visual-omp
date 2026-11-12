@@ -1,0 +1,208 @@
+[
+	{
+		"name": "one-yield",
+		"steps": [
+			"Read the release sample."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 1\nRead the release sample.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "one-message",
+		"steps": [
+			"Read the release sample."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 1\nRead the release sample.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "two-yield",
+		"steps": [
+			"Read the release sample.",
+			"Summarize it in one sentence."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\nRead the release sample.\n\nDo ONLY this step, then report with a terminal `yield`. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nSummarize it in one sentence.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "two-message",
+		"steps": [
+			"Read the release sample.",
+			"Summarize it in one sentence."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\nRead the release sample.\n\nDo ONLY this step, then report as your final message. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nSummarize it in one sentence.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "five-yield",
+		"steps": [
+			"Inspect.",
+			"Plan the change.",
+			"Implement it.",
+			"Test it.",
+			"Report."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 5\nInspect.\n\n# Step 2 of 5\nPlan the change.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 3 arrives after; NEVER start it early.",
+			"# Step 3 of 5\nImplement it.\n\nDo ONLY this step, then report with a terminal `yield`. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 5\nTest it.\n\nDo ONLY this step, then report with a terminal `yield`. Step 5 arrives after; NEVER start it early.",
+			"# Step 5 of 5\nReport.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "five-message",
+		"steps": [
+			"Inspect.",
+			"Plan the change.",
+			"Implement it.",
+			"Test it.",
+			"Report."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 5\nInspect.\n\n# Step 2 of 5\nPlan the change.\n\nDo ONLY these steps, then report as your final message. Step 3 arrives after; NEVER start it early.",
+			"# Step 3 of 5\nImplement it.\n\nDo ONLY this step, then report as your final message. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 5\nTest it.\n\nDo ONLY this step, then report as your final message. Step 5 arrives after; NEVER start it early.",
+			"# Step 5 of 5\nReport.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "nine-yield",
+		"steps": [
+			"Stage 1 work.",
+			"Stage 2 work.",
+			"Stage 3 work.",
+			"Stage 4 work.",
+			"Stage 5 work.",
+			"Stage 6 work.",
+			"Stage 7 work.",
+			"Stage 8 work.",
+			"Stage 9 work."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 9\nStage 1 work.\n\n# Step 2 of 9\nStage 2 work.\n\n# Step 3 of 9\nStage 3 work.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 9\nStage 4 work.\n\n# Step 5 of 9\nStage 5 work.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 6 arrives after; NEVER start it early.",
+			"# Step 6 of 9\nStage 6 work.\n\n# Step 7 of 9\nStage 7 work.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 8 arrives after; NEVER start it early.",
+			"# Step 8 of 9\nStage 8 work.\n\n# Step 9 of 9\nStage 9 work.\n\nLast steps: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "nine-message",
+		"steps": [
+			"Stage 1 work.",
+			"Stage 2 work.",
+			"Stage 3 work.",
+			"Stage 4 work.",
+			"Stage 5 work.",
+			"Stage 6 work.",
+			"Stage 7 work.",
+			"Stage 8 work.",
+			"Stage 9 work."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 9\nStage 1 work.\n\n# Step 2 of 9\nStage 2 work.\n\n# Step 3 of 9\nStage 3 work.\n\nDo ONLY these steps, then report as your final message. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 9\nStage 4 work.\n\n# Step 5 of 9\nStage 5 work.\n\nDo ONLY these steps, then report as your final message. Step 6 arrives after; NEVER start it early.",
+			"# Step 6 of 9\nStage 6 work.\n\n# Step 7 of 9\nStage 7 work.\n\nDo ONLY these steps, then report as your final message. Step 8 arrives after; NEVER start it early.",
+			"# Step 8 of 9\nStage 8 work.\n\n# Step 9 of 9\nStage 9 work.\n\nLast steps: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "multiline-yield",
+		"steps": [
+			"# Target\nsrc/a.ts\n\n# Change\nRename `x`.\n\n\nKeep the blank lines.",
+			"Check it."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\n# Target\nsrc/a.ts\n\n# Change\nRename `x`.\n\n\nKeep the blank lines.\n\nDo ONLY this step, then report with a terminal `yield`. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nCheck it.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "multiline-message",
+		"steps": [
+			"# Target\nsrc/a.ts\n\n# Change\nRename `x`.\n\n\nKeep the blank lines.",
+			"Check it."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\n# Target\nsrc/a.ts\n\n# Change\nRename `x`.\n\n\nKeep the blank lines.\n\nDo ONLY this step, then report as your final message. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nCheck it.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "fenced-heading-yield",
+		"steps": [
+			"Write this file:\n```md\n# Step 1 of 1\nbody\n```"
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 1\nWrite this file:\n```md\n# Step 1 of 1\nbody\n```\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "fenced-heading-message",
+		"steps": [
+			"Write this file:\n```md\n# Step 1 of 1\nbody\n```"
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 1\nWrite this file:\n```md\n# Step 1 of 1\nbody\n```\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "inline-heading-yield",
+		"steps": [
+			"Copy this text:\n# Step 2 of 2\nas written.",
+			"Check the copy."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\nCopy this text:\n# Step 2 of 2\nas written.\n\nDo ONLY this step, then report with a terminal `yield`. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nCheck the copy.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "inline-heading-message",
+		"steps": [
+			"Copy this text:\n# Step 2 of 2\nas written.",
+			"Check the copy."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 2\nCopy this text:\n# Step 2 of 2\nas written.\n\nDo ONLY this step, then report as your final message. Step 2 arrives after; NEVER start it early.",
+			"# Step 2 of 2\nCheck the copy.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "ambiguous-grouped-yield",
+		"steps": [
+			"Write:\n\n# Step 2 of 5\nas a heading.",
+			"Plan.",
+			"Build.",
+			"Test.",
+			"Report."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 5\nWrite:\n\n# Step 2 of 5\nas a heading.\n\n# Step 2 of 5\nPlan.\n\nDo ONLY these steps, then report with a terminal `yield`. Step 3 arrives after; NEVER start it early.",
+			"# Step 3 of 5\nBuild.\n\nDo ONLY this step, then report with a terminal `yield`. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 5\nTest.\n\nDo ONLY this step, then report with a terminal `yield`. Step 5 arrives after; NEVER start it early.",
+			"# Step 5 of 5\nReport.\n\nLast step: your terminal `yield` is the result of the whole assignment and MUST cover every step."
+		]
+	},
+	{
+		"name": "ambiguous-grouped-message",
+		"steps": [
+			"Write:\n\n# Step 2 of 5\nas a heading.",
+			"Plan.",
+			"Build.",
+			"Test.",
+			"Report."
+		],
+		"messages": [
+			"Complete assignment thoroughly:\n\n# Step 1 of 5\nWrite:\n\n# Step 2 of 5\nas a heading.\n\n# Step 2 of 5\nPlan.\n\nDo ONLY these steps, then report as your final message. Step 3 arrives after; NEVER start it early.",
+			"# Step 3 of 5\nBuild.\n\nDo ONLY this step, then report as your final message. Step 4 arrives after; NEVER start it early.",
+			"# Step 4 of 5\nTest.\n\nDo ONLY this step, then report as your final message. Step 5 arrives after; NEVER start it early.",
+			"# Step 5 of 5\nReport.\n\nLast step: your final message is the result of the whole assignment and MUST cover every step."
+		]
+	}
+]

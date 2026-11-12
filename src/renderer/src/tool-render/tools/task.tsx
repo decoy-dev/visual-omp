@@ -25,25 +25,27 @@ interface TaskItemView {
 	id: string | null;
 	description: string | null;
 	assignment: string | null;
+	steps: string[];
 	isolated: boolean;
 	agentType: string | null;
 }
 
 /** Reads both arg shapes: current omp (`name`, `task`) and the older one (`id`, `description`, `assignment`). */
-function taskItem(record: Record<string, unknown>): TaskItemView {
+function taskItem(record: Record<string, unknown>, fallbackAgent?: string): TaskItemView {
 	return {
 		id: str(record.name) ?? str(record.id),
 		description: str(record.description),
 		assignment: str(record.task) ?? str(record.assignment),
+		steps: Array.isArray(record.steps) ? record.steps.filter((step): step is string => typeof step === "string") : [],
 		isolated: record.isolated === true,
-		agentType: str(record.agent),
+		agentType: str(record.agent) ?? fallbackAgent ?? null,
 	};
 }
 
 function taskItems(args: Record<string, unknown>): TaskItemView[] {
-	if (Array.isArray(args.tasks)) return args.tasks.filter(isRecord).map(taskItem);
+	if (Array.isArray(args.tasks)) return args.tasks.filter(isRecord).map(record => taskItem(record, str(args.agent) ?? undefined));
 	const flat = taskItem(args);
-	return flat.id || flat.description || flat.assignment ? [flat] : [];
+	return flat.id || flat.description || flat.assignment || flat.steps.length > 0 ? [flat] : [];
 }
 
 /** "980", "12.4k", "212k", "1.3M". */
@@ -111,7 +113,7 @@ export function taskRuns(args: Record<string, unknown>, details: Record<string, 
 	if (progress.length > 0) return progress.map(p => runOf(p, progressStatus(p.status), recordActivity(p), typeOf(p)));
 	if (!running) return [];
 	return taskItems(args).map((task, index) =>
-		runOf({ id: task.id ?? `#${index + 1}` }, "running", activityOf({ description: task.description, task: task.assignment }), task.agentType ?? str(args.agent) ?? "task"),
+		runOf({ id: task.id ?? `#${index + 1}` }, "running", activityOf({ description: task.description, task: task.assignment ?? task.steps[0] }), task.agentType ?? str(args.agent) ?? "task"),
 	);
 }
 
@@ -269,11 +271,13 @@ export function TaskRuns({ runs, onOpen }: { runs: readonly Helper[]; onOpen?: (
 }
 
 function Summary({ args }: ToolRenderProps): ReactNode {
-	const agent = str(args.agent);
-	const resume = str(args.resume);
 	const tasks = taskItems(args);
+	// One badge when every spawn runs the same agent; a mixed batch badges each row in the body.
+	const agents = new Set(tasks.map(task => task.agentType));
+	const agent = tasks.length === 0 ? str(args.agent) : agents.size === 1 ? tasks[0]?.agentType ?? null : null;
+	const resume = str(args.resume);
 	const first = tasks.length > 0 ? tasks[0] : null;
-	const label = first ? (first.description ?? first.id) : null;
+	const label = first ? (first.description ?? first.id ?? (activityOf({ task: first.assignment ?? first.steps[0] }) || null)) : null;
 	return (
 		<>
 			{agent && <Badge tone="accent">{agent}</Badge>}
@@ -349,10 +353,11 @@ function Body({ args, result, host }: ToolRenderProps): ReactNode {
 									)
 								}
 							>
-								{t.isolated && <Badge>isolated</Badge>}{" "}
+								{t.agentType && <Badge>{t.agentType}</Badge>} {t.steps.length > 0 && <Badge>{`${t.steps.length} ${t.steps.length === 1 ? "step" : "steps"}`}</Badge>} {t.isolated && <Badge>isolated</Badge>}{" "}
 								{t.description && <span>{truncate(normalizeWs(t.description), 120)}</span>}
 							</Row>
 							{t.assignment && <Output text={t.assignment} maxLines={6} title="assignment" />}
+							{t.steps.map((step, n) => <Output key={n} text={step} maxLines={4} title={`step ${n + 1}/${t.steps.length}`} />)}
 						</div>
 					))}
 				</div>

@@ -19,6 +19,10 @@ function HelperPrompt({ items }: { items: readonly HelperTranscriptItem[] }): Re
 	const { t } = useTranslation("panes");
 	return <div className="space-y-3">{items.map(item => {
 		switch (item.kind) {
+			case "step": return <div key={item.id} className="space-y-3">{item.steps.map(step => <div key={step.number} className="rounded-lg border border-border bg-inset px-4 py-3">
+				<p className="mb-1 text-sm font-medium text-fg-muted">{t("tasks.step", { number: step.number, total: step.total })}</p>
+				<div className="selectable whitespace-pre-wrap text-base text-fg">{step.text}</div>
+			</div>)}</div>;
 			case "assignment":
 			case "prompt": return <div key={item.id} className="rounded-lg border border-border bg-inset px-4 py-3">
 				<p className="mb-1 text-sm font-medium text-fg-muted">{t(item.kind === "assignment" ? "tasks.assignment" : "tasks.transcriptMessage")}</p>
@@ -50,7 +54,7 @@ export function HelperFocusView({ session, helper, parentTitle }: { session: Ses
 			users.set(entry.id, []);
 		}
 		for (const item of helperTranscript(entries)) {
-			const id = item.kind === "assignment" ? item.id : item.id.slice(0, item.id.lastIndexOf(":"));
+			const id = item.kind === "assignment" || item.kind === "step" ? item.id : item.id.slice(0, item.id.lastIndexOf(":"));
 			users.set(id, [...users.get(id) ?? [], item]);
 		}
 		return users;
