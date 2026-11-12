@@ -1006,6 +1006,11 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			const radioFrame = frames.find(frame => frame.phase === "request-1-before-click")!;
 			const textFrame = frames.find(frame => frame.phase === "request-4-matched")!;
 			expect(textFrame.card!.height, "the text question must retain the radio question's height").toBeGreaterThanOrEqual(radioFrame.card!.height - 1);
+			// The retained height sits above the hint and buttons: the last button stays one padding (16px plus the border)
+			// from the card's bottom instead of leaving the extra height below it.
+			const footerGap = (frame: typeof textFrame) => frame.card!.bottom - Math.max(...frame.buttons.card.map(button => button.box.bottom));
+			expect(footerGap(textFrame), "a shorter question keeps its buttons at the bottom of the retained height").toBeLessThanOrEqual(18);
+			expect(footerGap(textFrame), "the buttons stay inside the card").toBeGreaterThanOrEqual(0);
 			expect(movement.cardTop, "question card top must remain stable across all request and focus transitions").toBeLessThanOrEqual(1);
 			expect(movement.composerTop, "composer top must remain stable through request retirement").toBeLessThanOrEqual(1);
 			expect(movement.composerInputTop, "composer input must not move when a blocked reason changes").toBeLessThanOrEqual(1);

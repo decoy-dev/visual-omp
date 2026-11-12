@@ -1088,7 +1088,9 @@ request before granting prompt authority. Completion or cancellation clears the 
 presentation; a completed card says it is closing until its paired native node departs. The visible
 card and its full form area each retain their measured high-water height for the same
 form, including through width changes. The minima are applied to the actual card and its
-outer area and released when the form ends or its source changes. Editor focus and
+outer area and released when the form ends or its source changes. A card held at a minimum
+stacks as a column with its hint and buttons in a bottom group (`mt-auto`), so the reserved
+space sits above them rather than below the buttons. Editor focus and
 radio-key navigation use `preventScroll`.
 The composer retains only the form's displayed question id across request gaps and delayed
 native matches. Actual `uiRequest` readiness still controls submission; the cached display

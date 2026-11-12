@@ -8,7 +8,7 @@ import { type ReactNode, type SyntheticEvent, useEffect, useId, useLayoutEffect,
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
 import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
-import { Button, Textarea, toast } from "../../ui";
+import { Button, cn, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, toolCallState, type RunningFormAsk } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
@@ -208,6 +208,9 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			{note}
 		</p>
 	);
+	// A form card keeps its tallest height between questions; its hint and buttons stay at the bottom of that height
+	// instead of leaving the extra space below them.
+	const steadyCard = cn(cardClass, minimumHeight ? "flex flex-col" : undefined);
 	const statusText = formStatus ?? (pendingAsk(session.getSnapshot()) ? t("question.messageCloses") : undefined);
 	const statusLine = statusText && <p role={formStatus === undefined ? undefined : "status"} className={formStatus === undefined ? "mt-3 text-sm text-fg-muted" : "mt-3 grid text-sm text-fg-muted"}>
 		{formStatus === undefined ? statusText : <>
@@ -220,7 +223,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	if (request.kind === "editor") {
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
 		return (
-			<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
+			<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
@@ -238,14 +241,16 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						disabled={disabled}
 					/>
 				</Heading>
-				{statusLine}
-				<div className="mt-3 flex justify-end gap-2">
-					<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
-						{t("question.skip")}
-					</Button>
-					<Button variant="primary" onClick={() => session.answer(request.reqId, text)}>
-						{t("question.send")}
-					</Button>
+				<div className="mt-auto">
+					{statusLine}
+					<div className="mt-3 flex justify-end gap-2">
+						<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
+							{t("question.skip")}
+						</Button>
+						<Button variant="primary" onClick={() => session.answer(request.reqId, text)}>
+							{t("question.send")}
+						</Button>
+					</div>
 				</div>
 			</div>
 		);
@@ -266,7 +271,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 
 	if (isApproval) {
 		return (
-			<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
+			<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
 				<Heading icon={<ShieldWarning className="text-warn" />}>
@@ -286,31 +291,33 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						</div>
 					</div>
 				)}
-				<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
-				{explaining && (
-					<div className="mt-3">
-						<Textarea ref={editorRef} aria-label={t("question.denialReason")} placeholder={t("question.denialReason")} value={other}
-							onChange={event => setOther(event.target.value)} minRows={2} maxRows={6} disabled={denying} />
+				<div className="mt-auto">
+					<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
+					{explaining && (
+						<div className="mt-3">
+							<Textarea ref={editorRef} aria-label={t("question.denialReason")} placeholder={t("question.denialReason")} value={other}
+								onChange={event => setOther(event.target.value)} minRows={2} maxRows={6} disabled={denying} />
+						</div>
+					)}
+					<div className="mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="secondary" disabled={denying} onClick={() => session.answer(request.reqId, "Deny")}>
+							{t("question.deny")}
+						</Button>
+						<Button variant="secondary" disabled={denying || session.getSnapshot().strandedImages || (explaining && !other.trim())} onClick={() => {
+							if (!explaining) { setExplaining(true); return; }
+							if (!other.trim() || session.getSnapshot().guest?.uiRequest?.reqId !== request.reqId) return;
+							setDenying(true);
+							void deliver(session, other.trim(), [], true).catch((error: unknown) => {
+								setDenying(false);
+								toast({ tone: "err", message: t("question.denialFailed"), description: String(error) });
+							});
+						}}>
+							{t(explaining ? "question.denySend" : "question.denyExplain")}
+						</Button>
+						<Button variant="primary" disabled={denying} autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
+							{t(labels.length > 2 ? "question.allowOnce" : "question.allow")}
+						</Button>
 					</div>
-				)}
-				<div className="mt-3 flex flex-wrap justify-end gap-2">
-					<Button variant="secondary" disabled={denying} onClick={() => session.answer(request.reqId, "Deny")}>
-						{t("question.deny")}
-					</Button>
-					<Button variant="secondary" disabled={denying || session.getSnapshot().strandedImages || (explaining && !other.trim())} onClick={() => {
-						if (!explaining) { setExplaining(true); return; }
-						if (!other.trim() || session.getSnapshot().guest?.uiRequest?.reqId !== request.reqId) return;
-						setDenying(true);
-						void deliver(session, other.trim(), [], true).catch((error: unknown) => {
-							setDenying(false);
-							toast({ tone: "err", message: t("question.denialFailed"), description: String(error) });
-						});
-					}}>
-						{t(explaining ? "question.denySend" : "question.denyExplain")}
-					</Button>
-					<Button variant="primary" disabled={denying} autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
-						{t(labels.length > 2 ? "question.allowOnce" : "question.allow")}
-					</Button>
 				</div>
 			</div>
 		);
@@ -329,7 +336,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	const helpText = request.helpText?.replaceAll("\u{f0311}", "Enter").replaceAll("\u{f12b7}", "Escape");
 
 	return (
-		<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
+		<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 			{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 			{noteLine}
 			<Heading icon={<Question className="text-accent" />}>
@@ -367,26 +374,28 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 					className={otherInputClass}
 				/>
 			)}
-			{statusLine}
-			<div className="mt-3 flex items-center gap-2">
-				{hasChat && (
-					<Button variant="ghost" icon={<ChatCircle />} onClick={() => session.answer(request.reqId, ASK_CHAT)}>
-						{ASK_CHAT}
+			<div className="mt-auto">
+				{statusLine}
+				<div className="mt-3 flex items-center gap-2">
+					{hasChat && (
+						<Button variant="ghost" icon={<ChatCircle />} onClick={() => session.answer(request.reqId, ASK_CHAT)}>
+							{ASK_CHAT}
+						</Button>
+					)}
+					<div className="flex-1" />
+					<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
+						{t("question.skip")}
 					</Button>
-				)}
-				<div className="flex-1" />
-				<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
-					{t("question.skip")}
-				</Button>
-				{multi ? (
-					<Button variant="primary" disabled={!hasNext} onClick={() => session.answer(request.reqId, ASK_NEXT)}>
-						{t("question.done")}
-					</Button>
-				) : (
-					<Button variant="primary" onClick={submit}>
-						{t("question.answer")}
-					</Button>
-				)}
+					{multi ? (
+						<Button variant="primary" disabled={!hasNext} onClick={() => session.answer(request.reqId, ASK_NEXT)}>
+							{t("question.done")}
+						</Button>
+					) : (
+						<Button variant="primary" onClick={submit}>
+							{t("question.answer")}
+						</Button>
+					)}
+				</div>
 			</div>
 		</div>
 	);
