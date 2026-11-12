@@ -9,7 +9,7 @@ import { startFixture } from "../live-preview-fixture/server.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.8.0";
+export const defaultRelease = "0.8.1";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");

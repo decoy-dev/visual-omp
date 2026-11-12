@@ -16,13 +16,14 @@ import release0716 from "./tours/0.7.16.mjs";
 import release0717 from "./tours/0.7.17.mjs";
 import release0718 from "./tours/0.7.18.mjs";
 import release080 from "./tours/0.8.0.mjs";
+import release081 from "./tours/0.8.1.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.8.0");
+  assert.equal(parseArguments([]).release, "0.8.1");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -116,8 +117,8 @@ test("0.7.18 remains available and declares the many-files output structure", ()
 });
 
 
-test("0.8.0 is the default and checks bash visualizations, helper steps and omp 18.19.0 tool cards", () => {
-  assert.equal(defaultRelease, "0.8.0");
+test("0.8.0 remains available and checks bash visualizations, helper steps and omp 18.19.0 tool cards", () => {
+  assert.notEqual(defaultRelease, "0.8.0");
   assert.equal(release080.version, "0.8.0");
   assert.deepEqual(release080.config, { display: { shellVisualization: true }, task: { steps: true } });
   assert.deepEqual(release080.chats.map(chat => chat.id), ["bash-visualization", "steps", "tool-cards"]);
@@ -128,6 +129,16 @@ test("0.8.0 is the default and checks bash visualizations, helper steps and omp 
   assert.deepEqual(cards.recordedTools.map(tool => tool.name), ["github", "browser", "browser", "task"]);
   assert.ok(release080.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release080.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
+});
+
+test("0.8.1 is the default and checks a form question's footer after a taller question", () => {
+  assert.equal(defaultRelease, "0.8.1");
+  assert.equal(release081.version, "0.8.1");
+  assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form"]);
+  const [chat] = release081.chats;
+  assert.equal(chat.prompts[0].split("\n")[0], "fixture notes");
+  assert.match(chat.prompts[0], /fixture form/);
+  assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
