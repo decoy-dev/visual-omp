@@ -15,13 +15,14 @@ import release0714 from "./tours/0.7.14.mjs";
 import release0716 from "./tours/0.7.16.mjs";
 import release0717 from "./tours/0.7.17.mjs";
 import release0718 from "./tours/0.7.18.mjs";
+import release080 from "./tours/0.8.0.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.18");
+  assert.equal(parseArguments([]).release, "0.8.0");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -92,7 +93,7 @@ test("0.7.16 prepares five UI checks without enabling bash visualization", () =>
 });
 test("0.7.17 remains available after the default tour advances", () => {
   assert.equal(release0717.version, "0.7.17");
-  assert.equal(defaultRelease, "0.7.18");
+  assert.notEqual(defaultRelease, "0.7.17");
   assert.equal(release0717.expiredSignIn, true);
   assert.deepEqual(release0717.chats.map(chat => chat.id), ["expired-sign-in", "cfg-save-question", "question-form"]);
   assert.ok(release0717.chats.every(chat => chat.prompts[0].startsWith("fixture notes\n")));
@@ -100,9 +101,8 @@ test("0.7.17 remains available after the default tour advances", () => {
   assert.equal(tourLayout(release0717.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
 });
 
-test("0.7.18 is the default and declares the many-files output structure", () => {
-  assert.equal(defaultRelease, "0.7.18");
-  assert.equal(parseArguments([]).release, "0.7.18");
+test("0.7.18 remains available and declares the many-files output structure", () => {
+  assert.notEqual(defaultRelease, "0.7.18");
   assert.equal(release0718.version, "0.7.18");
   assert.deepEqual(release0718.chats.map(chat => chat.id), ["many-files"]);
   const [chat] = release0718.chats;
@@ -115,6 +115,20 @@ test("0.7.18 is the default and declares the many-files output structure", () =>
   assert.equal(chat.prompts[0].split("\n")[0], "fixture many-files");
 });
 
+
+test("0.8.0 is the default and checks bash visualizations, helper steps and omp 18.19.0 tool cards", () => {
+  assert.equal(defaultRelease, "0.8.0");
+  assert.equal(release080.version, "0.8.0");
+  assert.deepEqual(release080.config, { display: { shellVisualization: true }, task: { steps: true } });
+  assert.deepEqual(release080.chats.map(chat => chat.id), ["bash-visualization", "steps", "tool-cards"]);
+  const [bash, steps, cards] = release080.chats;
+  assert.equal(bash.prompts[0].split("\n")[0], "fixture bash-visualization");
+  assert.equal(steps.prompts[0].split("\n")[0], "fixture steps");
+  assert.equal(steps.helper, true);
+  assert.deepEqual(cards.recordedTools.map(tool => tool.name), ["github", "browser", "browser", "task"]);
+  assert.ok(release080.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release080.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
+});
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
   assert.equal(patch.version, "0.7.10");

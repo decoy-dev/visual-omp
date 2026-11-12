@@ -4,6 +4,33 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
+visual-omp 0.8.0 shows what each bash command did, using omp's own view of the run, and supports omp 18.19.0. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **Bash execution details.** Open a bash call to see each command's state, the values it recorded and omp's notes on its effects, then replay the run event by event.
+- **Improved:** **Helpers that work in steps.** With omp 18.19.0's `task.steps` setting, task cards and helper conversations show each step.
+- **Improved:** GitHub Actions watches show each job's current or failed step.
+
+### Detailed changes
+
+#### New
+
+- Bash calls show omp's execution view inside their disclosure. Pseudo, the default, is a readable translation of the command, and Raw is the original shell. Both show each command's state (running, done, failed or skipped), the values recorded at assignments and omp's notes on likely effects such as network access or file writes, which can be incomplete. Replay steps through the retained events without running anything again. The view follows omp's `display.shellVisualization` setting, and a call without a recorded trace keeps its usual command and output.
+- Saved chats and helper conversations restore recorded traces in a separate omp process for each window. It starts with a private home and settings folder, only basic system environment variables, no session and no tools. Each request has a deadline and a memory limit stops the process, so a damaged or very large trace leaves the card's usual output in place. On Windows, the process runs in a job object the app stops as a whole.
+
+#### Improved
+
+- With omp 18.19.0's `task.steps` setting, task cards list each helper's steps, and a helper's conversation shows each step as "Step 1 of 2" and so on, without omp's closing instructions to the helper.
+- GitHub Actions watch cards show omp 18.19.0's step progress under each job: the current step, the step that failed or the number of completed steps. Selecting it lists the job's steps with their states and times.
+
+#### Fixed
+
+- Read cards split line ranges the way omp 18.19.0 reads them. omp now accepts a colon as the range dash inside a list, as in `a.ts:20:40,85:100`.
+- Browser cards show the browser, endpoint or program and the target page from omp 18.19.0's browser calls, and still read calls from earlier omp versions.
+
 ## [0.7.18] - 2026-11-11
 
 visual-omp 0.7.18 stops Outputs from parsing command output again for every changed file, which blocked the app's window during turns that changed many files. It requires omp 18.15.0 or later.
