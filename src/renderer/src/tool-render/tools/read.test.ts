@@ -45,3 +45,38 @@ describe("read jq selectors", () => {
 		expect(html).not.toContain("<script>");
 	});
 });
+
+describe("read selectors", () => {
+	it.each([
+		["notes.txt:50-80", "notes.txt", "50-80"],
+		["notes.txt:-5", "notes.txt", "-5"],
+		["notes.txt:5-16,960-973", "notes.txt", "5-16,960-973"],
+		["notes.txt:1-12,-15", "notes.txt", "1-12,-15"],
+		["notes.txt:50+150", "notes.txt", "50+150"],
+		["notes.txt:L10-L20", "notes.txt", "L10-L20"],
+		["notes.txt:2-4:raw", "notes.txt", "2-4:raw"],
+		["notes.txt:raw:-60", "notes.txt", "raw:-60"],
+		["notes.txt:raw", "notes.txt", "raw"],
+		["merge.ts:conflicts", "merge.ts", "conflicts"],
+		// omp 18.19.0 reads a colon inside a comma list as the range dash.
+		["a.ts:20:40,85:100", "a.ts", "20-40,85-100"],
+		["a.ts:1-30,:-30", "a.ts", "1-30,-30"],
+	])("splits %s", (raw, path, sel) => {
+		expect(splitPathSel(raw)).toEqual({ path, sel, query: null });
+	});
+	it("keeps a timestamp or line and column without a comma as one selector", () => {
+		expect(splitPathSel("clip.mp4:1:30")).toEqual({ path: "clip.mp4:1", sel: "30", query: null });
+		expect(splitPathSel("a.ts:12:5")).toEqual({ path: "a.ts:12", sel: "5", query: null });
+	});
+	it("leaves paths without a complete selector whole", () => {
+		expect(splitPathSel("notes.txt:5+")).toEqual({ path: "notes.txt:5+", sel: null, query: null });
+		expect(splitPathSel("C:\\work\\notes.txt")).toEqual({ path: "C:\\work\\notes.txt", sel: null, query: null });
+		expect(splitPathSel("C:\\work\\notes.txt:5-10")).toEqual({ path: "C:\\work\\notes.txt", sel: "5-10", query: null });
+		expect(splitPathSel("notes.txt")).toEqual({ path: "notes.txt", sel: null, query: null });
+	});
+	it("links the file, not the selector", () => {
+		const html = renderToStaticMarkup(createElement(readRenderer.Summary, { name: "read", args: { path: "src/a.ts:20:40,85:100" } }));
+		expect(html).toContain('data-context-tool-path="src/a.ts"');
+		expect(html).toContain(":20-40,85-100");
+	});
+});
