@@ -778,7 +778,11 @@ those checks after acquiring the input lock and before each protocol write.
 Topic mutations also carry the selected `{ scope, id }`. Main repeats topic ownership before
 each action, so a reused raw id cannot redirect an in-flight request to another helper.
 `btw-driver.ts` uses Phase 3 `send` and len-checked `edit`, waits for each document transition
-and consults Phase 4e command outcomes for explicit failures. Follow-up retries retain their draft;
+and consults Phase 4e command outcomes for explicit failures. From omp 18.21.0, Tern answers
+`/btw <question>` in a note in its transcript (`omp.btw.note`) instead of opening the
+history overlay. Ask then waits for either the overlay's turn (earlier omp) or a new note, and after
+a note submits `/btw`, which omp opens on the question it is answering. The notes stay in omp's
+transcript; the app shows the same topic in Side questions. Follow-up retries retain their draft;
 main input remains refused while omp's overlay owns it. Side Stop sends stop and close, while
 main-turn Stop remains an independent collab abort with no side action. Both the 18.15.0 and
 installed 18.16.0 scripted main-abort recordings left the side answer running until its scripted

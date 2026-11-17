@@ -19,9 +19,10 @@ import { TspStream } from "./stream";
 interface Stage { stage: string; afterMessage: number; surfaceId?: string; overlay: TspNode | null; files: { path: string; text: string }[]; collab?: { working?: boolean; entries?: { message?: { stopReason?: string } }[] } }
 interface Evidence { stages: Stage[]; files: string[]; observation?: string }
 interface RecordedEvent { verb?: string; body?: { ev: string; [key: string]: unknown }; collab?: { t: string }; afterMessage: number }
-const root = new URL("./fixtures/18.15.0/", import.meta.url);
-const load = (name: string, suffix: string) => readFileSync(new URL(`${name}.${suffix}`, root), "utf8");
-const evidence = (name: string): Evidence => JSON.parse(load(name, "btw.json"));
+const fixtureRoot = (version: string) => new URL(`./fixtures/${version}/`, import.meta.url);
+const root = fixtureRoot("18.15.0");
+const load = (name: string, suffix: string, folder = root) => readFileSync(new URL(`${name}.${suffix}`, folder), "utf8");
+const evidence = (name: string, folder = root): Evidence => JSON.parse(load(name, "btw.json", folder));
 const fileTopics = (stage: Stage): BtwTopic[] => stage.files.filter(file => file.path.endsWith(".json")).map(file => {
 	const record = JSON.parse(file.text) as BtwTurn & { id: string; followUps?: BtwTurn[] };
 	const title = stage.files.find(file => file.path.endsWith(`/entry-${record.id}.title`))?.text ?? record.question;
@@ -56,17 +57,18 @@ function expectLiveState(state: BtwState, projection: BtwProjection | null): voi
 }
 
 /** Exact recorded inputs advance frames and sidecars through the production history state. */
-async function replay(name: string) {
-	const folder = await mkdtemp(join(tmpdir(), "vomp-btw-replay-"));
-	scratch.push(folder);
-	const sessionFile = join(folder, "session.jsonl");
+async function replay(name: string, version = "18.15.0") {
+	const folder = fixtureRoot(version);
+	const scratchFolder = await mkdtemp(join(tmpdir(), "vomp-btw-replay-"));
+	scratch.push(scratchFolder);
+	const sessionFile = join(scratchFolder, "session.jsonl");
 	const messages: { verb: string; body: unknown }[] = [];
 	const parser = new TspStream({ onData: () => {}, onMessage: message => messages.push({ verb: message.verb, body: JSON.parse(message.body) }) });
-	const raw = readFileSync(new URL(`${name}.raw.bin`, root));
+	const raw = readFileSync(new URL(`${name}.raw.bin`, folder));
 	for (let offset = 0; offset < raw.length; offset += 11) parser.push(raw.subarray(offset, offset + 11));
 	parser.end();
-	const expected = load(name, "events.jsonl").trim().split("\n").map(line => JSON.parse(line) as RecordedEvent).filter(event => event.collab || event.verb === "e" && event.body?.ev !== "ack");
-	const stages = evidence(name).stages;
+	const expected = load(name, "events.jsonl", folder).trim().split("\n").map(line => JSON.parse(line) as RecordedEvent).filter(event => event.collab || event.verb === "e" && event.body?.ev !== "ack");
+	const stages = evidence(name, folder).stages;
 	const history = new BtwHistoryState(() => {}); states.push(history);
 	let at = 0;
 	let index = 0;
@@ -148,8 +150,9 @@ const states: BtwHistoryState[] = [];
 afterEach(async () => { for (const state of states.splice(0)) state.close(); for (const path of scratch.splice(0)) await rm(path, { recursive: true, force: true }); vi.useRealTimers(); });
 
 describe("BTW fixture replay", () => {
-	it.each(["btw-empty", "btw-ask", "btw-ask-again", "btw-follow-up", "btw-cancel", "btw-open-main-abort"])("drives %s with declared production events and reconciles every final sidecar", async name => {
-		const h = await replay(name);
+	// omp 18.21.0 and later answer `/btw <question>` in a transcript note; the driver then opens the history with `/btw`.
+	it.each(["18.15.0", "18.22.0"].flatMap(version => ["btw-empty", "btw-ask", "btw-ask-again", "btw-follow-up", "btw-cancel", "btw-open-main-abort"].map(name => [name, version])))("drives %s (omp %s) with declared production events and reconciles every final sidecar", async (name, version) => {
+		const h = await replay(name, version);
 		if (name === "btw-open-main-abort") await h.submit("Start the main fixture turn and keep it running.");
 		await h.run("ask", name === "btw-empty" ? "" : "What is the first fixture side question?");
 		if (name === "btw-ask-again") {

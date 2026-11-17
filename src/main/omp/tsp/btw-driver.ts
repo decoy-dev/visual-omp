@@ -1,6 +1,6 @@
 import type { BtwState, BtwTopicRef } from "../../../shared/contracts/btw";
 import type { TspHostSnapshot } from "../../../shared/tsp-host";
-import { projectBtw, sameBtwTopic, type BtwProjection } from "../../../shared/tsp/btw";
+import { btwNoteIds, projectBtw, sameBtwTopic, type BtwProjection } from "../../../shared/tsp/btw";
 import { BTW_COMMAND_OUTCOME, commandOutcome } from "../../../shared/tsp/command-result";
 import { TSP_ACTIONS } from "../../../shared/tsp/roles";
 import type { TspSession } from "./session";
@@ -121,11 +121,19 @@ export class BtwDriver {
 			return;
 		}
 		if (operation === "ask") {
-			if (!text.trim()) { await this.#open(); return; }
+			const question = text.trim();
+			if (!question) { await this.#open(); return; }
 			if (this.#overlay()?.field) throw new Error("Finish or cancel the open side-question follow-up first.");
 			if (this.#overlay()) await this.run("close");
-			await this.#ctx.session.submit(`/btw ${text.trim()}`, () => { this.#snapshot(); }, surface => this.#snapshot().surfaces.some(item => item.open.id === surface && item.documentGeneration === this.#before.generation));
-			await this.#wait(() => !!this.#overlay()?.turns.length, "omp did not start the side question. Your question is kept.");
+			const notes = () => { const snapshot = this.#snapshot(); return btwNoteIds(snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation)); };
+			const before = notes();
+			await this.#ctx.session.submit(`/btw ${question}`, () => { this.#snapshot(); }, surface => this.#snapshot().surfaces.some(item => item.open.id === surface && item.documentGeneration === this.#before.generation));
+			await this.#wait(() => !!this.#overlay()?.turns.length || [...notes()].some(id => !before.has(id)), "omp did not start the side question. Your question is kept.");
+			// omp 18.21.0 and later answer in a transcript note; `/btw` then opens the history on the question it is answering.
+			if (!this.#overlay()?.turns.length) {
+				await this.#open();
+				await this.#wait(() => !!this.#overlay()?.turns.length, "omp did not show the side question in its history.");
+			}
 			return;
 		}
 		if (!topic) throw new Error("Choose a side conversation first.");

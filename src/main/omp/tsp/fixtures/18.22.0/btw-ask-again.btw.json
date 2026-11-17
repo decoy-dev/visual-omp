@@ -1,0 +1,662 @@
+{
+  "version": "omp/18.22.0",
+  "stages": [
+    {
+      "stage": "first-complete",
+      "afterMessage": 7,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-l",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "l",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "l.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "l.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "l.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "l.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "l.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the first fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "l.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 17, 2026 at 09:45"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "l.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "l.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": false,
+                                      "text": "The first fixture side answer is complete."
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "l.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "l.actions/1",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "l.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "l.actions/follow-up",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Follow up",
+                      "actions": {
+                        "click": "follow-up"
+                      },
+                      "title": "Follow up  f",
+                      "keys": [
+                        "f"
+                      ],
+                      "variant": "primary",
+                      "tone": "accent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d59c3ad09e.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"The first fixture side answer is complete.\",\"status\":\"complete\",\"createdAt\":1794933917296,\"updatedAt\":1794933917313,\"id\":\"15d1e6d59c3ad09e\",\"leafId\":\"1cf4dd9f\"}\n"
+        }
+      ]
+    },
+    {
+      "stage": "second-complete",
+      "afterMessage": 11,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-n",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "n",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "n.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "n.body/history",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.history",
+                      "shrink": 0
+                    },
+                    "c": [
+                      {
+                        "id": "n.body/history/records",
+                        "k": "list",
+                        "p": {
+                          "role": "omp.btw.list.idle",
+                          "selected": "n.body/history/records/15d1e6d5b2fad09f"
+                        },
+                        "c": [
+                          {
+                            "id": "n.body/history/records/15d1e6d5b2fad09f",
+                            "k": "item",
+                            "p": {
+                              "label": [
+                                {
+                                  "t": "What is the second fixture side question?"
+                                }
+                              ],
+                              "detail": [
+                                {
+                                  "t": "09:45",
+                                  "s": "mono"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "id": "n.body/history/records/15d1e6d59c3ad09e",
+                            "k": "item",
+                            "p": {
+                              "label": [
+                                {
+                                  "t": "What is the first fixture side question?"
+                                }
+                              ],
+                              "detail": [
+                                {
+                                  "t": "09:45",
+                                  "s": "mono"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "n.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "n.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "n.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "n.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the second fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "n.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 17, 2026 at 09:45"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "n.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "n.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": false,
+                                      "text": "The second fixture side answer is complete."
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "n.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "n.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "n.actions/1",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "n.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "n.actions/follow-up",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Follow up",
+                      "actions": {
+                        "click": "follow-up"
+                      },
+                      "title": "Follow up  f",
+                      "keys": [
+                        "f"
+                      ],
+                      "variant": "primary",
+                      "tone": "accent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d59c3ad09e.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"The first fixture side answer is complete.\",\"status\":\"complete\",\"createdAt\":1794933917296,\"updatedAt\":1794933917313,\"id\":\"15d1e6d59c3ad09e\",\"leafId\":\"1cf4dd9f\"}\n"
+        },
+        {
+          "path": "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d5b2fad09f.json",
+          "text": "{\"question\":\"What is the second fixture side question?\",\"answer\":\"The second fixture side answer is complete.\",\"status\":\"complete\",\"createdAt\":1794933917387,\"updatedAt\":1794933917391,\"id\":\"15d1e6d5b2fad09f\",\"leafId\":\"d5c9be77\"}\n"
+        }
+      ]
+    },
+    {
+      "stage": "first-selected",
+      "afterMessage": 12,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-n",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "n",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "n.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "n.body/history",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.history",
+                      "shrink": 0
+                    },
+                    "c": [
+                      {
+                        "id": "n.body/history/records",
+                        "k": "list",
+                        "p": {
+                          "role": "omp.btw.list",
+                          "selected": "n.body/history/records/15d1e6d59c3ad09e"
+                        },
+                        "c": [
+                          {
+                            "id": "n.body/history/records/15d1e6d5b2fad09f",
+                            "k": "item",
+                            "p": {
+                              "label": [
+                                {
+                                  "t": "What is the second fixture side question?"
+                                }
+                              ],
+                              "detail": [
+                                {
+                                  "t": "09:45",
+                                  "s": "mono"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "id": "n.body/history/records/15d1e6d59c3ad09e",
+                            "k": "item",
+                            "p": {
+                              "label": [
+                                {
+                                  "t": "What is the first fixture side question?"
+                                }
+                              ],
+                              "detail": [
+                                {
+                                  "t": "09:45",
+                                  "s": "mono"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "n.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "n.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "n.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "n.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the first fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "n.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 17, 2026 at 09:45"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "n.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "n.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": false,
+                                      "text": "The first fixture side answer is complete."
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "n.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "n.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "n.actions/1",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "n.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "n.actions/follow-up",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Follow up",
+                      "actions": {
+                        "click": "follow-up"
+                      },
+                      "title": "Follow up  f",
+                      "keys": [
+                        "f"
+                      ],
+                      "variant": "primary",
+                      "tone": "accent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d59c3ad09e.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"The first fixture side answer is complete.\",\"status\":\"complete\",\"createdAt\":1794933917296,\"updatedAt\":1794933917313,\"id\":\"15d1e6d59c3ad09e\",\"leafId\":\"1cf4dd9f\"}\n"
+        },
+        {
+          "path": "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d5b2fad09f.json",
+          "text": "{\"question\":\"What is the second fixture side question?\",\"answer\":\"The second fixture side answer is complete.\",\"status\":\"complete\",\"createdAt\":1794933917387,\"updatedAt\":1794933917391,\"id\":\"15d1e6d5b2fad09f\",\"leafId\":\"d5c9be77\"}\n"
+        }
+      ]
+    }
+  ],
+  "files": [
+    "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d59c3ad09e.json",
+    "sessions/2026-11-17T16-45-17-089Z_01a1ea66-05a1-772a-94b7-63957638620f/btw-history/entry-15d1e6d5b2fad09f.json"
+  ]
+}

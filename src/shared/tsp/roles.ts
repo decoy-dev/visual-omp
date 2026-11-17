@@ -34,7 +34,7 @@ export const TSP_ROLES = {
 	btwAnswer: "omp.btw.answer", btwMeta: "omp.btw.meta", btwError: "omp.btw.error", btwPending: "omp.btw.pending",
 	btwList: "omp.btw.list", btwListIdle: "omp.btw.list.idle", btwComposer: "omp.btw.composer",
 	btwInject: "omp.btw.inject",
-	btwNote: "omp.btw.note", btwNotice: "omp.btw.notice", btwCopied: "omp.btw.copied",
+	btwNote: "omp.btw.note", btwNoteQuestion: "omp.btw.note.question", btwNotice: "omp.btw.notice", btwCopied: "omp.btw.copied",
 	btwBody: "omp.btw.body", btwReader: "omp.btw.reader", btwHistoryList: "omp.btw.history",
 	btwEmpty: "omp.btw.empty", btwEmptyTitle: "omp.btw.empty.title", btwEmptyHint: "omp.btw.empty.hint",
 	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",

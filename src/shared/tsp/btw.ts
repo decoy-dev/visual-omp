@@ -68,6 +68,16 @@ export function projectBtw(surfaces: readonly TspSurfaceSnapshot[]): BtwProjecti
 		field: field ? { nodeId: field.id, text: field.p?.text ?? "" } : null, supported, notice: notice ? nodeText(notice) : null };
 }
 
+/**
+ * omp 18.21.0 and later answer `/btw <question>` in Tern as a note in the transcript (`omp.btw.note` with a question
+ * row) instead of opening the history overlay. The ids of the live notes, to tell a new one apart.
+ */
+export function btwNoteIds(surfaces: readonly TspSurfaceSnapshot[]): Set<string> {
+	return new Set(surfaces.filter(surface => !surface.closed && !surface.suspended).flatMap(surface => descendants(surface.document)
+		.filter(node => node.p?.role === TSP_ROLES.btwNote && descendants(node).some(child => child.p?.role === TSP_ROLES.btwNoteQuestion))
+		.map(node => `${surface.open.id}\0${node.id}`)));
+}
+
 /** Session-local ids may repeat in a focused helper's history. */
 export function btwTopicKey(topic: BtwTopicRef): string {
 	return JSON.stringify([topic.scope ?? null, topic.id]);

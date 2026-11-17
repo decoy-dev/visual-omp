@@ -9,6 +9,7 @@ import { parse } from "yaml";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
 import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { TSP_ACTIONS, TSP_BTW_STATUS, TSP_ROLES } from "../../../shared/tsp/roles";
+import { btwNoteIds } from "../../../shared/tsp/btw";
 import { TspImageSubmissionError, TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
@@ -151,8 +152,18 @@ const btwSecondAnswer = "The second fixture side answer is complete.";
 const btwFollowQuestion = "Explain the fixture answer in one more sentence.";
 const btwFollowAnswer = "The follow-up fixture answer preserves the first topic.";
 const firstBtw = { question: btwQuestion, answer: btwAnswer, status: "complete" };
+/** As the app's BTW driver asks: omp 18.21.0 and later answer in a transcript note, and `/btw` then opens the history. */
+const submitBtw = async (context: RecordingContext, question: string) => {
+  const before = btwNoteIds(context.session.snapshot().surfaces);
+  await context.session.submit(`/btw ${question}`);
+  await context.until(() => !!btwOverlay(context) || [...btwNoteIds(context.session.snapshot().surfaces)].some(id => !before.has(id)), "BTW did not start");
+  if (!btwOverlay(context)) {
+    await context.session.submit("/btw");
+    await context.until(() => !!btwOverlay(context), "BTW history did not open on the side question");
+  }
+};
 const askBtw = async (context: RecordingContext) => {
-  await context.session.submit(`/btw ${btwQuestion}`);
+  await submitBtw(context, btwQuestion);
   await context.until(() => btwText(context, btwAnswer), "BTW final answer did not appear");
   await persistedBtw(context, [firstBtw]);
   await context.captureBtw("first-complete");
@@ -300,7 +311,7 @@ const scenarios: Scenario[] = [
       await askBtw(context);
       const original = (await context.btwRecords())[0]!;
       await closeBtw(context);
-      await context.session.submit(`/btw ${btwSecondQuestion}`);
+      await submitBtw(context, btwSecondQuestion);
       await context.until(() => btwText(context, btwSecondAnswer), "second BTW answer missing");
       const records = await persistedBtw(context, [firstBtw, { question: btwSecondQuestion, answer: btwSecondAnswer, status: "complete" }]);
       const retained = records.find(record => record.id === original.id);
@@ -345,7 +356,7 @@ const scenarios: Scenario[] = [
   },
   { name: "btw-cancel", command: null, script: [{ prefix: "Partial fixture side answer.", text: " This must never complete.", gate: "cancel" }],
     run: async context => {
-      await context.session.submit(`/btw ${btwQuestion}`);
+      await submitBtw(context, btwQuestion);
       await context.until(() => btwText(context, "Partial fixture side answer."), "BTW partial answer missing");
       await context.captureBtw("before-stop");
       btwAction(context, TSP_ACTIONS.btwStop);
@@ -361,7 +372,7 @@ const scenarios: Scenario[] = [
       if (!context.guest) throw new Error("Main abort scenario needs a collab guest");
       await context.session.submit("Start the main fixture turn and keep it running.");
       await context.until(() => context.requests.length === 1 && context.guest!.getSnapshot().working, "main fixture turn did not start");
-      await context.session.submit(`/btw ${btwQuestion}`);
+      await submitBtw(context, btwQuestion);
       await context.until(() => context.requests.length === 2 && btwText(context, "Side answer continues "), "side fixture turn did not stream alongside main");
       await context.captureBtw("before-main-abort");
       context.collabAbort();
