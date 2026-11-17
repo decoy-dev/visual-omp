@@ -2,6 +2,7 @@
 import type { DisabledCredential, UsageLimitsSnapshot } from "@shared/contracts/usage";
 import type { AppPreferences } from "@shared/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expiredSignInKey, unannouncedSignIns } from "./expiredSignIns";
 
 const fake = vi.hoisted(() => ({ toast: vi.fn(), openSettings: vi.fn() }));
 vi.mock("@/ui", () => ({ toast: fake.toast }));
@@ -37,8 +38,7 @@ beforeEach(() => {
 });
 
 describe("unannounced sign-ins", () => {
-	it("skips omp's own sign-outs and keys already shown", async () => {
-		const { unannouncedSignIns, expiredSignInKey } = await launch();
+	it("skips omp's own sign-outs and keys already shown", () => {
 		const expired = credential();
 		const shown = credential({ provider: "openai-codex" });
 		const signedOut = credential({ cause: "logged out by user" });

@@ -18,10 +18,23 @@ if (role === 'node') {
     process.exitCode = signal ? 1 : code ?? 1;
   });
 }
+const renameRetryDelay = new Int32Array(new SharedArrayBuffer(4));
+const transientRenameErrors = new Set(['EPERM', 'EBUSY', 'EACCES']);
 function publish() {
   const path = join(directory, `${role}.json`);
   writeFileSync(`${path}.pending`, JSON.stringify({ pid: process.pid, parentPid: process.ppid, role, creationUpperMs, ompPid: omp?.pid, ompExecutable: executable, ompArgs: args, retainedBytes: retained.reduce((sum, buffer) => sum + buffer.length, 0) }));
-  renameSync(`${path}.pending`, path);
+  let firstFailureAt;
+  for (;;) {
+    try {
+      renameSync(`${path}.pending`, path);
+      return;
+    } catch (error) {
+      if (!transientRenameErrors.has(error?.code)) throw error;
+      firstFailureAt ??= performance.now();
+      if (performance.now() - firstFailureAt >= 500) throw error;
+      Atomics.wait(renameRetryDelay, 0, 0, 5);
+    }
+  }
 }
 if (omp) omp.once('spawn', publish); else publish();
 pressure = setInterval(() => {
