@@ -4,6 +4,39 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-17
+
+visual-omp 0.8.2 lets you choose when omp summarizes your chats, for every chat or just one, and supports omp 18.20 through 18.22: model switching, side questions and plan review work again with the latest omp, and the slash menu offers omp's new `/commit`. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **Choose when chats are summarized.** Set the token count at which omp summarizes a chat, such as 400k, in Settings › General for every chat, or from a chat's context ring for that chat alone.
+- **New:** The slash menu offers `/commit` with omp 18.20.1 and later.
+- **Improved:** Grep cards warn about matching binary files that omp skipped, and a todo card says how many tasks an update marks when it marks several.
+- **Fixed:** **Model switching with omp 18.22.0.** Choosing a model in the composer no longer leaves omp's model switcher open, which kept the chat from sending messages.
+- **Fixed:** Plan review works with omp 18.22.0: Refine with a comment works again, and Save plan as… saves a copy of the plan and keeps the review open.
+- **Fixed:** Side questions work again with omp 18.21.0 and later.
+
+### Detailed changes
+
+#### New
+
+- Settings › General has Summarize at, the token count at which omp summarizes a chat, such as 400k or 600000. It writes omp's `compaction.thresholdTokens` for all projects or the selected project, applies to running chats right away, and an empty field returns to your other omp compaction settings. A model's own limit in Models & roles still takes precedence.
+- The context ring's popover has Summarize this chat at, which sets a point for that chat alone and outranks Summarize at. visual-omp saves the point with the chat and hands it to omp through the chat's own settings layer, so it applies right away and again when you reopen the chat. The popover says where omp will summarize the chat with its current model. When that model has its own limit in Models & roles, the popover says that limit applies instead.
+- The slash menu lists omp's `/commit`, which asks the agent to commit only the changes it and its helpers made, when omp is 18.20.1 or later. It lists `/seance` only before omp 18.20.3, which removed it, and `/unpin` only from omp 18.17.0, which added it. When visual-omp cannot read omp's version, the menu lists all three.
+
+#### Improved
+
+- Grep cards show omp 18.20.0's "binary matches" warning when files that omp skipped as binary also match the search. The card hides omp's text when nothing else matched, so at 0 matches the warning tells you that those files matched.
+- A todo update that marks several tasks at once, which omp 18.20.1 allows, names the task when there is one and says "2 tasks" and so on when there are more. Earlier versions of the card showed no task for such an update.
+
+#### Fixed
+
+- With omp 18.22.0, choosing a model in the composer left omp's model switcher open, so the composer said "Close the open omp menu before sending a message." The app now chooses the model and closes the switcher the way omp 18.22.0 expects.
+- Side questions work again with omp 18.21.0 and later. omp now answers `/btw <question>` in a note in its own transcript, so the app waits for that note and then opens omp's side-question history, and the question and its answer appear in Side questions as before.
+- The plan card follows omp 18.22.0's plan review. omp replaced Save and quit with Save, which writes a copy of the plan to a file you name and keeps the review open; the card offers it as Save plan as… and opens the omp screen on omp's file-name prompt. omp lists Refine only while its own review has comments or deleted sections, so Refine with a comment now closes the review and keeps plan mode, then starts your comment in the message box for you to finish and send, as it did before. In classic chats, Save and stop stays disabled with omp 18.22.0, because omp no longer offers it.
+- When a live chat reconnects and omp's session state for it cannot be read, the app asks omp again, as omp 18.20.1's own collab viewer now does. Before, the chat could show helpers, tool cards and a working state from before the reconnect.
+
 ## [0.8.1] - 2026-11-12
 
 visual-omp 0.8.1 warns when its window falls behind and offers Reload window and Close idle chats, can close only the chats that aren't working or the chats you select, and keeps a form question's buttons at the bottom of its card. It requires omp 18.15.0 or later.
