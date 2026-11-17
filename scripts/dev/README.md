@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.8.1.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.8.0, 0.7.18, 0.7.17, 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.8.2.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.8.1, 0.8.0, 0.7.18, 0.7.17, 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, and PATH omp 18.18.3 or later for the default 0.8.1 tour, which needs HTML-form questions. The 0.8.0 tour needs omp 18.19.0 or later, and the 0.7.18 tour needs omp 18.18.8 or later. The small 0.8.1, 0.8.0, 0.7.18 and 0.7.17 tours need neither ffmpeg nor LibreOffice. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of preparation.
+Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, and PATH omp 18.22.0 or later for the default 0.8.2 tour, which checks omp 18.22.0's model switcher and plan review. The 0.8.1 tour needs omp 18.18.3 or later for HTML-form questions, the 0.8.0 tour needs omp 18.19.0 or later, and the 0.7.18 tour needs omp 18.18.8 or later. The small 0.8.2, 0.8.1, 0.8.0, 0.7.18 and 0.7.17 tours need neither ffmpeg nor LibreOffice. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of preparation.
 
 To select a separate omp installation without changing the owner's installation, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. The tour uses that executable for preparation, saves it in `tour.json` and the scratch app profile's omp preference, and prepends its directory to the isolated PATH for generators and the development app. `--resume` reuses the saved executable and PATH selection. Without an absolute executable path, PATH keeps its existing behavior. For the 0.7.16 tour with a separate omp 18.18.7 binary:
 
@@ -30,6 +30,16 @@ The command creates a new temporary root and starts the loopback fixture provide
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
+
+### The 0.8.2 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Model switch | Choose Second fixture in the composer's model picker. The picker closes, the composer shows Second fixture and no notice says omp has a menu open; send `fixture notes`, then choose Live preview fixture again. |
+| 02 Side questions | Send `/btw fixture notes What should I check first?`. Side questions opens with the question and the local model's answer; a second question asked from the pane appears under the first. |
+| 03 Plan review | Send `/plan fixture plan-review`; the local model writes a short plan and submits it. Save plan as… opens omp's Save plan prompt in the omp screen, and the card returns with the review after saving. Refine with a comment closes the review and keeps plan mode. Send `fixture plan-review` for a new review and choose Approve and run; the local model replies once. |
+| 04 Commands and tool cards | The slash menu lists `/commit` and not `/seance`. Recorded grep cards warn "binary matches: 2 files" at 0 matches and "binary matches: 1 file" beside a match; the first todo card names 2 tasks and the second names its one task. |
+| Covered by tests | Classic parsing of the bare Save row (`src/renderer/src/features/session-tools/screen.test.ts`), `/seance` before omp 18.20.3 and `/unpin` from omp 18.17.0 (`src/main/services/omp-builtin-commands.test.ts`), side questions on omp 18.15.0 and 18.22.0 (`src/main/omp/tsp/btw.test.ts`) and the collab rejoin after a failed welcome (`src/renderer/src/collab/lib/client.test.ts`). |
 
 ### The 0.8.1 tour
 

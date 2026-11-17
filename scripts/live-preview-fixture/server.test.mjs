@@ -126,6 +126,22 @@ test("cfg-save requests one guarded setting write and stops after its result", a
 });
 
 
+test("plan review writes the plan, proposes it once, then stops after omp answers", async () => {
+  const prompt = "fixture plan-review";
+  const [write] = await callsFor(prompt);
+  assert.equal(write.name, "write");
+  assert.equal(write.args.path, "local://tour-plan.md");
+  assert.doesNotMatch(write.args.content, /fixture\s+plan-review/i, "the plan must not restart the fixture when omp sends it back");
+  const turn = [{ role: "user", content: prompt }, { role: "assistant", tool_calls: [{ function: { name: "write", arguments: JSON.stringify(write.args) } }] }, { role: "tool", content: "Wrote the plan." }];
+  const [propose] = await callsFor("", turn);
+  assert.deepEqual(propose, { name: "write", args: { path: "xd://propose", content: "tour" } });
+  const answered = [...turn, { role: "assistant", tool_calls: [{ function: { name: "write", arguments: JSON.stringify(propose.args) } }] }, { role: "tool", content: "Plan approved." }];
+  const done = await replyFor("", answered);
+  assert.deepEqual(done.calls, []);
+  assert.equal(done.finishReason, "stop");
+  assert.match(done.content, /plan review closed/);
+});
+
 test("ask fixtures send an HTML form when omp's ask tool takes one", async () => {
   const tools = [{ type: "function", function: { name: "ask", parameters: { type: "object", properties: { html: { type: "string" } } } } }];
   const ask = async prompt => {

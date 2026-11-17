@@ -17,13 +17,14 @@ import release0717 from "./tours/0.7.17.mjs";
 import release0718 from "./tours/0.7.18.mjs";
 import release080 from "./tours/0.8.0.mjs";
 import release081 from "./tours/0.8.1.mjs";
+import release082 from "./tours/0.8.2.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.8.1");
+  assert.equal(parseArguments([]).release, "0.8.2");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -131,8 +132,8 @@ test("0.8.0 remains available and checks bash visualizations, helper steps and o
   assert.equal(tourLayout(release080.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 3);
 });
 
-test("0.8.1 is the default and checks a form question's footer and closing idle or selected chats", () => {
-  assert.equal(defaultRelease, "0.8.1");
+test("0.8.1 remains available and checks a form question's footer and closing idle or selected chats", () => {
+  assert.notEqual(defaultRelease, "0.8.1");
   assert.equal(release081.version, "0.8.1");
   assert.deepEqual(release081.chats.map(chat => chat.id), ["question-form", "close-chats", "spare-chat", "slow-window"]);
   const [form, close] = release081.chats;
@@ -145,6 +146,25 @@ test("0.8.1 is the default and checks a form question's footer and closing idle 
   assert.match(release081.chats[3].prompts[0], /Test slow-window warning/);
   assert.ok(release081.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
+});
+
+test("0.8.2 is the default and checks omp 18.22.0's model switcher, side questions, plan review, commands and tool cards", () => {
+  assert.equal(defaultRelease, "0.8.2");
+  assert.equal(release082.version, "0.8.2");
+  assert.deepEqual(release082.chats.map(chat => chat.id), ["model-switch", "side-questions", "plan-review", "commands-and-cards"]);
+  assert.ok(release082.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
+  // The model check needs a second model to switch to.
+  assert.deepEqual(release082.models.map(model => model.name), ["Second fixture"]);
+  const [, side, plan, cards] = release082.chats;
+  assert.match(side.prompts[0], /\/btw fixture notes/);
+  // The owner starts the review: preparation runs without a terminal UI, so it cannot answer plan mode.
+  assert.match(plan.prompts[0], /\/plan fixture plan-review/);
+  assert.match(cards.prompts[0], /\/commit/);
+  assert.deepEqual(cards.recordedTools.map(tool => tool.name), ["grep", "grep", "todo", "todo"]);
+  assert.deepEqual(cards.recordedTools[0].result.details.binaryMatches, ["samples/archive.bin", "samples/icon.png"]);
+  assert.ok(Array.isArray(cards.recordedTools[2].args.task));
+  assert.ok(release082.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release082.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
