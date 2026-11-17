@@ -103,7 +103,8 @@ function Body({ node, context }: NodeProps) {
 			if (!props) return <p className="max-h-24 overflow-auto rounded-sm bg-inset p-card text-sm text-fg-muted">{t("tsp.shellUnavailable")}</p>;
 			return <ShellView key={`${context.sf}:${node.id}`} props={props} disabled={context.readOnly} onAction={value => { if (!context.readOnly) context.send({ ev: "action", sf: context.sf, id: node.id, act: "shell-viz", value }); }} />;
 		}
-		case "diff": return <DiffBlock diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
+		// omp wraps a diff's long lines unless the node says `wrap: false` (omp 18.22.1's git app toggles it).
+		case "diff": return <DiffBlock wrap={node.p?.wrap !== false} diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
 		case "math": return <Markdown text={`$$\n${node.p?.text ?? ""}\n$$`} />;
 		case "kbd": return node.p?.keys.length ? <KeyCombinations value={[{ t: node.p.keys.join("+"), s: "key" }]} /> : null;
 		case "badge": return <span className="rounded-sm bg-inset px-2 py-1 text-xs">{node.p?.text}</span>;

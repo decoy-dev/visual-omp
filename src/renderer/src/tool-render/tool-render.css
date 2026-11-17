@@ -455,6 +455,11 @@
 	white-space: pre;
 }
 
+.tv-diff--wrap .tv-diff-row {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
 .tv-diff-row--add {
 	background: color-mix(in oklch, var(--tv-ok) 11%, transparent);
 	color: color-mix(in oklch, var(--tv-ok) 70%, var(--tv-fg));

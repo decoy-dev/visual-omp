@@ -245,16 +245,17 @@ export function InvalidArg({ what }: { what?: string }): ReactNode {
 
 /**
  * Unified-diff-ish block: `+` rows added, `-` rows removed, `@@` hunk headers
- * faint, blank rows render as `…` gaps (non-contiguous regions).
+ * faint, blank rows render as `…` gaps (non-contiguous regions). Rows keep one
+ * line each and scroll sideways together unless `wrap` is set.
  */
-export function DiffBlock({ diff, maxLines = 80 }: { diff: string; maxLines?: number }): ReactNode {
+export function DiffBlock({ diff, maxLines = 80, wrap = false }: { diff: string; maxLines?: number; wrap?: boolean }): ReactNode {
 	const [expanded, setExpanded] = useState(false);
 	const lines = useMemo(() => replaceTabs(stripAnsi(diff)).replace(/\n+$/, "").split("\n"), [diff]);
 	const collapsible = lines.length > maxLines + 1;
 	const shown = collapsible && !expanded ? lines.slice(0, maxLines) : lines;
 	return (
 		<div className="tv-out">
-			<div className="tv-diff">
+			<div className={wrap ? "tv-diff tv-diff--wrap" : "tv-diff"}>
 				{shown.map((line, i) => {
 					let cls = "";
 					if (line.trim().length === 0) cls = "--gap";

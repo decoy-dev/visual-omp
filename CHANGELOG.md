@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### Improved
+
+- Diffs in the omp screen wrap long lines, as omp draws them, and follow the Wrap lines setting in omp 18.22.1's git app.
+
 ## [0.8.2] - 2026-11-17
 
 visual-omp 0.8.2 lets you choose when omp summarizes your chats, for every chat or just one, and supports omp 18.20 through 18.22: model switching, side questions and plan review work again with the latest omp, and the slash menu offers omp's new `/commit`. It requires omp 18.15.0 or later.
