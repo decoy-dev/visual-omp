@@ -43,5 +43,15 @@ export default {
         "The first todo card names 2 tasks in its summary and lists both as done. The second names Tag the release.",
       ].join("\n")],
     },
+    {
+      id: "summarize-at", title: "05 Summarize at", pane: "files",
+      prompts: [[
+        "fixture notes",
+        "This chat checks when omp summarizes a chat. Send fixture notes so omp starts here, then open the context ring at the right end of the composer's bottom row.",
+        "Under Summarize this chat at, the placeholder shows omp's default point for the fixture model and the status line says where omp summarizes this chat. Enter 64k and choose Save. The status line now says omp summarizes this chat at 64K tokens, and Use default appears.",
+        "Close this chat, reopen it from the sidebar, send fixture notes again and open the context ring: the field still shows 64k. Choose Use default, and the status line returns to the default point.",
+        "In Settings, General, set Summarize at to 32k and choose Save. In this chat the status line now says omp summarizes at 32K tokens, from your omp settings. Set this chat to 64k again: the chat's point outranks the one in Settings. Choose Use default in both places when you finish.",
+      ].join("\n")],
+    },
   ],
 };

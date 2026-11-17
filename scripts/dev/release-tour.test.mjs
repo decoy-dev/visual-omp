@@ -148,14 +148,14 @@ test("0.8.1 remains available and checks a form question's footer and closing id
   assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
 });
 
-test("0.8.2 is the default and checks omp 18.22.0's model switcher, side questions, plan review, commands and tool cards", () => {
+test("0.8.2 is the default and checks compaction points and omp 18.22.0's model switcher, side questions, plan review, commands and tool cards", () => {
   assert.equal(defaultRelease, "0.8.2");
   assert.equal(release082.version, "0.8.2");
-  assert.deepEqual(release082.chats.map(chat => chat.id), ["model-switch", "side-questions", "plan-review", "commands-and-cards"]);
+  assert.deepEqual(release082.chats.map(chat => chat.id), ["model-switch", "side-questions", "plan-review", "commands-and-cards", "summarize-at"]);
   assert.ok(release082.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
   // The model check needs a second model to switch to.
   assert.deepEqual(release082.models.map(model => model.name), ["Second fixture"]);
-  const [, side, plan, cards] = release082.chats;
+  const [, side, plan, cards, summarize] = release082.chats;
   assert.match(side.prompts[0], /\/btw fixture notes/);
   // The owner starts the review: preparation runs without a terminal UI, so it cannot answer plan mode.
   assert.match(plan.prompts[0], /\/plan fixture plan-review/);
@@ -163,8 +163,11 @@ test("0.8.2 is the default and checks omp 18.22.0's model switcher, side questio
   assert.deepEqual(cards.recordedTools.map(tool => tool.name), ["grep", "grep", "todo", "todo"]);
   assert.deepEqual(cards.recordedTools[0].result.details.binaryMatches, ["samples/archive.bin", "samples/icon.png"]);
   assert.ok(Array.isArray(cards.recordedTools[2].args.task));
+  // The point is set in the chat's context ring and in Settings, General, and must survive reopening the chat.
+  assert.match(summarize.prompts[0], /Summarize this chat at/);
+  assert.match(summarize.prompts[0], /reopen it/);
   assert.ok(release082.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
-  assert.equal(tourLayout(release082.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
+  assert.equal(tourLayout(release082.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
