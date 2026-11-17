@@ -103,6 +103,8 @@ try {
 	report.profile = home;
 	const agent = join(home, ".omp", "agent");
 	await mkdir(agent, { recursive: true });
+	lifecyclePlatform.userData = join(root, "userData");
+	await mkdir(lifecyclePlatform.userData, { recursive: true });
 	await writeFile(join(agent, "config.yml"), JSON.stringify({
 		startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
 		marketplace: { autoUpdate: "off" }, worktree: { onStart: "off", onExit: "keep" },

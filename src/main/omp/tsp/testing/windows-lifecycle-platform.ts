@@ -6,6 +6,14 @@ import hostLabels from "../../../../shared/i18n/en/host.json";
 export const lifecyclePlatform = {
 	env: {} as Record<string, string>,
 	confirmations: [] as { message: string; response: number }[],
+	/** Set by the probe inside its scratch root; SessionHost keeps per-chat compaction points there. */
+	userData: "",
+};
+export const app = {
+	getPath(name: string) {
+		if (name !== "userData" || !lifecyclePlatform.userData) throw new Error(`Unexpected lifecycle probe path: ${name}`);
+		return lifecyclePlatform.userData;
+	},
 };
 export const BrowserWindow = { getFocusedWindow: () => null, getAllWindows: () => [] };
 export const nativeTheme = Object.assign(new EventEmitter(), { shouldUseDarkColors: false });

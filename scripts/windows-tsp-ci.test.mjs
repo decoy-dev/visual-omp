@@ -5,8 +5,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { CONPTY_FILES } from "./stage-conpty.mjs";
-import { assertWindowsLifecycleReport, runWindowsTspCi, WINDOWS_TSP_CI_LIMITS } from "./windows-tsp-ci.mjs";
+import { assertWindowsLifecycleReport, buildWindowsLifecycleProbe, runWindowsTspCi, WINDOWS_TSP_CI_LIMITS } from "./windows-tsp-ci.mjs";
 
 const version = "18.15.0";
 const asset = "omp-windows-x64.exe";
@@ -454,4 +455,12 @@ test("lifecycle report gate requires three natural and three confirmed force cyc
 	assert.throws(() => assertWindowsLifecycleReport({ ...report, baseline,
 		cycles: [{ ...report.cycles[0], settled: { resources: { MessagePort: 1 } } }, ...report.cycles.slice(1)] },
 	"classic"), /MessagePort grew by 1 from cycle/);
+});
+
+test("the lifecycle probe bundles the current SessionHost against its headless platform", async t => {
+	const out = await mkdtemp(join(tmpdir(), "vomp-lifecycle-probe-"));
+	t.after(() => rm(out, { recursive: true, force: true }));
+	// Each Electron or app import SessionHost gains needs a matching export in windows-lifecycle-platform.ts.
+	const result = await buildWindowsLifecycleProbe(fileURLToPath(new URL("..", import.meta.url)), join(out, "probe.mjs"));
+	assert.deepEqual(result.errors, []);
 });
