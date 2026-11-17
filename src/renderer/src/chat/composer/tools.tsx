@@ -4,7 +4,9 @@
  * (Composer.tsx renders VoiceTool beside the send button).
  */
 import { useVisualSnapshot } from "../../state/visualSnapshot";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { prefetchCompactionSettings } from "../../features/compaction/settingsCache";
 import { isResumeDeclined } from "../../registry/guards";
 import { lazyView } from "../../registry/lazy";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
@@ -12,7 +14,7 @@ import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverT
 import type { ComposerMode } from "./drafts";
 import { SuggestionsTool } from "./SuggestionsTool";
 
-// Loaded when the popover first opens: it reads omp's settings and the model catalog.
+// Loaded when the popover first opens; the omp settings it previews are read as soon as the ring appears.
 const ChatCompaction = lazyView(() => import("../../features/compaction/ChatCompaction").then(m => m.ChatCompaction));
 
 /** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
@@ -27,6 +29,8 @@ function ContextTool({ session }: ChatSlotProps) {
 	const { t } = useTranslation("composer");
 	const view = useVisualSnapshot(session.subscribe, session.getSnapshot);
 	const usage = view.guest?.state?.contextUsage;
+	const shown = !!usage && usage.percent !== null;
+	useEffect(() => { if (shown) prefetchCompactionSettings(session.projectPath); }, [shown, session.projectPath]);
 	if (!usage || usage.percent === null) return null;
 	const percent = Math.round(usage.percent);
 	const zone = contextZone(usage.percent);

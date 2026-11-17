@@ -16,10 +16,15 @@ export interface SliderProps {
 	/** Bubble + aria-valuetext formatting, e.g. v => `${v}%`. */
 	formatValue?: (value: number) => string;
 	disabled?: boolean;
+	/** Tick marks under the track; a mark without a label draws only its tick. */
+	marks?: readonly { value: number; label?: string }[];
 	className?: string;
 }
 
-/** 4px track, 16px thumb (24px hit area); a mono value bubble floats above the thumb while dragging or keyboard-focused. */
+/**
+ * 4px track, 16px thumb (24px hit area); a mono value bubble floats above the thumb while dragging or keyboard-focused.
+ * Optional marks draw 4px ticks and 11px mono labels under the track.
+ */
 export function Slider({
 	value,
 	onValueChange,
@@ -29,6 +34,7 @@ export function Slider({
 	step = 1,
 	formatValue = String,
 	disabled,
+	marks,
 	className,
 	...aria
 }: SliderProps) {
@@ -45,7 +51,7 @@ export function Slider({
 	}, [dragging]);
 
 	const text = formatValue(value);
-	return (
+	const slider = (
 		<RS.Root
 			value={[value]}
 			min={min}
@@ -62,7 +68,7 @@ export function Slider({
 			className={cn(
 				"relative flex h-6 w-full touch-none select-none items-center",
 				disabledData,
-				className,
+				marks?.length ? undefined : className,
 			)}
 		>
 			<RS.Track className="relative h-1 grow overflow-hidden rounded-full bg-control">
@@ -90,5 +96,20 @@ export function Slider({
 				</span>
 			</RS.Thumb>
 		</RS.Root>
+	);
+	if (!marks?.length) return slider;
+	const position = (mark: number) => `${((mark - min) / (max - min || 1)) * 100}%`;
+	return (
+		<div className={className}>
+			{slider}
+			<div aria-hidden className="relative mx-2 h-6">
+				{marks.map(mark => (
+					<span key={mark.value} className="absolute top-0 flex -translate-x-1/2 flex-col items-center" style={{ left: position(mark.value) }}>
+						<span className="h-1 w-px bg-border-strong" />
+						{mark.label && <span className="mt-0.5 whitespace-nowrap font-mono text-xs text-fg-faint">{mark.label}</span>}
+					</span>
+				))}
+			</div>
+		</div>
 	);
 }

@@ -167,7 +167,14 @@
 			"off": "Automatic summaries are off in your omp settings.",
 			"unknown": "omp does not report a context window for this model.",
 			"scope": "This point belongs to this chat. visual-omp saves it with the chat and applies it whenever the chat runs here.",
-			"failed": "Couldn't save this chat's point"
+			"failed": "Couldn't save this chat's point",
+			"loading": "Reading your omp settings…",
+			"readFailed": "Couldn't read your omp settings, so the default point is unknown.",
+			"stale": "Couldn't refresh your omp settings, so this uses the last ones read.",
+			"retry": "Try again",
+			"save": "Save",
+			"reset": "Use default",
+			"discard": "Cancel"
 		}
 	},
 	"voice": {

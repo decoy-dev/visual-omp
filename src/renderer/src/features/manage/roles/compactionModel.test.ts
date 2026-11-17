@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInfo, SettingInfo } from "@shared/contracts/config";
-import { chatCompactionPreview, matchingCompactionEntry, parseCompactionInput, parseTokenPoint, planCompaction, type CompactionPolicy } from "./compactionModel";
+import { chatCompactionPreview, compactionTicks, matchingCompactionEntry, parseCompactionInput, parseTokenPoint, planCompaction, type CompactionPolicy } from "./compactionModel";
 
 const model: ModelInfo = { selector: "local/test", provider: "local", id: "test", name: "Test", kind: "chat", contextWindow: 200_000, contextWindowTiers: { standard: 200_000, extended: 1_000_000 }, maxOutputTokens: 10_000, reasoning: false, thinkingLevels: [], vision: false, cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, longContext: { inputThreshold: 200_000, input: 2, output: 4, cacheRead: 0, cacheWrite: 0 } } };
 const policy: CompactionPolicy = { enabled: true, extendedContext: false, thresholdPercent: -1, thresholdTokens: -1 };
@@ -89,5 +89,18 @@ describe("chat and global compaction points", () => {
 		// omp ignores model limits while they are switched off, so the chat's point applies.
 		expect(chatCompactionPreview(opus, settings({ "compaction.modelThresholds": { "anthropic/opus": "f300000" }, "compaction.modelThresholdsEnabled": false }), 400_000)).toMatchObject({ source: "chat", tokens: 400_000 });
 		expect(chatCompactionPreview(opus, settings({ "compaction.enabled": false }), 400_000)).toMatchObject({ enabled: false, tokens: null });
+	});
+});
+
+describe("compaction slider ticks", () => {
+	it("splits a window into equal parts of whole thousands that the slider's steps reach", () => {
+		expect(compactionTicks(1_000_000)).toEqual({ min: 100_000, max: 1_000_000, step: 25_000, ticks: [100_000, 200_000, 300_000, 400_000, 500_000, 600_000, 700_000, 800_000, 900_000, 1_000_000] });
+		expect(compactionTicks(128_000)).toEqual({ min: 16_000, max: 128_000, step: 4_000, ticks: [16_000, 32_000, 48_000, 64_000, 80_000, 96_000, 112_000, 128_000] });
+		// A window with no even split of whole thousands stops at the last whole-thousand quarter inside it.
+		expect(compactionTicks(131_072)).toEqual({ min: 32_000, max: 128_000, step: 8_000, ticks: [32_000, 64_000, 96_000, 128_000] });
+		for (const window of [1_000_000, 272_000, 200_000, 131_072, 400_000]) {
+			const { min, step, ticks } = compactionTicks(window);
+			for (const tick of ticks) expect(Number.isInteger((tick - min) / step)).toBe(true);
+		}
 	});
 });

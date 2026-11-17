@@ -49,6 +49,19 @@ export function parseTokenPoint(input: string): { ok: true; tokens: number | nul
 	return typeof entry === "number" ? { ok: true, tokens: entry } : { ok: false };
 }
 
+/**
+ * Slider ticks for a chat's compaction point on a `window`-token model: 10, 8, 5 or 4 equal parts, the first that
+ * gives a whole number of thousands (1M: every 100K; 128K: every 16K), else whole-thousand quarters that stop at
+ * the last tick inside the window. The slider runs from the first tick to the last in quarter ticks, so every
+ * tick can be chosen.
+ */
+export function compactionTicks(window: number): { min: number; max: number; step: number; ticks: number[] } {
+	const parts = [10, 8, 5, 4].find(count => window % count === 0 && (window / count) % 1_000 === 0);
+	const spacing = parts ? window / parts : Math.max(1_000, Math.floor(window / 4 / 1_000) * 1_000);
+	const ticks = Array.from({ length: parts ?? Math.max(1, Math.floor(window / spacing)) }, (_, index) => (index + 1) * spacing);
+	return { min: spacing, max: ticks.at(-1)!, step: spacing / 4, ticks };
+}
+
 /** omp's compaction policy from its effective settings. */
 export function compactionPolicy(byKey: ReadonlyMap<string, SettingInfo>): CompactionPolicy {
 	const number = (key: string, fallback: number) => typeof byKey.get(key)?.value === "number" ? byKey.get(key)!.value as number : fallback;
