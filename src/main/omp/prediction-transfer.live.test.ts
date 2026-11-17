@@ -11,7 +11,7 @@ vi.mock("../prefs", () => ({ getPrefs: () => ({ theme: "light", reducedMotion: "
 vi.mock("./locate", () => ({ ompPath: async () => isolated.bin }));
 vi.mock("./refused", () => ({ ompStartError: (error: unknown) => error }));
 vi.mock("./sessions", () => ({ findSessionFile: async () => null, onSessionsChanged: vi.fn() }));
-vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
+vi.mock("electron", () => ({ app: { getPath: () => "/nonexistent/visual-omp-live-test-profile" }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
 
 import { SessionHost } from "./host";
 import { nativeBridge } from "./native-bridge";

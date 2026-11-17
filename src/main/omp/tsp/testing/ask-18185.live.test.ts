@@ -21,7 +21,7 @@ vi.mock("../../locate", () => ({ ompPath: async () => isolated.bin }));
 vi.mock("../../refused", () => ({ ompStartError: (error: unknown) => error }));
 vi.mock("../../paths", () => ({ agentDir: () => isolated.agent, sessionsDir: () => join(isolated.agent, "sessions") }));
 vi.mock("../../sessions", () => ({ findSessionFile: async () => null, onSessionsChanged: vi.fn() }));
-vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 1 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
+vi.mock("electron", () => ({ app: { getPath: () => "/nonexistent/visual-omp-live-test-profile" }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 1 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
 
 import { SessionHost } from "../../host";
 import { GuestClient } from "../../../../renderer/src/collab/lib/client";

@@ -25,6 +25,7 @@ vi.mock("./locate", () => ({ ompPath: async () => isolated.bin }));
 vi.mock("./sessions", () => ({ findSessionFile: async () => null, onSessionsChanged: vi.fn() }));
 vi.mock("../../renderer/src/ui/toast", () => ({ toast: vi.fn() }));
 vi.mock("electron", () => ({
+	app: { getPath: () => "/nonexistent/visual-omp-live-test-profile" },
 	BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] },
 	dialog: { showMessageBox: vi.fn(async () => {
 		if (!isolated.cleanup) throw new Error("Unexpected native dialog in isolated live fixture");

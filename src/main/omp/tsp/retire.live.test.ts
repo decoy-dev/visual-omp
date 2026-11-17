@@ -21,7 +21,7 @@ vi.mock("../locate", () => ({ ompPath: async () => isolated.bin }));
 vi.mock("../refused", () => ({ ompStartError: (error: unknown) => error }));
 vi.mock("../paths", () => ({ agentDir: () => isolated.agent, sessionsDir: () => join(isolated.agent, "sessions") }));
 vi.mock("../sessions", () => ({ findSessionFile: async () => null, onSessionsChanged: vi.fn() }));
-vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
+vi.mock("electron", () => ({ app: { getPath: () => "/nonexistent/visual-omp-live-test-profile" }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: true }) } }));
 
 import { SessionHost } from "../host";
 import { GuestClient } from "../../../renderer/src/collab/lib/client";
@@ -190,7 +190,8 @@ describe.skipIf(!process.env.OMP_BIN || process.platform === "win32")("TSP paint
 			const review = planReview(current.tspSnapshot()!.surfaces)!;
 			expect(review.body).toContain("Cover the consumer-visible result.");
 			expect(ready()).toBe(false);
-			await send(planChoice(review, "refine"));
+			// omp 18.22.0 lists Refine only while its own review has annotations or deleted sections; the app's card closes the review with Cancel instead.
+			await send(review.options.some(option => option.action === "refine") ? planChoice(review, "refine") : { ev: "action", sf: review.sf, id: review.cancelId!, act: "cancel" });
 			await waitFor("plan refinement composer", () => !planReview(current.tspSnapshot()!.surfaces) && ready());
 			await current.submit("Refine the plan: include the empty state.");
 			await waitFor("refined plan answer", () => transcript("Fixture refined plan includes the empty state.") && !guest!.getSnapshot().working && ready());
