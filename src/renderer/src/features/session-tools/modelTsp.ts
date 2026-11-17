@@ -86,6 +86,13 @@ function sessionPicker(snapshot: TspHostSnapshot | null) {
 /** Cold omp hosts can publish their model selector long after the action write completes. */
 const MODEL_PICKER_READY_MS = 30_000;
 
+/**
+ * The picker's Task/Main toggle (`on` while it picks the Task subagents' model). omp 18.22.0 dropped the picker's
+ * declared Use and Close actions: Enter or a click picks the row and Esc closes it, and omp still handles `activate`
+ * and the `close` action as before, so neither declaration is required.
+ */
+const TASK_MODE_ACTION = "task";
+
 /** A missing picker route falls back to omp's documented session-only slash command. */
 export async function switchModelSemantic(session: SessionController, model: ModelInfo): Promise<boolean> {
 	const watch = new TspEditorWatch(session);
@@ -101,7 +108,6 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 		const picker = sessionPicker(watch.snapshot);
 		if (!picker) return;
 		closeAttempted = true;
-		if (!picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.close)) throw new OmpBusyError();
 		releaseDrive ??= screenActivity.hold(watch.snapshot!, "drive");
 		let closeError: unknown;
 		try { await send(watch, { ev: "action", sf: picker.sf, id: picker.node.id, act: TSP_ACTIONS.close }); }
@@ -152,7 +158,9 @@ export async function switchModelSemantic(session: SessionController, model: Mod
 				pickerSurfaceId = picker.sf;
 				const item = picker.node.p?.items?.find(item => item.id === `${model.provider}/${model.id}`);
 				if (item?.disabled) throw new Error(typeof item.disabled === "string" ? item.disabled : i18n.t("session:model.unavailable"));
-				if (item && !item.disabled && picker.node.p?.actions?.some(action => action.id === TSP_ACTIONS.use)) {
+				// Activating a row in Task mode would set the Task subagents' model instead of this chat's.
+				const taskMode = picker.node.p?.actions?.some(action => action.id === TASK_MODE_ACTION && action.on === true) ?? false;
+				if (item && !taskMode) {
 					usedPicker = true;
 					await send(watch, { ev: "activate", sf: picker.sf, id: picker.node.id, item: item.id });
 				} else {

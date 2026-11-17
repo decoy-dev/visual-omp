@@ -63,8 +63,10 @@ class Replay {
 	readView() {
 		return { mode: "live", readOnly: this.readOnly, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: this.transport }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, thinkingEvent: this.thinkingEvent, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
 	}
-	constructor(name: string) {
-		this.recording = loadFixtureRecording(name);
+	constructor(name: string, version?: string) {
+		this.recording = loadFixtureRecording(name, version);
+		// Later recordings log the terminal's device-attribute replies; they are not input this harness replays.
+		this.recording.inputs = this.recording.inputs.filter(input => !("keys" in input && /^\x1b\[\?[\d;]*c$/.test(input.keys)));
 		this.advance();
 		bridge.invoke.mockImplementation(async (channel: string, _host: string, generation: number, event: TspRendererEvent, epoch: number) => {
 			if (channel === "host:tsp-snapshot") return this.snapshot();
@@ -538,6 +540,45 @@ describe("TSP composer model controls", () => {
 		expect(replay.events).toEqual([{ ev: "action", sf: "s:1", id: "g.bar/model", act: "status.model" }, { ev: "action", sf: "s:1", id: "j", act: "close" }]);
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "Fixture model disabled" });
 		expect(screenActivity.has(replay.snapshot(), "drive")).toBe(false);
+	});
+
+	// omp 18.22.0's switcher rises from the composer and declares only its Task/Main toggle: no Use or Close action.
+	it("picks the exact row in omp 18.22.0's model switcher, which declares no Use action", async () => {
+		const replay = new Replay("model-switch", "18.22.0");
+		const picker = () => replay.snapshot().surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.k === "picker" && node.p?.noun === "models");
+		const command = vi.spyOn(replay.session, "command");
+		const switching = switchModel(replay.session, small);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(replay.events).toEqual([
+			{ ev: "action", sf: "s:1", id: "h.bar/model", act: "status.model" },
+			{ ev: "activate", sf: "s:1", id: "k", item: small.selector },
+		]);
+		await expect(settle(switching)).resolves.toBe(true);
+		expect(command).not.toHaveBeenCalled();
+		expect(picker()).toBeUndefined();
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	type PickerProps = NonNullable<Extract<TspNode, { k: "picker" }>["p"]>;
+	it.each([
+		["the exact row is missing", (p: PickerProps): PickerProps => ({ ...p, items: p.items?.filter(item => item.id !== small.selector) })],
+		["it picks the Task model", (p: PickerProps): PickerProps => ({ ...p, actions: p.actions?.map(action => action.id === "task" ? { ...action, on: true } : action) })],
+	])("closes omp 18.22.0's model switcher without a declared Close action when %s, then switches by command", async (_case, change) => {
+		const replay = new Replay("model-switch", "18.22.0");
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) if (node.k === "picker" && node.p) node.p = change(node.p);
+		};
+		const activation = replay.recording.inputs[1]!;
+		if (!("verb" in activation)) throw new Error("Expected semantic activation fixture input");
+		activation.body = { ev: "action", sf: "s:1", id: "k", act: "close" };
+		replay.recording.inputs.splice(2, 0, { verb: "e", body: { ev: "send", sf: "s:1", id: "h.line/input", text: `/switch ${small.selector}` }, afterMessage: replay.recording.inputs[2]!.afterMessage });
+		await expect(settle(switchModel(replay.session, small))).resolves.toBe(true);
+		expect(replay.events).toEqual([
+			{ ev: "action", sf: "s:1", id: "h.bar/model", act: "status.model" },
+			{ ev: "action", sf: "s:1", id: "k", act: "close" },
+			{ ev: "send", sf: "s:1", id: "h.line/input", text: `/switch ${small.selector}` },
+		]);
+		expect(bridge.toast).not.toHaveBeenCalled();
 	});
 
 	it("does not write when the thinking action declaration is missing", async () => {

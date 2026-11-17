@@ -36,10 +36,11 @@ export function parseFixtureInputs(text: string): FixtureInput[] {
 		return [{ verb: "e", body: TspRendererEvent.parse(record.body), afterMessage: record.afterMessage }];
 	});
 }
-export function loadFixtureRecording(name: string): FixtureRecording {
+/** A recording from the pinned baseline, or from a later comparison folder such as `18.22.0`. */
+export function loadFixtureRecording(name: string, version: string = FIXTURE_VERSION): FixtureRecording {
 	const source = (kind: "messages" | "events"): string => {
-		const entry = Object.entries(recordings).find(([path]) => path.endsWith(`/${FIXTURE_VERSION}/${name}.${kind}.jsonl`));
-		if (!entry) throw new Error(`Missing omp ${FIXTURE_VERSION} ${name}.${kind}.jsonl recording`);
+		const entry = Object.entries(recordings).find(([path]) => path.endsWith(`/${version}/${name}.${kind}.jsonl`));
+		if (!entry) throw new Error(`Missing omp ${version} ${name}.${kind}.jsonl recording`);
 		return entry[1];
 	};
 	const text = source("messages").trim();

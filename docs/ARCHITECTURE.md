@@ -642,9 +642,12 @@ optional summary question, whitespace and Unicode draft restoration, clear and c
 The TSP composer model menu retains the shared provider, family and version tree. Selecting a
 version opens omp's session-only picker with `status.model`, then activates the exact
 `provider/model` item. Success requires both the addressed picker to close and collab to report
-that provider and model id. If the composer has no model action, or the picker lacks the exact
-item, the app uses semantic `/switch <selector>` after safely closing its own picker. Disabled
-items are refused. Ordinary confirmation waits eight seconds. A live `omp.working` row containing
+that provider and model id. If the composer has no model action, the picker lacks the exact
+item, or its Task/Main toggle (`task`) is on, the app uses semantic `/switch <selector>` after
+safely closing its own picker. Disabled items are refused. omp 18.22.0's switcher opens above the
+composer and declares only the `task` toggle, without the earlier `use` and `close` actions; omp
+still handles `activate` and the `close` action, so the driver no longer requires either
+declaration. Ordinary confirmation waits eight seconds. A live `omp.working` row containing
 a progress node holds the operation until compaction ends, reports an error or loses its host,
 room or epoch scope, regardless of duration. After compaction ends, collab has a bounded
 eight-second confirmation interval. New semantic error rows end the wait.
@@ -655,7 +658,7 @@ readiness wait immediately. The bound applies before activation, not to ordinary
 The driver owns only model pickers opened after its composer action in the same host, room and
 epoch. After typed fallback confirms, it keeps its drive lease for a one-second late-picker grace,
 or until that picker is closed. Before an unbounded compaction watch, the same bounded grace
-finishes first. A picker still present at confirmation is closed through its declared action;
+finishes first. A picker still present at confirmation is closed through the `close` action;
 removal has a 2.5-second bound and a failed close leaves the native screen reachable. Pre-existing
 user pickers are never activated or closed. Error exits also clean up an owned picker when its scope
 remains valid, without retrying a refused or ineffective close.
