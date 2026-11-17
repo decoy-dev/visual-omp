@@ -23,7 +23,10 @@ function vocabulary(content: string) {
 				if (props && "layout" in props && typeof props.layout === "string") layouts.add(`${node.k}:${props.layout}`);
 				if (node.p?.role) roles.add(node.p.role);
 				const declared = node.p?.actions;
-				for (const action of Array.isArray(declared) ? declared.map(action => action.id) : [declared?.click, declared?.dblclick, ...(declared?.menu ?? [])]) if (action) actions.add(action);
+				// omp 18.21.0 menus can list `{ id, label }` entries and "-" separators beside action ids.
+				const menu = ((declared && !Array.isArray(declared) ? declared.menu : undefined) ?? []) as unknown[];
+				const menuIds = menu.map(entry => typeof entry === "string" ? entry : (entry as { id?: unknown } | null)?.id).filter((id): id is string => typeof id === "string" && id !== "-");
+				for (const action of Array.isArray(declared) ? declared.map(action => action.id) : [declared?.click, declared?.dblclick, ...menuIds]) if (action) actions.add(action);
 				if (node.k === "prefs") for (const section of node.p?.sections ?? []) for (const row of section.rows) if (row.control.k === "action") actions.add(row.control.act);
 			}
 		}

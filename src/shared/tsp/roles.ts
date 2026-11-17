@@ -63,7 +63,8 @@ export function isAskFormAction(action: string): boolean {
 }
 export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
+// The BTW note controls (omp 18.21.0) stay omp's own: the app opens the side-question history with `/btw` instead.
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",
@@ -238,6 +239,8 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.compaction.caption",
 	"omp.overlay.cleanse", "omp.sheet.head", "omp.cleanse.live",
 	"omp.hud.pill", "omp.hud.seg", "omp.run.facts",
+	// omp 18.21.0's side-answer note in the transcript; the BTW driver reads its question and opens the history.
+	"omp.btw.note.head", "omp.btw.note.status", "omp.btw.note.tag", "omp.btw.note.tool", "omp.btw.note.tools", "omp.btw.note.turn",
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",
 ]);
 export function isKnownRole(role?: string): boolean {
