@@ -61,6 +61,73 @@ export function planReview(surfaces: TspSurfaces): TspPlanReview | null {
 	}
 	return null;
 }
+
+/** omp's "Save plan" prompt: one path field, an optional default name, Cancel and Save. */
+export interface TspPlanSave {
+	sf: string;
+	id: string;
+	inputId: string;
+	text: string;
+	/** The file omp writes when the path is left empty ("Empty saves to …"). */
+	defaultPath: string | null;
+	saveId: string;
+	cancelId: string;
+}
+/** The "Empty saves to <path>" line under omp's path field; null for any other text. */
+function defaultSaveName(node: TspNode): string | null {
+	if (node.k !== "text" || !Array.isArray(node.p?.spans)) return null;
+	const paths = node.p.spans.filter(span => span.s === "path");
+	const rest = node.p.spans.filter(span => span.s !== "path").map(span => span.t).join("").trim();
+	return paths.length === 1 && rest === "Empty saves to" && paths[0]!.t ? paths[0]!.t : null;
+}
+/**
+ * Projects only the recorded shape: layout (`col`, `row`, `spacer`), one editable path input, at most one
+ * "Empty saves to" line, and enabled Cancel and Save buttons. Anything else stays in the omp screen.
+ */
+export function projectPlanSave(node: TspNode, sf: string): TspPlanSave | null {
+	if (node.k !== "overlay" || node.p?.role !== TSP_ROLES.planSave || node.p.hidden || node.p.actions) return null;
+	let input: Extract<TspNode, { k: "input" }> | null = null;
+	let defaultPath: string | null = null;
+	let save: TspNode | null = null;
+	let cancel: TspNode | null = null;
+	for (const child of [...walkNodes(node)].slice(1)) {
+		if (child.k === "button") {
+			const click = child.p?.actions?.click;
+			if (child.p?.disabled || child.p?.busy) return null;
+			if (click === TSP_ACTIONS.save && !save) save = child;
+			else if (click === TSP_ACTIONS.cancel && !cancel) cancel = child;
+			else return null;
+			continue;
+		}
+		if (child.p && "actions" in child.p && child.p.actions) return null;
+		if (child.k === "input") {
+			if (input || child.p?.readonly || child.p?.typeahead) return null;
+			input = child;
+		} else if (child.k === "text") {
+			if (defaultPath !== null) return null;
+			defaultPath = defaultSaveName(child);
+			if (defaultPath === null) return null;
+		} else if (child.k !== "col" && child.k !== "row" && child.k !== "spacer") return null;
+	}
+	if (!input || !save || !cancel) return null;
+	return { sf, id: node.id, inputId: input.id, text: input.p?.text ?? "", defaultPath, saveId: save.id, cancelId: cancel.id };
+}
+/**
+ * omp 18.22.0's Save keeps its review open under the "Save plan" prompt. The card keeps presenting that review
+ * and answers the prompt itself.
+ */
+export function planSavePrompt(surfaces: TspSurfaces): { review: TspPlanReview; save: TspPlanSave } | null {
+	for (const surface of [...liveSurfaces(surfaces)].reverse()) {
+		const layers = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast");
+		const top = layers.at(-1);
+		if (!top) continue;
+		const save = projectPlanSave(top, surface.open.id);
+		const below = layers.at(-2);
+		const review = save && below ? projectPlanReview(below, surface.open.id) : null;
+		return save && review ? { review, save } : null;
+	}
+	return null;
+}
 export function planChoice(review: TspPlanReview, action: PlanAction): TspRendererEvent {
 	const option = review.options.find(option => option.action === action);
 	if (!review.optionsId || review.committed || !option || option.disabled) throw new Error("omp did not offer that plan choice.");

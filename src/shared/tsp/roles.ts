@@ -1,6 +1,6 @@
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
-import { projectPlanReview } from "./plan-review";
+import { projectPlanReview, projectPlanSave } from "./plan-review";
 import { advisorScope } from "./advisor";
 import { commandReport } from "./reports";
 import { settledCommandPanel } from "./command-panels";
@@ -179,6 +179,7 @@ export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolea
 	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
 	if (node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython) return isUserRunNode(node);
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
+	if (node.p?.role === TSP_ROLES.planSave) return projectPlanSave(node, "") !== null;
 	if (node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden) return askFormPresentation(node) !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;

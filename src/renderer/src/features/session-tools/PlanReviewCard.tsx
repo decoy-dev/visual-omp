@@ -5,7 +5,7 @@
 import { CaretDown, Check, ClipboardText } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Card, Chip, cn, Expand, FadeIn, Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, Rise, Segmented, toast } from "@/ui";
+import { Button, Card, Chip, cn, Expand, FadeIn, Input, Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, Rise, Segmented, toast } from "@/ui";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { ChatSlotProps } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
@@ -20,7 +20,7 @@ import { useTspPlanReview } from "./planReviewTsp";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 
-import type { PlanAction } from "@shared/tsp/plan-review";
+import type { PlanAction, TspPlanSave } from "@shared/tsp/plan-review";
 import { planOptionAction, TSP_PLAN_OPTIONS } from "@shared/tsp/roles";
 
 /** omp disables "keep context" above this context use (`PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT`). */
@@ -61,6 +61,48 @@ async function slideTo(session: SessionController, from: number, index: number):
 	void screenPoller(session).refresh();
 }
 
+/**
+ * omp 18.22.0's "Save plan" prompt, answered inside the card: a file name (empty keeps omp's suggested name),
+ * Cancel and Save copy. The review stays open beneath it.
+ */
+function SavePlanForm({ prompt, disabled, answer }: { prompt: TspPlanSave; disabled: boolean; answer(choice: { path: string } | "cancel"): Promise<void> }) {
+	const { t } = useTranslation("session");
+	const [path, setPath] = useState(prompt.text);
+	const [busy, setBusy] = useState<"save" | "cancel" | null>(null);
+	const run = async (kind: "save" | "cancel") => {
+		if (busy || disabled) return;
+		setBusy(kind);
+		try { await answer(kind === "cancel" ? "cancel" : { path }); }
+		catch (error) { reportFailure(error); }
+		finally { setBusy(null); }
+	};
+	return (
+		<form
+			className="mt-4 border-t border-border px-4 py-3"
+			aria-label={t("plan.saveCopy.title")}
+			onSubmit={event => { event.preventDefault(); void run("save"); }}
+			onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); void run("cancel"); } }}
+		>
+			<p className="text-sm font-medium text-fg">{t("plan.saveCopy.title")}</p>
+			<p className="mt-1 text-sm text-fg-muted">{prompt.defaultPath ? t("plan.saveCopy.help", { name: prompt.defaultPath }) : t("plan.saveCopy.helpNoDefault")}</p>
+			<div className="mt-3 flex flex-wrap items-end gap-2">
+				<Input
+					className="min-w-0 flex-1"
+					label={t("plan.saveCopy.label")}
+					placeholder={prompt.defaultPath ?? ""}
+					spellCheck={false}
+					autoFocus
+					value={path}
+					disabled={disabled || busy !== null}
+					onChange={event => setPath(event.currentTarget.value)}
+				/>
+				<Button variant="ghost" disabled={disabled || busy !== null} loading={busy === "cancel"} onClick={() => void run("cancel")}>{t("plan.saveCopy.cancel")}</Button>
+				<Button type="submit" variant="primary" disabled={disabled || busy !== null} loading={busy === "save"}>{t("plan.saveCopy.save")}</Button>
+			</div>
+		</form>
+	);
+}
+
 export function PlanReviewCard({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const view = useSessionView(session);
@@ -81,6 +123,10 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
 	usePresentationClaim(semantic && tsp.review && tsp.snapshot ? {
 		hostId: tsp.snapshot.hostId, epoch: tsp.snapshot.epoch, surfaceId: tsp.review.sf, nodeId: tsp.review.id,
+	} : null, !covered, true);
+	const savePrompt = semantic ? tsp.savePrompt : null;
+	usePresentationClaim(savePrompt && tsp.snapshot ? {
+		hostId: tsp.snapshot.hostId, epoch: tsp.snapshot.epoch, surfaceId: savePrompt.sf, nodeId: savePrompt.id,
 	} : null, !covered, true);
 
 	useEffect(() => {
@@ -112,7 +158,8 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	}
 	if (!review) return null;
 	const planText = semantic ? tsp.review?.body ?? null : plan;
-	const unavailable = semantic && (tsp.disabled || tsp.review?.committed === true);
+	// While omp's Save prompt is open, only the prompt answers; the review's own choices wait.
+	const unavailable = semantic && (tsp.disabled || tsp.review?.committed === true || savePrompt !== null);
 	const listed = (action: PlanAction) => semantic ? tsp.review?.options.some(option => option.action === action && !option.disabled) === true
 		: review.options.some(option => planOptionAction(option.label) === action);
 	// omp 18.22.0 lists Refine only while its own review has annotations or deleted sections; closing the review stands in for it.
@@ -219,6 +266,9 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 						</div>
 					)}
 				</Expand>
+				{savePrompt ? (
+					<SavePlanForm key={savePrompt.id} prompt={savePrompt} disabled={tsp.disabled} answer={choice => tsp.answerSave(savePrompt, choice)} />
+				) : (
 				<div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
 					<Button variant="primary" disabled={semantic && (!!busy || unavailable || !offered("execute"))} loading={busy === "execute"} onClick={() => void act("execute")}>
 						{t("plan.actions.execute")}
@@ -261,6 +311,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 						{t(`plan.actions.${saveAction}`)}
 					</Button>
 				</div>
+				)}
 			</Card>
 		</Rise>
 	);

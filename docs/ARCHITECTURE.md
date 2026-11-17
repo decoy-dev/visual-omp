@@ -768,8 +768,15 @@ the enabled option after an awaited permission change. Completion tracks physica
 covered or temporarily unsupported reviews keep waiting, while scope or lifecycle invalidation
 cancels the operation without a success message, comment focus or extension plan exit.
 omp 18.22.0 changed the review's options. Save and quit became Save (`saveCopy`), which asks omp's
-"Save plan" prompt for a file name and keeps the review open; the card offers Save plan as…, ends
-its wait once that prompt covers the review, and opens the omp screen on it. Refine is listed only
+"Save plan" prompt for a file name and keeps the review open; the card offers Save plan as… and ends
+its wait once a prompt covers the review. `planSavePrompt` projects only the recorded prompt: layout
+nodes, one editable path input, at most one "Empty saves to" line, and enabled Cancel and Save buttons,
+sitting directly over a projectable review. The card then keeps presenting the review and claims the
+prompt, which keeps the omp screen from opening on it. Any other covering prompt is left unclaimed, and
+the card opens the omp screen on it as Save and stop does. The card's form reads the prompt again before
+each write: it sends an `edit` of the path when one was typed, waits up to two seconds for omp to show
+that path in the same prompt, and only then sends Save; Cancel sends the prompt's Cancel. It finishes
+once the prompt node leaves. Refine is listed only
 while omp's own review has annotations or deleted sections. Without it, the card's Refine with a
 comment sends Cancel, which closes the review and keeps plan mode as a Refine without feedback did
 before, then restores the comment draft. Under Tern omp draws the review as an editable, commentable

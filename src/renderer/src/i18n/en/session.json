@@ -180,6 +180,7 @@
     "exitDescription": "This leaves plan mode without approving the current plan.",
     "exitConfirm": "Leave plan mode",
     "actions": { "execute": "Approve and run", "compact": "Approve and compact first", "more": "More options", "refine": "Refine with a comment", "keep": "Approve and keep context", "auto": "Switch to Auto and run", "discard": "Discard plan", "save": "Save and stop", "saveCopy": "Save plan as…" },
+    "saveCopy": { "title": "Save a copy of this plan", "label": "File name", "help": "omp writes the plan to this file and keeps the review open. Leave it empty to use {{name}}.", "helpNoDefault": "omp writes the plan to this file and keeps the review open.", "cancel": "Cancel", "save": "Save copy" },
     "done": { "execute": "Plan approved. omp is starting the work.", "compact": "Plan approved. omp is compacting the chat first.", "keep": "Plan approved with the full chat context.", "refine": "Write your comment in the composer, then send it.", "save": "Plan saved. omp has stopped this chat." }
   },
   "tree": {

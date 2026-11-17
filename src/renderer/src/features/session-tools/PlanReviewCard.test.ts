@@ -2,7 +2,7 @@
 import { act, createElement, useSyncExternalStore, type PropsWithChildren, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type MockInstance } from "vitest";
-import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { TspHostSnapshot, TspRendererEvent as RendererEvent } from "@shared/tsp-host";
 import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { planReview } from "@shared/tsp/plan-review";
@@ -196,6 +196,104 @@ it("cancels the recorded overlay before leaving plan mode through the extension"
 	await act(async () => update(withoutReview()));
 	expect(mocks.exit).toHaveBeenCalledWith(controller);
 });
+/** The current snapshot, one revision later, with `edit` applied to its layer region. */
+function changed(edit: (layer: TspNode) => void, change: Partial<TspHostSnapshot> = {}): TspHostSnapshot {
+	const next: TspHostSnapshot = { ...structuredClone(snapshot), ...change, revision: snapshot.revision + 1 };
+	edit(next.surfaces[0]!.document.c!.find(node => node.id === "layer")!);
+	return next;
+}
+function savePrompt(id = "save", extra: TspNode[] = []): TspNode {
+	return { id, k: "overlay", p: { role: TSP_ROLES.planSave, head: "Save plan", modal: true }, c: [{ id: `${id}.body`, k: "col", c: [
+		{ id: "save.path", k: "input", p: { text: "", cursor: 0, prompt: "Path: " } },
+		{ id: "save.default", k: "text", p: { spans: [{ t: "Empty saves to ", s: "dim" }, { t: "FIXTURE_PLAN.md", s: "path" }] } },
+		{ id: "save.actions", k: "row", c: [
+			{ id: "save.cancel", k: "button", p: { text: "Cancel", actions: { click: "cancel" } } },
+			{ id: "save.save", k: "button", p: { text: "Save", actions: { click: "save" } } },
+			...extra,
+		] },
+	] }] };
+}
+const withSavePrompt = (prompt = savePrompt()) => changed(layer => { layer.c = [...(layer.c ?? []), prompt]; });
+const withoutSavePrompt = () => changed(layer => { layer.c = layer.c?.filter(node => node.p?.role !== TSP_ROLES.planSave); });
+const withPath = (text: string) => changed(layer => {
+	for (const node of walkNodes(layer)) if (node.id === "save.path" && node.k === "input") node.p = { ...node.p, text, cursor: text.length };
+});
+const sentEvents = () => invoke.mock.calls.filter(call => call[0] === "host:tsp-event").map(call => call[3]);
+async function typePath(text: string) {
+	const input = element.querySelector<HTMLInputElement>('form[aria-label="Save a copy of this plan"] input')!;
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+}
+/** omp's reply to the card's edit: `reply(text)` returns the snapshot omp shows next, or null for none. */
+function ompEdits(reply: (text: string) => TspHostSnapshot | null) {
+	invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+		if (channel === "host:tsp-snapshot") return snapshot;
+		const event = args[2] as RendererEvent;
+		if (channel === "host:tsp-event" && event.ev === "edit") queueMicrotask(() => { const next = reply(event.text); if (next) update(next); });
+		return undefined;
+	});
+}
+async function saveCopy() {
+	await act(async () => { [...element.querySelectorAll("button")].find(button => button.textContent === "Save copy")!.click(); });
+}
+it("answers omp's Save plan prompt in the card with a typed file name once omp shows it, or cancels it", async () => {
+	await render();
+	const sf = planReview(snapshot.surfaces)!.sf;
+	await act(async () => update(withSavePrompt()));
+	expect(element.querySelector<HTMLInputElement>('form[aria-label="Save a copy of this plan"] input')!.placeholder).toBe("FIXTURE_PLAN.md");
+	expect(element.textContent).toContain("Leave it empty to use FIXTURE_PLAN.md.");
+	await typePath("docs/plan.md");
+	ompEdits(text => withPath(text));
+	await saveCopy();
+	await vi.waitFor(() => expect(sentEvents()).toHaveLength(2));
+	expect(sentEvents()).toEqual([
+		{ ev: "edit", sf, id: "save.path", from: 0, to: 0, text: "docs/plan.md", cursor: 12, len: 0 },
+		{ ev: "action", sf, id: "save.save", act: "save" },
+	]);
+	await act(async () => update(withoutSavePrompt()));
+	expect(element.querySelector('form[aria-label="Save a copy of this plan"]')).toBeNull();
+	await act(async () => update(withSavePrompt()));
+	invoke.mockClear();
+	await click("Cancel");
+	expect(sentEvents()).toEqual([{ ev: "action", sf, id: "save.cancel", act: "cancel" }]);
+	await act(async () => update(withoutSavePrompt()));
+	expect(element.textContent).toContain("Approve and run");
+});
+it.each([
+	["omp replaces the prompt", () => changed(layer => { layer.c = [...layer.c!.filter(node => node.p?.role !== TSP_ROLES.planSave), savePrompt("save-2")]; })],
+	["the chat's TSP epoch changes", () => ({ ...withPath("docs/plan.md"), epoch: snapshot.epoch + 1 })],
+	["omp shows a different path", () => withPath("elsewhere.md")],
+] as const)("does not send Save after the edit when %s", async (_case, reply) => {
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+	try {
+		await render();
+		await act(async () => update(withSavePrompt()));
+		await typePath("docs/plan.md");
+		ompEdits(() => reply());
+		const scope = snapshot;
+		await saveCopy();
+		await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
+		expect(sentEvents().map(event => (event as RendererEvent).ev)).toEqual(["edit"]);
+		// The answer has finished and let go of the omp screen.
+		expect(screenActivity.has(scope, "drive")).toBe(false);
+	} finally { vi.useRealTimers(); }
+});
+it("hands an unfamiliar Save prompt to the omp screen", async () => {
+	useApp.setState({ view: "chat", activeTabId: "plan-test", splitTabId: null, sheet: null });
+	await act(async () => update(changed(layer => {
+		for (const node of walkNodes(layer)) if (node.k === "item" && typeof node.p?.label === "string" && node.p.label.startsWith("Save and quit")) node.p = { ...node.p, label: "Save" };
+	})));
+	await render();
+	await click("Save plan as…");
+	expect(screenActivity.has(snapshot, "drive")).toBe(true);
+	const browse = { id: "save.browse", k: "button", p: { text: "Browse", actions: { click: "browse" } } } satisfies TspNode;
+	await act(async () => update(withSavePrompt(savePrompt("save", [browse]))));
+	expect(screenActivity.has(snapshot, "drive")).toBe(false);
+	expect(requestOnce).toHaveBeenCalledOnce();
+	expect(element.querySelector('form[aria-label="Save a copy of this plan"]')).toBeNull();
+});
 it("selects a continuation tier by id and disables decisions on read-only or stale documents", async () => {
 	await render();
 	await click("smol"); const review = planReview(snapshot.surfaces)!;
@@ -265,19 +363,25 @@ it.each([
 	else expect(mocks.exit).not.toHaveBeenCalled();
 });
 
-it("saves through omp 18.22.0's Save, answers its file prompt in the omp screen and returns to the open review", async () => {
+it("saves through omp 18.22.0's Save, answers its file prompt in the card and returns to the open review", async () => {
 	const replay = workflowRecording("plan-review-save", "18.22.0");
 	await act(async () => root.render(createElement(Workflow)));
 	expect(element.textContent).not.toContain("Save and stop");
 	await click("Save plan as…");
 	expect(replay.count()).toBe(1);
-	// omp's "Save plan" prompt covers the review, so the card's wait ends and the omp screen shows the prompt.
+	// omp's "Save plan" prompt covers the review; the card keeps the review and asks for the file name itself.
 	expect(planReview(snapshot.surfaces)).toBeNull();
-	const save = [...element.querySelectorAll<HTMLButtonElement>(".tsp-screen button")].find(button => button.textContent?.startsWith("Save"));
-	expect(save).toBeTruthy();
-	await act(async () => save!.click());
+	const form = element.querySelector<HTMLFormElement>('form[aria-label="Save a copy of this plan"]');
+	expect(form).not.toBeNull();
+	expect(form!.querySelector("input")!.placeholder).toBe("FIXTURE_WORK_COMPLETED_PLAN.md");
+	// The card claims the prompt, so the omp screen does not open on it.
+	expect(element.querySelector(".tsp-screen")?.textContent ?? "").not.toContain("Empty saves to");
+	// The review's own choices wait while the prompt is open.
+	expect([...element.querySelectorAll("button")].find(button => button.textContent === "Approve and run")).toBeUndefined();
+	await click("Save copy");
 	expect(replay.count()).toBe(2);
 	expect(planReview(snapshot.surfaces)).not.toBeNull();
+	expect(element.querySelector('form[aria-label="Save a copy of this plan"]')).toBeNull();
 	expect(element.textContent).toContain("Save plan as…");
 	await menu(); await click("Discard plan");
 	replay.finish();

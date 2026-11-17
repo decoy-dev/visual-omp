@@ -805,9 +805,12 @@ Shown at the end of the transcript while a plan waits for a decision.
 
 In TSP chats, this card uses omp's live plan document and option ids. The card
 disables decisions while omp applies a committed choice. See all options in the Plan pane opens
-the omp screen with the complete review. Save and stop, and Save plan as…, open omp's file-name
-prompt there; the app does not report a saved plan before that confirmation. After Save plan as…
-the card returns with the review.
+the omp screen with the complete review. Save and stop opens omp's file-name prompt there; the app
+does not report a saved plan before that confirmation. Save plan as… keeps the card and replaces its
+footer with "Save a copy of this plan": a File name field (placeholder: omp's suggested name), the help
+"omp writes the plan to this file and keeps the review open. Leave it empty to use {name}.", and
+[Cancel] and primary [Save copy]. Escape cancels. The review's own choices wait until the prompt
+closes, then the footer returns. Prompts with more than the recorded field and two buttons stay in the omp screen.
 
 ### 4.10 Command palette (⌘K)
 

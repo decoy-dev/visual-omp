@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import { isClaimable, isClaimed, TSP_PLAN_OPTIONS, TSP_ROLES } from "./roles";
-import { planChoice, planReview, projectPlanReview } from "./plan-review";
+import { planChoice, planReview, planSavePrompt, projectPlanReview } from "./plan-review";
 import { openOverlay, unclaimed } from "./view-state";
 
 /** Synthetic document follows v18.15.0 PlanReviewOverlay.describe, including keyed item ids. */
@@ -73,5 +73,35 @@ describe("TSP plan review projection", () => {
 		const other = syntheticPlanReview();
 		other.c = [...other.c!, { id: "new-action", k: "button", p: { text: "New action", actions: { click: "save" } } }];
 		expect(projectPlanReview(other, "s:1")).toBeNull();
+	});
+});
+
+/** Synthetic document follows the omp 18.22.0 Save plan prompt recorded in fixtures/18.22.0/plan-review-save. */
+function syntheticSavePrompt(): Extract<TspNode, { k: "overlay" }> {
+	return { id: "save", k: "overlay", p: { role: TSP_ROLES.planSave, head: "Save plan", modal: true }, c: [
+		{ id: "path", k: "input", p: { text: "", prompt: "Path: ", sendable: false } },
+		{ id: "hint", k: "text", p: { spans: [{ t: "Empty saves to " }, { t: "PLAN.md", s: "path" }] } },
+		{ id: "save/cancel", k: "button", p: { text: "Cancel", actions: { click: "cancel" } } },
+		{ id: "save/save", k: "button", p: { text: "Save", actions: { click: "save" } } },
+	] };
+}
+function saveSurface(...nodes: TspNode[]): TspSurfaceSnapshot {
+	const surface = planSurface();
+	return { ...surface, document: { id: "root", k: "col", c: [{ id: "layer", k: "col", c: nodes }] } };
+}
+describe("TSP plan save prompt projection", () => {
+	it("pairs omp's Save plan prompt with the review directly below it and claims it", () => {
+		const prompt = planSavePrompt([saveSurface(syntheticPlanReview(), syntheticSavePrompt())])!;
+		expect(prompt.review.title).toBe("A precise implementation plan");
+		expect(prompt.save).toEqual({ sf: "s:1", id: "save", inputId: "path", text: "", defaultPath: "PLAN.md", saveId: "save/save", cancelId: "save/cancel" });
+		expect(planReview([saveSurface(syntheticPlanReview(), syntheticSavePrompt())])).toBeNull();
+		expect(isClaimable(syntheticSavePrompt())).toBe(true);
+	});
+	it("leaves other prompt shapes and prompts without a review below to the omp screen", () => {
+		expect(planSavePrompt([saveSurface(syntheticSavePrompt())])).toBeNull();
+		const extra = syntheticSavePrompt();
+		extra.c = [...extra.c!, { id: "save/browse", k: "button", p: { text: "Browse", actions: { click: "browse" } } }];
+		expect(planSavePrompt([saveSurface(syntheticPlanReview(), extra)])).toBeNull();
+		expect(isClaimable(extra)).toBe(false);
 	});
 });

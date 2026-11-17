@@ -28,7 +28,7 @@ export default {
         "fixture notes",
         "This chat checks the plan card with omp 18.22.0's plan review.",
         "Send /plan fixture plan-review. omp enters plan mode, and the local fixture model writes a short plan and submits it. The plan card offers Approve and run, Approve and compact first, More options and Save plan as….",
-        "Choose Save plan as…. The omp screen opens on omp's Save plan prompt; save the plan. The card comes back with the same review.",
+        "Choose Save plan as…. The card's footer turns into Save a copy of this plan, with omp's suggested file name as the placeholder. Type a name such as notes/plan.md and choose Save copy; the footer returns with the same review. Try Cancel and Escape too.",
         "Choose More options, then Refine with a comment, type a comment and send it. The review closes, plan mode stays on and the comment goes to omp.",
         "Send fixture plan-review to get a new review, then choose Approve and run. The card gives way to a status line and the local model replies once.",
       ].join("\n")],
