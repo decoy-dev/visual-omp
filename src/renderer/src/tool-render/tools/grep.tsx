@@ -119,6 +119,8 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			if (typeof p === "string") missing.push(shortenPath(p));
 		}
 	}
+	// omp 18.20 and later skip binary files whose content matches unless one is named as the path.
+	const binary = details && Array.isArray(details.binaryMatches) ? details.binaryMatches.filter(path => typeof path === "string").length : 0;
 	const badges = argBadges(args);
 	if (matchCount !== null && !noMatches) badges.push(`${matchCount} ${matchCount === 1 ? "match" : "matches"}`);
 	if (fileCount !== null && !noMatches && !singleFileScope) badges.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`);
@@ -136,6 +138,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				)}
 			</div>
 			{missing.length > 0 && <Note tone="warn">skipped missing: {missing.join(", ")}</Note>}
+			{binary > 0 && <Note tone="warn">binary matches: {binary} {binary === 1 ? "file" : "files"}</Note>}
 			{error !== null && !text.trim() && <Note tone="err">{error}</Note>}
 			{!noMatches && <ResultText result={result} maxLines={14} variant="code" />}
 		</>

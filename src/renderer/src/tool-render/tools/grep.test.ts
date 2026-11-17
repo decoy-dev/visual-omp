@@ -131,6 +131,14 @@ describe("grep count presentation", () => {
 		expect(shown.textContent).toContain("skipped missing: missing/");
 	});
 
+	it("warns about matching binary files omp skipped, even when no text matched", () => {
+		// The card hides omp's text when nothing matched, so this note is the only sign of those files.
+		const shown = view({ args: { pattern: "needle", path: "." }, result: result({ matchCount: 0, fileCount: 0, binaryMatches: ["a.bin", "b.png"] }, "No matches found") });
+		expect(badges(shown)).toEqual(["0 matches"]);
+		expect(shown.textContent).toContain("binary matches: 2 files");
+		expect(view({ result: result({ matchCount: 1, fileCount: 1, binaryMatches: ["a.bin"] }) }).textContent).toContain("binary matches: 1 file");
+	});
+
 	it("does not turn pending, unknown or failed results into empty success", () => {
 		expect(badges(view({ running: true }))).toEqual([]);
 		expect(view({ result: result({}, "Legacy result") }).textContent).toContain("Legacy result");

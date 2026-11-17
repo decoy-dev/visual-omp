@@ -193,6 +193,16 @@ function toOps(args: ToolRenderProps["args"]): unknown[] {
 	return typeof args.op === "string" ? [args] : [];
 }
 
+/**
+ * The task an op targets, or "N tasks" when it names several: omp 18.20.1 and later accept an array.
+ * Non-string entries from a call still streaming are skipped.
+ */
+function taskLabel(task: unknown): string | null {
+	const tasks = (Array.isArray(task) ? task : [task]).filter((entry): entry is string => typeof entry === "string" && entry !== "");
+	if (tasks.length === 0) return null;
+	return tasks.length === 1 ? tasks[0]! : `${tasks.length} tasks`;
+}
+
 function Summary({ args }: ToolRenderProps): ReactNode {
 	const ops = toOps(args);
 	const counts: Record<string, number> = {};
@@ -207,7 +217,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 		}
 		counts[op]++;
 		if (firstTask === null) {
-			firstTask = str(entry.task) ?? str(entry.phase);
+			firstTask = taskLabel(entry.task) ?? str(entry.phase);
 			if (firstTask === null && Array.isArray(entry.list)) {
 				const head = entry.list.find(isRecord);
 				if (head && Array.isArray(head.items)) firstTask = str(head.items[0]);
@@ -227,7 +237,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 function opRow(entry: unknown, key: number): ReactNode {
 	if (!isRecord(entry)) return null;
 	const parts: string[] = [];
-	const task = str(entry.task);
+	const task = taskLabel(entry.task);
 	const phase = str(entry.phase);
 	if (task !== null) parts.push(task);
 	if (phase !== null) parts.push(phase);
