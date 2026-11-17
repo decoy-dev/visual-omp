@@ -439,9 +439,11 @@ const scenarios: Scenario[] = [
   ...(["keep", "remove"] as const).map(choice => ({
     name: choice === "keep" ? "worktree-exit-ask" : "worktree-exit-ask-remove", command: null,
     config: { worktree: { onStart: "off", onExit: "ask" } },
-    run: async ({ session, send, until, root }: RecordingContext) => {
+    run: async ({ session, send, until, root, find }: RecordingContext) => {
       await session.submit("/wt fixture");
       await until(() => session.availability().available && scratchGit(root, ["worktree", "list", "--porcelain"]).includes("wt/fixture"), "worktree was not created");
+      // With omp 18.22.0 the editor can be free while omp still moves the session; an /exit then finds no owned worktree to ask about.
+      await until(() => !!find(node => node.k === "text" && node.p?.spans?.some(span => span.t?.startsWith("Moved to worktree")) === true), "session did not move to the worktree");
       const worktrees = scratchGit(root, ["worktree", "list", "--porcelain"]);
       const folder = worktrees.split("\n").find(line => line.startsWith("worktree ") && line.slice(9) !== root)?.slice(9);
       if (!folder) throw new Error("Missing owned fixture worktree");
