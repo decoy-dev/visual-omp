@@ -6,10 +6,14 @@
 import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { useTranslation } from "react-i18next";
 import { isResumeDeclined } from "../../registry/guards";
+import { lazyView } from "../../registry/lazy";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
 import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, toast, Tooltip } from "../../ui";
 import type { ComposerMode } from "./drafts";
 import { SuggestionsTool } from "./SuggestionsTool";
+
+// Loaded when the popover first opens: it reads omp's settings and the model catalog.
+const ChatCompaction = lazyView(() => import("../../features/compaction/ChatCompaction").then(m => m.ChatCompaction));
 
 /** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
 export const QUICK_MODES: ReadonlyArray<{ mode: ComposerMode; glyph: string }> = [
@@ -39,7 +43,7 @@ function ContextTool({ session }: ChatSlotProps) {
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
-			<PopoverContent width={280} side="top" align="end">
+			<PopoverContent width={320} side="top" align="end">
 				<p className="text-md font-semibold text-fg">{t("context.title")}</p>
 				<p className="mt-1 text-sm text-fg-muted">{t("context.body")}</p>
 				<div className="mt-3 flex items-baseline justify-between text-sm">
@@ -68,6 +72,7 @@ function ContextTool({ session }: ChatSlotProps) {
 					{t(view.working ? "context.queueCompact" : "context.compact")}
 				</Button>
 				{view.working && <p className="mt-2 text-xs text-fg-faint">{t("context.compactBusy")}</p>}
+				<ChatCompaction session={session} />
 			</PopoverContent>
 		</Popover>
 	);

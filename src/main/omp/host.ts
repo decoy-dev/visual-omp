@@ -8,7 +8,7 @@
  * `OMP_TUI_DEBUG` socket. See docs/ARCHITECTURE.md.
  */
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -31,13 +31,15 @@ import { assertTreeEntry, treeSelector } from "@shared/tsp/tree-navigation";
 import { TspAdvisorAction } from "@shared/tsp/advisor.schema";
 import { tspHostPatch } from "@shared/tsp/patch";
 import { composerFacts as readComposerFacts } from "./tsp/composer";
-import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
+import { app, BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
 import { crashedWithoutExit, parseProgramStatus, readSessionRecaps, startupModelWarnings, worktreeConfirmation } from "./host-observations";
 import { createNativeBridge, type NativeBridge } from "./native-bridge";
 import { ptyEnv, userEnv } from "../env";
 import { broadcast } from "../ipc";
 import { getPrefs } from "../prefs";
+import { createChatCompactionStore, type ChatCompactionStore } from "../services/chat-compaction";
+import { afterOverlayReady, ChatCompactionOverlay, resumeSessionId } from "./chat-compaction-overlay";
 import { runOmpJson } from "./cli";
 import { ompPath } from "./locate";
 import { ompStartError } from "./refused";
@@ -120,6 +122,12 @@ export class SessionHost {
 	#loggedUnreadableStatus = false;
 	#loggedSlowWorktreeRead = false;
 	#privateDir: string | null = null;
+	#overlayPath: string | null = null;
+	#useTsp = true;
+	/** The compaction point saved for the session this host runs, carried by its config overlay. */
+	readonly #compaction = new ChatCompactionOverlay(chatCompactionStore(), tokens => this.#writeOverlay(tokens), compactAt => this.#update({ compactAt }), error => {
+		console.warn("[visual-omp] Could not read the saved compaction points:", error instanceof Error ? error.message : String(error));
+	});
 	#roomId: string | null = null;
 	/** A room omp opened while the current one was still open; it is attached once the current room closes. */
 	#successorRoomId: string | null = null;
@@ -258,7 +266,12 @@ export class SessionHost {
 				this.#queuePromptRejectionCheck();
 			};
 			const overlay = join(this.#privateDir, "overlay.yml");
-			await writeFile(overlay, stringify(this.#overlayConfig(useTsp)), { mode: 0o600 });
+			this.#overlayPath = overlay;
+			this.#useTsp = useTsp;
+			// A resumed chat starts with its own compaction point, before omp accepts any input.
+			const compactAt = await this.#compaction.initial(this.#options.resumeFile ? await resumeSessionId(this.#options.resumeFile) : null);
+			await writeFile(overlay, stringify(this.#overlayConfig(useTsp, compactAt)), { mode: 0o600 });
+			this.#update({ compactAt });
 			const debugPath =
 				process.platform === "win32" ? `\\\\.\\pipe\\visual-omp-${this.id}` : join(this.#privateDir, "tui.sock");
 			const args = ["--config", overlay, "--extension", this.#nativeBridge.extensionPath];
@@ -357,7 +370,7 @@ export class SessionHost {
 	}
 
 	/** Settings layered over the user's config for this process only. */
-	#overlayConfig(useTsp: boolean): Record<string, unknown> {
+	#overlayConfig(useTsp: boolean, compactAt: number | null): Record<string, unknown> {
 		return {
 			collab: { autoStart: "control", relayUrl: this.#relay.url, displayName: "visual-omp" },
 			startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
@@ -394,7 +407,27 @@ export class SessionHost {
 				compactThinkingLevel: false,
 				segmentOptions: { model: { showThinkingLevel: true } },
 			},
+			// The chat's own compaction point outranks the global and project config; a model's own
+			// `compaction.modelThresholds` entry still applies, as it does over omp's global point.
+			...(compactAt !== null ? { compaction: { thresholdTokens: compactAt } } : {}),
 		};
+	}
+
+	/** Replaces the overlay in one rename, so omp's watcher never reads a partial file. */
+	async #writeOverlay(compactAt: number | null): Promise<void> {
+		const overlay = this.#overlayPath;
+		if (!overlay) throw new Error("omp has not started in this chat.");
+		const temporary = `${overlay}.${randomUUID()}.tmp`;
+		await writeFile(temporary, stringify(this.#overlayConfig(this.#useTsp, compactAt)), { mode: 0o600 });
+		await rename(temporary, overlay);
+	}
+
+	/** Saves this chat's compaction point, null for omp's own settings, for the session it was chosen in. */
+	setCompactAt(generation: number, sessionId: string, tokens: number | null): Promise<void> {
+		if (generation !== this.state.generation || sessionId !== this.state.sessionId) {
+			return Promise.reject(new Error("The chat changed before its compaction point could be saved."));
+		}
+		return this.#compaction.set(sessionId, tokens);
 	}
 
 	/** Every PTY input write is atomic, including bracketed paste and its submit key. */
@@ -671,16 +704,25 @@ export class SessionHost {
 	 * Type `text` as one bracketed paste and submit it in the same write, so multi-line text never
 	 * submits early and a large paste becomes an attachment chip instead of a menu.
 	 * `steer` (Enter) interrupts a running turn at the next safe point; `followUp` (Ctrl+Q) waits for the yield.
+	 * A prompt waits until the overlay carries the compaction point for the session it goes to, and is refused
+	 * if the chat moves to another session, generation or semantic screen meanwhile.
 	 */
 	submit(text: string, mode: "steer" | "followUp" = "steer", imagePaths?: string, submissionId?: string): Promise<void> {
+		// A follow-up belongs to the editor text it was sent from, so the editor is pinned before any wait.
+		let followUpSource: { target: TspEditorTarget; text: string } | null = null;
+		if (this.#tsp && mode === "followUp" && this.#tspPastesPending === 0) {
+			const generation = this.state.generation;
+			try { followUpSource = { target: this.#tsp.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation), text: this.composerFacts().text }; }
+			catch (error) { return Promise.reject(error); }
+		}
+		const scope = () => `${this.state.generation}\0${this.state.sessionId}\0${this.#tsp?.snapshot().epoch}`;
+		return afterOverlayReady(this.#compaction, scope, () => this.#submitNow(text, mode, followUpSource, imagePaths, submissionId));
+	}
+
+	#submitNow(text: string, mode: "steer" | "followUp", followUpSource: { target: TspEditorTarget; text: string } | null, imagePaths?: string, submissionId?: string): Promise<void> {
 		const generation = this.state.generation;
 		const epoch = this.#tsp?.snapshot().epoch;
 		if (this.#tsp) {
-			let followUpSource: { target: TspEditorTarget; text: string } | null = null;
-			if (mode === "followUp" && this.#tspPastesPending === 0) {
-				try { followUpSource = { target: this.#tsp.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation), text: this.composerFacts().text }; }
-				catch (error) { return Promise.reject(error); }
-			}
 			return this.#applicationInput(async () => {
 				const assertCurrent = (): void => {
 					this.#assertTspInput(generation);
@@ -1806,7 +1848,15 @@ export class SessionHost {
 
 	#update(patch: Partial<HostState>): void {
 		const previousGeneration = this.state.generation;
-		if (patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) this.#cancelTspRecovery();
+		if (patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) {
+			this.#cancelTspRecovery();
+			// Resume, /new and branch give this chat another session: its own point replaces the previous one.
+			if (this.#overlayPath) {
+				void this.#compaction.identify(patch.sessionId).catch((error: unknown) => {
+					console.warn("[visual-omp] Could not apply the chat's compaction point:", error instanceof Error ? error.message : String(error));
+				});
+			}
+		}
 		if (patch.phase === "exited" || patch.phase === "restarting" || patch.generation !== undefined && patch.generation !== previousGeneration
 			|| patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) {
 			for (const id of this.#promptSubmissions.keys()) this.#nativeBridge?.forgetPrompt(id);
@@ -1827,6 +1877,13 @@ export class SessionHost {
 		for (const listener of hostStateListeners) listener(this.state);
 		if (this.#tsp && (patch.generation !== undefined || patch.phase !== undefined || patch.sessionFile !== undefined)) this.#publishTsp();
 	}
+}
+
+let compactionStore: ChatCompactionStore | null = null;
+/** Per-chat compaction points in the app's profile, shared by every chat. */
+function chatCompactionStore(): ChatCompactionStore {
+	compactionStore ??= createChatCompactionStore(join(app.getPath("userData"), "chat-compaction.json"));
+	return compactionStore;
 }
 
 const hosts = new Map<string, SessionHost>();

@@ -1,4 +1,5 @@
 import type { AppPreferences } from "@shared/ipc";
+import { compactAtValue, formatCompactAt } from "@shared/compaction";
 import type { ApprovalMode } from "@shared/contracts/config";
 import { useDeferredTranslation } from "@/i18n";
 import { lazyView, LoadFailed } from "@/registry/lazy";
@@ -10,6 +11,7 @@ import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
 import { AutoUpdateSwitch } from "./AutoUpdateSetting";
+import { CompactAtField } from "../../compaction/CompactAtField";
 
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 const ProofsSetting = lazyView(() => import("../../live-preview/ProofsSetting").then(m => m.ProofsSetting), null, LoadFailed);
@@ -21,6 +23,9 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
 	const compaction = omp.byKey.get("compaction.enabled");
+	const compactAt = omp.byKey.get("compaction.thresholdTokens");
+	// In project scope an empty field inherits the global point.
+	const inheritedCompactAt = omp.scope === "project" ? compactAtValue(compactAt?.globalValue) : null;
 	const personality = omp.byKey.get("personality");
 	const mode = approval.data?.mode;
 
@@ -118,6 +123,19 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 						checked={compaction.value === true}
 						onCheckedChange={checked => void omp.write(compaction.key, checked)}
 					/>
+				)}
+				{compaction && compactAt && (
+					<div className="py-3">
+						<CompactAtField
+							label={t("general.compactAt.label")}
+							destination={`${omp.scope}\0${omp.cwd}`}
+							description={t(compaction.value === true ? "general.compactAt.description" : "general.compactAt.off")}
+							value={compactAtValue(omp.scope === "global" ? compactAt.globalValue : compactAt.projectValue)}
+							placeholder={inheritedCompactAt !== null ? t("general.compactAt.inherited", { tokens: formatCompactAt(inheritedCompactAt) }) : t("compactAt.placeholder")}
+							disabled={compaction.value !== true}
+							onSave={tokens => tokens === null ? omp.reset(compactAt.key) : omp.write(compactAt.key, tokens)}
+						/>
+					</div>
 				)}
 				{personality?.enumValues && (
 					<SettingRow

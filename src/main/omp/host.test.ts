@@ -94,7 +94,8 @@ vi.mock("./relay", () => ({
 	},
 }));
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; values = pty.values; keys = pty.keys; close() {} } }));
-vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
+// `app.getPath` names a missing profile, so no chat has a saved compaction point.
+vi.mock("electron", () => ({ app: { getPath: () => "/nonexistent/visual-omp-host-test-profile" }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
 vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, watchPrompt: pty.watchPrompt, forgetPrompt: pty.forgetPrompt, set onPromptInput(callback: typeof pty.onPromptInput) { pty.onPromptInput = callback; }, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown, options?: { signal?: AbortSignal }) => {

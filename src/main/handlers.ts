@@ -5,6 +5,7 @@ import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, shel
 import { z } from "zod";
 import type { Platform } from "@shared/ipc";
 import { defaultChatFolder } from "@shared/chatFolder";
+import { compactAtValue } from "@shared/compaction";
 import fileLabels from "../shared/i18n/en/fileActions.json";
 import { registerAttention } from "./attention";
 import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
@@ -126,6 +127,10 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	// Chats wait for startup skill repair and, on fresh profiles, the default permission level.
 	handle("host:start", gateHostStart(ensureNewUserApproval, startHost, visualProofsReady));
 	handle("host:stop", (hostId, mode) => stopHost(hostId, mode));
+	handle("host:setCompactAt", (hostId, generation, sessionId, tokens) => {
+		if (tokens !== null && compactAtValue(tokens) === null) throw new Error("A compaction point is a whole number of tokens.");
+		return getHost(hostId).setCompactAt(generation, sessionId, tokens);
+	});
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
 	handle("host:paste", (hostId, text) => getHost(hostId).paste(text));
 	handle("host:submit", (hostId, text, mode, imagePaths, submissionId) => getHost(hostId).submit(text, mode, imagePaths, submissionId));

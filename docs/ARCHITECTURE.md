@@ -196,6 +196,22 @@ Each SessionHost:
    `smart`, whose chart plans collab does not carry. `worktree.onStart: "off"` stays until omp exposes
    outer input readiness, because a startup worktree question could otherwise meet an early keystroke.
    Interim `out://` replies, SVG, next-message predictions, idle recaps and worktree exit choices follow the user's omp settings and appear natively. Suggestions remain off by default, as in omp. The composer's Suggestions switch writes `composer.predictions` in omp's global config through the same service as Advanced; the app does not inject a prediction overlay or keep a separate preference. omp's own config watcher applies saved changes live in either presentation.
+   The overlay also carries a chat's own compaction point. Main stores these points by omp session id in
+   `chat-compaction.json` in the app's profile (`services/chat-compaction.ts`). A host that resumes a session
+   reads the session id from the file before launch and starts omp with that session's
+   `compaction.thresholdTokens` in the overlay. When omp reports another session (resume, `/new`, branch),
+   `ChatCompactionOverlay` rewrites the overlay with that session's point, or without one, in order with any
+   Save. `host:setCompactAt` names the generation and session id the point was chosen for and is refused once
+   either changes. omp's config watcher rereads a changed `--config` file after a 200 ms quiet period (omp 18.15
+   and later). The app cannot observe that reload, so a prompt waits until every queued overlay write has
+   finished and 300 ms have passed since the last one. A failed overlay write holds prompts until a rewrite of
+   the current session's point succeeds, and a prompt whose chat changes generation, session or semantic screen
+   while it waits is refused. The store keeps a change only once it is on disk; an unreadable file is reported,
+   left untouched, and chats run on omp's own settings. The overlay outranks the global and project
+   config; a model's own `compaction.modelThresholds` entry still replaces the chat's point, as it replaces
+   omp's global point, so the per-model extended-window opt-in is untouched. Settings › General writes the
+   global point to `compaction.thresholdTokens` through the config service. An omp the app does not host,
+   such as one followed from a terminal, does not use a chat's point.
    omp's `update.auto` stays untouched by the host overlay. `TERM_PROGRAM=tern` selects TSP,
    not a managed installation; omp only skips its background installer for an actual managed
    binary, Nix or a source checkout. Update checks and a network-independent minute refresh

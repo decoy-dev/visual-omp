@@ -1,4 +1,4 @@
-import type { JsonValue, ModelInfo } from "@shared/contracts/config";
+import type { JsonValue, ModelInfo, SettingInfo } from "@shared/contracts/config";
 
 export type CompactionEntry = number | string;
 export interface CompactionPolicy {
@@ -36,6 +36,57 @@ export function parseCompactionInput(input: string): CompactionEntry | null {
 		if (Number.isSafeInteger(count) && count > 0) return tokens[1] ? `f${count}` : count;
 	}
 	throw new Error("invalid");
+}
+
+/**
+ * A typed point for omp's fixed `compaction.thresholdTokens`: a plain token count with the same suffixes
+ * (`400k`, `600000`). Percentages and `f` triggers belong to per-model limits. Empty restores the inherited point.
+ */
+export function parseTokenPoint(input: string): { ok: true; tokens: number | null } | { ok: false } {
+	let entry: CompactionEntry | null;
+	try { entry = parseCompactionInput(input); } catch { return { ok: false }; }
+	if (entry === null) return { ok: true, tokens: null };
+	return typeof entry === "number" ? { ok: true, tokens: entry } : { ok: false };
+}
+
+/** omp's compaction policy from its effective settings. */
+export function compactionPolicy(byKey: ReadonlyMap<string, SettingInfo>): CompactionPolicy {
+	const number = (key: string, fallback: number) => typeof byKey.get(key)?.value === "number" ? byKey.get(key)!.value as number : fallback;
+	return {
+		enabled: byKey.get("compaction.enabled")?.value !== false && byKey.get("compaction.strategy")?.value !== "off",
+		extendedContext: byKey.get("extendedContext")?.value === true,
+		modelThresholdsEnabled: byKey.get("compaction.modelThresholdsEnabled")?.value !== false,
+		thresholdPercent: number("compaction.thresholdPercent", -1),
+		thresholdTokens: number("compaction.thresholdTokens", -1),
+		reserveTokens: typeof byKey.get("compaction.reserveTokens")?.value === "number" ? number("compaction.reserveTokens", 16_384) : undefined,
+	};
+}
+
+export interface ChatCompactionPreview {
+	/** What decides the point: the model's own limit, the chat's point, or omp's settings. */
+	source: "model" | "chat" | "settings";
+	/** The model limit's key when `source` is `model`. */
+	modelKey: string | null;
+	/** Where omp summarizes; null when automatic summaries are off or the window is unknown. */
+	tokens: number | null;
+	enabled: boolean;
+}
+
+/**
+ * Where omp summarizes a chat on `model`. The chat's point is omp's fixed `compaction.thresholdTokens` in the
+ * chat's overlay, so a matching per-model limit still replaces it, as it replaces the global point.
+ */
+export function chatCompactionPreview(model: ModelInfo, byKey: ReadonlyMap<string, SettingInfo>, chatTokens: number | null): ChatCompactionPreview {
+	const policy = compactionPolicy(byKey);
+	if (chatTokens !== null) policy.thresholdTokens = chatTokens;
+	const entry = policy.modelThresholdsEnabled ? matchingCompactionEntry(thresholdMap(byKey.get("compaction.modelThresholds")?.value), model.selector) : null;
+	const plan = planCompaction(model, "", policy, entry?.entry ?? null);
+	return {
+		source: entry ? "model" : chatTokens !== null ? "chat" : "settings",
+		modelKey: entry?.key ?? null,
+		tokens: plan.error ? null : plan.tokens,
+		enabled: policy.enabled,
+	};
 }
 
 export function thresholdMap(value: JsonValue | undefined): Record<string, JsonValue> {

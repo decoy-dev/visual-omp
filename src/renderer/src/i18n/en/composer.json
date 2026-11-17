@@ -156,7 +156,19 @@
 		"compactFailed": "Couldn't compact this chat",
 		"compactTip": "Summarize the chat so far to free context.",
 		"compactBusy": "Queues /compact for when omp finishes the current reply.",
-		"unknown": "Unknown"
+		"unknown": "Unknown",
+		"compactAt": {
+			"label": "Summarize this chat at",
+			"placeholder": "Default",
+			"inherited": "Default: {{tokens}}",
+			"chat": "omp summarizes this chat when its context reaches {{tokens}} tokens.",
+			"settings": "omp summarizes this chat at {{tokens}} tokens, from your omp settings.",
+			"model": "The limit for {{model}} in Models & roles applies, so omp summarizes this chat at {{tokens}} tokens.",
+			"off": "Automatic summaries are off in your omp settings.",
+			"unknown": "omp does not report a context window for this model.",
+			"scope": "This point belongs to this chat. visual-omp saves it with the chat and applies it whenever the chat runs here.",
+			"failed": "Couldn't save this chat's point"
+		}
 	},
 	"voice": {
 		"start": "Dictate a message",

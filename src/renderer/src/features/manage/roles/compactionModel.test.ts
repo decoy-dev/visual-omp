@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ModelInfo } from "@shared/contracts/config";
-import { matchingCompactionEntry, parseCompactionInput, planCompaction, type CompactionPolicy } from "./compactionModel";
+import type { ModelInfo, SettingInfo } from "@shared/contracts/config";
+import { chatCompactionPreview, matchingCompactionEntry, parseCompactionInput, parseTokenPoint, planCompaction, type CompactionPolicy } from "./compactionModel";
 
 const model: ModelInfo = { selector: "local/test", provider: "local", id: "test", name: "Test", kind: "chat", contextWindow: 200_000, contextWindowTiers: { standard: 200_000, extended: 1_000_000 }, maxOutputTokens: 10_000, reasoning: false, thinkingLevels: [], vision: false, cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, longContext: { inputThreshold: 200_000, input: 2, output: 4, cacheRead: 0, cacheWrite: 0 } } };
 const policy: CompactionPolicy = { enabled: true, extendedContext: false, thresholdPercent: -1, thresholdTokens: -1 };
@@ -66,5 +66,28 @@ describe("compaction previews", () => {
 		const entries = { "local/*": "80%", "local/te*": 90_000, "local/test": "f100000" };
 		expect(matchingCompactionEntry(entries, model.selector)).toEqual({ key: "local/test", entry: "f100000" });
 		expect(matchingCompactionEntry({ ...entries, "local/test": null }, model.selector)).toEqual({ key: "local/te*", entry: 90_000 });
+	});
+});
+
+describe("chat and global compaction points", () => {
+	const settings = (values: Record<string, unknown>) => new Map(Object.entries(values).map(([key, value]) => [key, { key, value } as SettingInfo]));
+	const opus: ModelInfo = { ...model, selector: "anthropic/opus", provider: "anthropic", id: "opus", contextWindow: 1_000_000, contextWindowTiers: undefined };
+
+	it("accepts plain token counts and leaves percentages and fixed triggers to per-model limits", () => {
+		expect(parseTokenPoint("400k")).toEqual({ ok: true, tokens: 400_000 });
+		expect(parseTokenPoint("600000")).toEqual({ ok: true, tokens: 600_000 });
+		expect(parseTokenPoint(" ")).toEqual({ ok: true, tokens: null });
+		for (const input of ["80%", "f400k", "0", "lots"]) expect(parseTokenPoint(input)).toEqual({ ok: false });
+	});
+
+	it("previews the chat's point over omp's settings, and a model's own limit over both", () => {
+		const defaults = settings({ "compaction.enabled": true });
+		expect(chatCompactionPreview(opus, defaults, null)).toMatchObject({ source: "settings", tokens: 850_000, enabled: true });
+		expect(chatCompactionPreview(opus, settings({ "compaction.thresholdTokens": 600_000 }), 400_000)).toMatchObject({ source: "chat", tokens: 400_000 });
+		const withModel = settings({ "compaction.modelThresholds": { "anthropic/opus": "f300000" } });
+		expect(chatCompactionPreview(opus, withModel, 400_000)).toEqual({ source: "model", modelKey: "anthropic/opus", tokens: 300_000, enabled: true });
+		// omp ignores model limits while they are switched off, so the chat's point applies.
+		expect(chatCompactionPreview(opus, settings({ "compaction.modelThresholds": { "anthropic/opus": "f300000" }, "compaction.modelThresholdsEnabled": false }), 400_000)).toMatchObject({ source: "chat", tokens: 400_000 });
+		expect(chatCompactionPreview(opus, settings({ "compaction.enabled": false }), 400_000)).toMatchObject({ enabled: false, tokens: null });
 	});
 });

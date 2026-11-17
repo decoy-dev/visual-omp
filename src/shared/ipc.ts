@@ -171,6 +171,8 @@ export interface HostState {
 	/** Current PTY size (the terminal sheet resizes it while open and restores it after). */
 	cols: number;
 	rows: number;
+	/** The compaction point saved for this chat's session, in tokens; null or absent leaves it to omp's settings. */
+	compactAt?: number | null;
 }
 
 export interface HostStartOptions {
@@ -339,6 +341,8 @@ export interface IpcInvokeMap {
 
 	"host:start": { args: [options: HostStartOptions]; result: HostState };
 	"host:stop": { args: [hostId: string, mode?: HostStopMode]; result: void };
+	/** Saves the chat's compaction point (null for omp's settings) for the session and generation it was chosen in. */
+	"host:setCompactAt": { args: [hostId: string, generation: number, sessionId: string, tokens: number | null]; result: void };
 	"host:write": { args: [hostId: string, data: string]; result: void };
 	/** Application paste through the host's closing-aware input queue, without submitting. */
 	"host:paste": { args: [hostId: string, text: string]; result: void };

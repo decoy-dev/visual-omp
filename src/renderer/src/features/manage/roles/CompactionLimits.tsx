@@ -5,7 +5,7 @@ import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
 import { Button, Dialog, DialogContent, Input, Notice, SectionHeader } from "@/ui";
 import type { OmpSettings } from "../settings/useOmpSettings";
 import { ModelSelect } from "./ModelSelect";
-import { matchingCompactionEntry, planCompaction, thresholdMap, type CompactionPolicy } from "./compactionModel";
+import { compactionPolicy, matchingCompactionEntry, planCompaction, thresholdMap } from "./compactionModel";
 
 const format = (tokens: number) => tokens.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
@@ -36,15 +36,7 @@ function CompactionEditor({ model, catalogReady, omp, onSaved }: { model: ModelI
 	if (saved !== stored && input === saved) { setInput(stored); setSaved(stored); }
 	const dirty = input.trim() !== saved;
 	useLeaveGuard(dirty, () => setInput(saved));
-	const number = (key: string, fallback: number) => typeof omp.byKey.get(key)?.value === "number" ? omp.byKey.get(key)!.value as number : fallback;
-	const policy: CompactionPolicy = {
-		enabled: omp.byKey.get("compaction.enabled")?.value !== false && omp.byKey.get("compaction.strategy")?.value !== "off",
-		extendedContext: omp.byKey.get("extendedContext")?.value === true,
-		modelThresholdsEnabled: omp.byKey.get("compaction.modelThresholdsEnabled")?.value !== false,
-		thresholdPercent: number("compaction.thresholdPercent", -1),
-		thresholdTokens: number("compaction.thresholdTokens", -1),
-		reserveTokens: typeof omp.byKey.get("compaction.reserveTokens")?.value === "number" ? number("compaction.reserveTokens", 16_384) : undefined,
-	};
+	const policy = compactionPolicy(omp.byKey);
 	const inheritedEntries = { ...thresholdMap(setting?.value) };
 	delete inheritedEntries[model.selector];
 	if (omp.scope === "project") {

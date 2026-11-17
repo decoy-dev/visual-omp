@@ -112,6 +112,12 @@
 			"label": "Summarize long chats automatically",
 			"description": "When a chat gets close to the model's limit, omp condenses the earlier part so you can keep going."
 		},
+		"compactAt": {
+			"label": "Summarize at",
+			"description": "omp summarizes a chat when its context reaches this many tokens, such as 400k. Leave it empty to use omp's other compaction settings; by default omp summarizes shortly before a model's window fills. A model's own limit in Models & roles, and a chat's own point set from its context ring, take precedence.",
+			"off": "Turn on automatic summaries to use this point.",
+			"inherited": "Global: {{tokens}}"
+		},
 		"personality": {
 			"label": "omp's tone",
 			"description": "How omp talks to you in its replies.",
@@ -263,6 +269,12 @@
 			"cooldown-expiry": "When its cooldown ends",
 			"never": "Only when I switch"
 		}
+	},
+	"compactAt": {
+		"save": "Save",
+		"reset": "Use default",
+		"invalid": "Enter a token count, such as 400k or 600000.",
+		"placeholder": "Default"
 	},
 	"compaction": {
 		"title": "Compaction limits",
