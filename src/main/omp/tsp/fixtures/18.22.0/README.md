@@ -6,10 +6,12 @@ omp 18.22.0 opens its model switcher above the composer (`anchor: "composer"`, `
 
 `btw-empty`, `btw-ask`, `btw-ask-again`, `btw-follow-up`, `btw-cancel`, `btw-open-main-abort` and `btw-history` were recorded the same day with the same executable. From omp 18.21.0, Tern answers `/btw <question>` in a note in its transcript (`omp.btw.note`) instead of opening the side-question history. The recorder now asks as the app's BTW driver does: it submits `/btw <question>`, waits for the history or a new note, and after a note submits `/btw`, which omp opens on the question it is answering. `btw.test.ts` drives the first six through the production driver and history state, as it does for the 18.15.0 baseline; `btw-history` is kept for comparison and no test reads it yet.
 
+`plan-review-execute`, `plan-review-compact`, `plan-review-keep`, `plan-review-refine`, `plan-review-discard` and `plan-review-save` were recorded the same day. omp 18.22.0 lists the approval choices, then Save, which asks for a file name in its "Save plan" prompt and keeps the review open; Refine is listed only while omp's own review has annotations or deleted sections. Its editable `doc` review and Approve split button need the `doc`, `buttons` and `menu` kinds, which the app does not advertise, so omp sends the list-based review recorded here. The recorder chooses as the app's card does: Cancel stands in for an unlisted Refine, and Save answers the prompt with its Save action and then cancels the review. `PlanReviewCard.test.ts` completes each recording through the production card, composer and omp screen.
+
 The scenarios use a fresh scratch HOME, agent/config/cache/temp roots and session directory, and the recorder's loopback model. No owner files, credentials or external provider are read. The events files also record the terminal's device-attribute replies, which the model-tsp replay skips; the BTW replay already reads only semantic events.
 
 Record them with the documented recorder bundle and:
 
 ```sh
-OMP_BIN=/absolute/path/to/omp-18.22.0 VOMP_TSP_FIXTURE_VERSION=18.22.0 VOMP_TSP_FIXTURE_DIR=src/main/omp/tsp/fixtures/18.22.0 node record-tsp.mjs model-switch btw-empty btw-ask btw-ask-again btw-follow-up btw-cancel btw-open-main-abort btw-history
+OMP_BIN=/absolute/path/to/omp-18.22.0 VOMP_TSP_FIXTURE_VERSION=18.22.0 VOMP_TSP_FIXTURE_DIR=src/main/omp/tsp/fixtures/18.22.0 node record-tsp.mjs model-switch btw-empty btw-ask btw-ask-again btw-follow-up btw-cancel btw-open-main-abort btw-history plan-review-execute plan-review-compact plan-review-keep plan-review-refine plan-review-discard plan-review-save
 ```

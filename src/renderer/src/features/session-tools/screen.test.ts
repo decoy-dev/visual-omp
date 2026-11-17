@@ -193,4 +193,21 @@ describe("omp screen readers", () => {
 			slider: { roles: ["smol", "default", "slow"], selected: 1, model: "GPT-6-Astra" },
 		});
 	});
+
+	it("keeps omp 18.22.0's bare Save in order, including when it is the selected row", () => {
+		const lines = [
+			"│ Plan mode - next step │",
+			"│   Approve and execute │",
+			"│   Approve and compact context │",
+			"│   Approve and keep context (~30k / 1m) │",
+			"│ ❯ Save │",
+		];
+		// The classic chooser counts presses from the selected row; a dropped Save row would leave it at -1.
+		expect(parsePlanReview(lines)?.options).toEqual([
+			{ label: "Approve and execute", selected: false },
+			{ label: "Approve and compact context", selected: false },
+			{ label: "Approve and keep context (~30k / 1m)", selected: false },
+			{ label: "Save", selected: true },
+		]);
+	});
 });

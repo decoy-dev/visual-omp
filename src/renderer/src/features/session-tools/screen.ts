@@ -176,7 +176,8 @@ export function parsePlanReview(lines: readonly string[]): PlanReviewScreen | nu
 			};
 			continue;
 		}
-		const option = /^\s*(❯)?\s*(Approve and execute|Approve and compact context|Approve and keep context.*|Refine plan|Save and quit)\s*$/.exec(row);
+		// omp 18.22.0 replaced "Save and quit" with "Save"; keeping it preserves the option order and a selection on it.
+		const option = /^\s*(❯)?\s*(Approve and execute|Approve and compact context|Approve and keep context.*|Refine plan|Save and quit|Save)\s*$/.exec(row);
 		if (option?.[2]) options.push({ label: option[2].trim(), selected: option[1] === "❯" });
 	}
 	return options.length > 0 ? { options, slider } : null;

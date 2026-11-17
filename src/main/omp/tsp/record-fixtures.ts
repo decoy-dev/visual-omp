@@ -529,17 +529,30 @@ const scenarios: Scenario[] = [
     run: async ({ session, send, until, find }: RecordingContext) => {
       await until(() => !!planReview(session.snapshot().surfaces), "plan review did not open");
       const review = planReview(session.snapshot().surfaces)!;
-      if (choice === "discard") {
-        if (!review.cancelId) throw new Error("Plan review did not expose Cancel");
-        send({ ev: "action", sf: review.sf, id: review.cancelId, act: "cancel" });
-      } else send(planChoice(review, choice));
+      const listed = (action: string) => review.options.some(option => option.action === action);
+      const cancel = () => {
+        const current = planReview(session.snapshot().surfaces);
+        if (!current?.cancelId) throw new Error("Plan review did not expose Cancel");
+        send({ ev: "action", sf: current.sf, id: current.cancelId, act: "cancel" });
+      };
+      // omp 18.22.0 lists Refine only while its own review has annotations or deleted sections, and replaced Save and quit with Save, which keeps the review open.
+      const saveCopy = choice === "save" && !listed("save");
+      if (choice === "discard" || (choice === "refine" && !listed("refine"))) cancel();
+      else send(planChoice(review, saveCopy ? "saveCopy" : choice));
+      if (saveCopy) {
+        await until(() => !!find(node => node.p?.role === TSP_ROLES.planSave), "save path dialog did not open");
+        const save = find(node => node.p?.actions?.click === "save")!;
+        send({ ev: "action", sf: save.surface.open.id, id: save.node.id, act: "save" });
+        await until(() => !find(node => node.p?.role === TSP_ROLES.planSave) && !!planReview(session.snapshot().surfaces), "plan save did not return to the review");
+        cancel();
+      }
       await until(() => !planReview(session.snapshot().surfaces), "plan choice did not dismiss review");
       if (choice === "refine") {
         await until(() => session.availability().available, "refinement editor did not return");
         await session.submit("Refine the plan: include the empty state.");
         await until(() => !!find(node => node.k === "md" && node.p?.text?.includes("Fixture work completed.") === true), "refinement response did not arrive");
       }
-      if (choice === "save") {
+      if (choice === "save" && !saveCopy) {
         await until(() => !!find(node => node.p?.role === TSP_ROLES.planSave), "save path dialog did not open");
         const save = find(node => node.p?.actions?.click === "save")!;
         send({ ev: "action", sf: save.surface.open.id, id: save.node.id, act: "save" });

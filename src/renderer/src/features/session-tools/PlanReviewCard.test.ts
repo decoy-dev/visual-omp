@@ -93,8 +93,8 @@ function Workflow() {
 		createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: false }));
 }
 /** Only accepted input advances this recording. Production card, composer and screen own the controls. */
-function workflowRecording(name: string) {
-	const recording = loadFixtureRecording(name);
+function workflowRecording(name: string, version?: string) {
+	const recording = loadFixtureRecording(name, version);
 	const first = recording.inputs.findIndex(input => !("keys" in input) && (input.body.ev === "activate" || input.body.ev === "action"));
 	const inputs = recording.inputs.slice(first);
 	const documents = new FixtureDocuments();
@@ -241,6 +241,47 @@ it.each([
 	}
 	replay.finish();
 	if (choice === "discard") expect(mocks.exit).toHaveBeenCalledWith(controller);
+});
+
+// omp 18.22.0 lists Approve and execute, compact and keep, then Save; Refine appears only while its review has annotations or deleted sections.
+it.each([
+	["execute", "Approve and run"], ["compact", "Approve and compact first"], ["keep", "Approve and keep context"],
+	["refine", "Refine with a comment"], ["discard", "Discard plan"],
+] as const)("completes omp 18.22.0's %s recording through production card, composer and screen controls", async (choice, label) => {
+	const replay = workflowRecording(`plan-review-${choice}`, "18.22.0");
+	await act(async () => root.render(createElement(Workflow)));
+	expect(planReview(snapshot.surfaces)!.options.map(option => option.action)).toEqual(["execute", "compact", "keep", "saveCopy"]);
+	if (["keep", "refine", "discard"].includes(choice)) await menu();
+	await click(label);
+	expect(replay.count()).toBe(1);
+	if (choice === "refine") {
+		// No Refine was listed, so Cancel closed the review and plan mode stays, as a Refine without comments did before.
+		expect(element.querySelector("textarea")?.value).toBe("About this plan: ");
+		await act(async () => useComposerDrafts.getState().setDraft("plan-test", "Refine the plan: include the empty state."));
+		await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click());
+	}
+	replay.finish();
+	if (choice === "discard") expect(mocks.exit).toHaveBeenCalledWith(controller);
+	else expect(mocks.exit).not.toHaveBeenCalled();
+});
+
+it("saves through omp 18.22.0's Save, answers its file prompt in the omp screen and returns to the open review", async () => {
+	const replay = workflowRecording("plan-review-save", "18.22.0");
+	await act(async () => root.render(createElement(Workflow)));
+	expect(element.textContent).not.toContain("Save and stop");
+	await click("Save plan as…");
+	expect(replay.count()).toBe(1);
+	// omp's "Save plan" prompt covers the review, so the card's wait ends and the omp screen shows the prompt.
+	expect(planReview(snapshot.surfaces)).toBeNull();
+	const save = [...element.querySelectorAll<HTMLButtonElement>(".tsp-screen button")].find(button => button.textContent?.startsWith("Save"));
+	expect(save).toBeTruthy();
+	await act(async () => save!.click());
+	expect(replay.count()).toBe(2);
+	expect(planReview(snapshot.surfaces)).not.toBeNull();
+	expect(element.textContent).toContain("Save plan as…");
+	await menu(); await click("Discard plan");
+	replay.finish();
+	expect(mocks.exit).toHaveBeenCalledWith(controller);
 });
 
 it("defers Auto activation until config settles, then uses the currently enabled option id", async () => {

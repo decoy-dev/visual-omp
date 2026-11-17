@@ -800,13 +800,14 @@ Shown at the end of the transcript while a plan waits for a decision.
   - primary [Approve and run]
   - [Approve and compact first], with a "Frees context" chip at 60% context or more
   - a [More options] menu: Refine with a comment, Approve and keep context, Switch to Auto and run, Discard plan
-  - [Save and stop]
+  - [Save and stop] through omp 18.21; from omp 18.22.0, [Save plan as…] in TSP chats, which saves a copy and keeps the review open. Classic chats keep [Save and stop], disabled, because omp 18.22.0 no longer offers it
 - **After a decision**, the card gives way to a status line, for example "Plan approved. omp is starting the work." The line clears 8 seconds after the run ends.
 
 In TSP chats, this card uses omp's live plan document and option ids. The card
 disables decisions while omp applies a committed choice. See all options in the Plan pane opens
-the omp screen with the complete review. Save and stop opens omp's path confirmation there;
-the app does not report a saved plan before that confirmation.
+the omp screen with the complete review. Save and stop, and Save plan as…, open omp's file-name
+prompt there; the app does not report a saved plan before that confirmation. After Save plan as…
+the card returns with the review.
 
 ### 4.10 Command palette (⌘K)
 

@@ -751,7 +751,16 @@ Annotation choosers and unfamiliar interactive states stay in the omp screen. Wr
 the enabled option after an awaited permission change. Completion tracks physical node departure;
 covered or temporarily unsupported reviews keep waiting, while scope or lifecycle invalidation
 cancels the operation without a success message, comment focus or extension plan exit.
-Classic review detection, plan-file reading and key delivery remain unchanged.
+omp 18.22.0 changed the review's options. Save and quit became Save (`saveCopy`), which asks omp's
+"Save plan" prompt for a file name and keeps the review open; the card offers Save plan as…, ends
+its wait once that prompt covers the review, and opens the omp screen on it. Refine is listed only
+while omp's own review has annotations or deleted sections. Without it, the card's Refine with a
+comment sends Cancel, which closes the review and keeps plan mode as a Refine without feedback did
+before, then restores the comment draft. Under Tern omp draws the review as an editable, commentable
+`doc` with an Approve split button (`buttons`, `menu`); the app does not advertise those kinds, so omp
+sends this list-based review instead. Classic chats press Escape for Refine when it is not listed,
+parse the bare Save row, and keep Save and stop, which is disabled because omp no longer offers it;
+Save plan as… is available in TSP chats only.
 The native hook card also reads TSP documents; other unclaimed omp UI remains available in the omp screen.
 
 TSP `/btw` is a native Side questions pane. `src/main/omp/btw-history.ts` reads omp's

@@ -53,9 +53,14 @@ export function useTspPlanReview(session: SessionController | null) {
 	const choose = async (target: TspPlanReview, action: PlanAction | "discard") => {
 		// Read again after any awaited permission-config change and construct input from this document.
 		const { next, live } = liveReview(target);
-		const event = action === "discard" ? live.cancelId ? { ev: "action" as const, sf: live.sf, id: live.cancelId, act: TSP_ACTIONS.cancel } : null : planChoice(live, action);
+		// omp 18.22.0 lists Refine only while its own review has annotations or deleted sections. Without them, Cancel closes
+		// the review and keeps plan mode, as an earlier Refine without comments did; the card then asks for the comment.
+		const closes = action === "discard" || (action === "refine" && !live.options.some(option => option.action === "refine"));
+		const event = closes ? live.cancelId ? { ev: "action" as const, sf: live.sf, id: live.cancelId, act: TSP_ACTIONS.cancel } : null : planChoice(live, action);
+		// Save (omp 18.22.0) keeps the review open under omp's own file-name prompt, which the omp screen shows.
+		const keepsReview = action === "saveCopy";
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
-		const release = screenActivity.hold(next, action === "save" ? "request" : "drive");
+		const release = screenActivity.hold(next, action === "save" || keepsReview ? "request" : "drive");
 		let off = () => {};
 		let offSession = () => {};
 		const cancel = () => { release(); off(); offSession(); pending.current.delete(cancel); reject(new Error("The plan review view closed.")); };
@@ -65,6 +70,7 @@ export function useTspPlanReview(session: SessionController | null) {
 				const surface = latest.surfaces.find(surface => surface.open.id === live.sf && surface.documentGeneration === latest.generation);
 				if (!surface || surface.closed || surface.suspended) throw new Error("The plan review surface changed while applying the choice.");
 				if (!physicalNodePresent(surface.document, live.id)) resolve();
+				else if (keepsReview && planReview(latest.surfaces.filter(item => item.documentGeneration === latest.generation))?.id !== live.id) resolve();
 			} catch (error) { release(); off(); offSession(); pending.current.delete(cancel); reject(error); }
 		};
 		pending.current.add(cancel);
@@ -76,8 +82,8 @@ export function useTspPlanReview(session: SessionController | null) {
 			check();
 			await Promise.all([write, promise]);
 			const latest = assertCurrent();
-			// Queue only after the physical review has left; the watcher owns the post-layout opening.
-			if (action === "save" && session) openRequestedScreen(session, latest);
+			// Queue only after the physical review has left, or for Save once its prompt covers the review; the watcher owns the post-layout opening.
+			if ((action === "save" || keepsReview) && session) openRequestedScreen(session, latest);
 		} finally { release(); off(); offSession(); pending.current.delete(cancel); }
 	};
 	return { review, disabled, choose, send, assertCurrent, snapshot };

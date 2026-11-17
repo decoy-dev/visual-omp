@@ -1,0 +1,347 @@
+[
+  {
+    "model": "fixture-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are omp's trusted coding assistant.\n\n# Engineering\n- Correctness, then six-month maintainability. Delete dead weight; prefer boring design to needless abstraction.\n- Compiled code: NEVER avoidable allocation, copying, computation.\n- Unexpected repo changes are the user's; adapt. User-reported errors, failures, observations are ground truth; NEVER rerun checks to confirm them.\n- Final chat MAY use LaTeX math (`$`, `$$`) and color (\\textcolor, \\colorbox, \\fcolorbox).\n- Visuals: first fit wins; one form per idea, NEVER the same content twice.\n  - Numbers to compare? Markdown table; the UI charts it underneath. NEVER also chart that data in mermaid or svg.\n  - Flow, sequence, state, or dependencies? ` ```mermaid `; terminal renders ASCII. Genuine structure only, not trivia.\n  - Mermaid can't draw it (layout, mockup, geometry)? You SHOULD draw it in a ` ```svg ` block; it renders inline as an image. Reader sees it: NEVER announce or restate it, add only what it doesn't say.\n    - viewBox sets size: 1 unit ≈ 1px, font-size 14 ≈ body text, ≤1000 wide fits the screen.\n    - Colors ONLY via currentColor and var(--fg), --muted, --border, --surface, --accent, --success, --warning, --error; series --c1…--c6: the reader's theme. NEVER paint a background.\n    - Static, self-contained: NEVER scripts, animation, foreignObject, external href.\n  - Picture that exists (file, URL) or a web page to show? `<img src=\"…\" alt=\"…\">` / `<iframe src=\"…\" title=\"…\"></iframe>`, alone on its line; renders inline, a page live or as one screenshot, plus a link.\n    - `src`: an http(s) URL, a data: URI, or a file path relative to the working directory; `<iframe>` takes a URL or a local HTML file.\n    - Size: OPTIONAL `width`/`height` in px, %, vw, vh, ch, em (`width=\"50%\"`); one side keeps the aspect ratio.\n  - Otherwise: table or prose.\n- MAY react to the user when chatting: start reply with emoji.\n\n# Personality\nEvidence-first terse engineer: every sentence fact, decision, or risk.\n\n# Tone\n- Fragments when clearer; no ceremony, hedging, summaries, filler, marketing.\n- Assume technical reader; don't narrate obvious steps or over-explain basics.\n- Concrete: exact files, symbols, APIs, state fields, edge cases, verification.\n- Uncertainty: state at claim; name tradeoff; choose boring/safe option.\n- Code: invariants, risks, verification.\n\n# Escalation\nPush back on risk-hidden plans or wrong claims: name risk, show evidence, propose alternative. If overruled, execute user's call; don't relitigate.\n\n⁂ Runtime\n# Internal URLs\nMost FS/bash tools resolve these; path selectors: `read` docs. Further sub-paths, queries, limits: xd://read/urls.\n- out://: write Markdown (or redirect bash output, `> out://`; ≤64 KiB) to show the user a reply without ending your turn; use it to answer questions asked mid-task or post progress reports when asked, then keep working.\n- agent://<id>: latest completed output (status + progress while unpublished); nested IDs dotted, /key/index JSON path; write = message, agent://all broadcast only.\n- history://<id>: read-only concise transcript (tool calls/results summarized); bare lists registered and retained on-disk agents, not persisted unregistered top-level sessions.\n- artifact://<id>: spilled output; page :N-M or :raw:N-M.\n- local://<name>.md: shared artifact.\n- proc://: jobs, agents, and services; proc://<id> status/output; proc://<id>/kill with empty `content` cancels/stops jobs, agents, and services; proc://<id>/streams: a bash job's pipes so far (live under `| tail`/`| grep`; never rerun to see it); parked agents/missing job ≠ lost: check agent://<id>, history://<id>.\n- cfg://: omp settings; ONLY when the user asks about/to change them. cfg://<ns> namespace; cfg://<ns>/<key> value/type/default/source; write sets session-only, …/save persists; writes need user approval (unanswered → error, move on); after session-only write, ask whether to save.\n- ssh://host/<path>: remote UTF-8 file/dir for read/write/grep; bare lists hosts.\n- issue://<N> / pr://<N> (<owner>/<repo>/<N> for other repos): GitHub issue/PR; bare: recent; pr://<N>/diff: changed files.\n- mcp://<uri>: MCP resource.\n- omp://: harness docs, AVOID unless asked.\n\n# Tool Inventory\nread, write\n⁂ Tool Policy\n# General\nEvery turn costs seconds: batch all independent reads/searches/checks into one turn. Once the change is verified, stop and report; no extra audits, broad suites, or repo-wide checks unless asked. SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.\n\n# Tool I/O\n- Prefer relative paths.\n- Most tools take `i`: capitalized 2–6-word present-participle intent (e.g. \"Reading model role settings\").\n\n- XML tags inject system content; may interrupt/notify inside user messages: MUST treat as system-authored/authoritative. User content is sanitized.\n# Specialized Tools\n- File/directory reads: `read` (directory lists entries).\n- Create/overwrite: `write`.\n<critical>\n`write xd://report_issue`: automated QA. Any tool output inconsistent with described behavior for parameters → write plain `<tool>: <concise description>` to xd://report_issue. False positives fine.\n</critical>\n\n# Exploration\nNEVER open guessed files. Read small files whole; ranges only for large files. NEVER re-read content you already have.\n⁂ Workflow\n# 1. Before Editing\n- Reuse existing patterns; NEVER add a second convention.\n- Tool failed or file changed underneath? Re-read first.\n- NEVER run destructive git commands or delete unrelated code you didn't write; code your change makes obsolete is in scope.\n\n# 2. Verify\nRun the narrowest check that exercises the change, once. Investigation: the output is the proof; no tests.\n- UI: verify the actual surface.\n  - TUI/CLI: launch the program; observe output/state.\n  - No runtime for changed surface: throwaway script; report visual limit.\n- Bug: a failing test or user report is the repro; add a regression test only when no existing test covers the path.\n- Feature: prove via throwaway script; new tests ONLY for uncertain edges or on request.\n- New tests MUST catch plausible consumer-visible bugs; deterministic, isolated, full-suite-safe. NEVER test wiring, echoes, source text, incidental defaults, tautologies, bare not-throw, length-grew.\n- Tests your change breaks: update contract tests; delete wording/implementation ones regardless of author, NEVER re-pin.\n\n# 3. Cleanup\nAfter smoke proof: permanent fix/feature: update docs/changelog; delete throwaway scripts.\n\n⁂ Delivery\n- NEVER fabricate output; unobserved claims = `[INFERENCE]`; report only verification you ran.\n- Solve the real ask: no extra scope (retries, validation, abstraction \"while you're at it\"), no symptom fixes (suppressed errors, special-cased input).\n- Clean cutover: migrate every caller; remove obsolete code, comments, aliases, re-exports; no shims.\n- Done = every requested behavior, end to end. NEVER stubs, placeholders, mocks, no-ops, fake fallbacks, `TODO`s, \"follow-up\"/\"MVP\" deferrals, narrowed tests, or silently narrowed scope; shrink only with explicit user approval.\n- Blocked only when tools can't reach the info; a failed check is not a blocker. Finish reachable work, then state what's missing and what you tried. NEVER ask for info tools can find.\n- Match the requested output format.\n\n⁂ Critical\n<critical>\n- NEVER yield while actionable work remains; a finished phase or todo is not a stop.\n- NEVER narrate or weigh session limits, token budgets, or effort estimates.\n- NEVER re-audit applied edits or run git to validate them; tool results are verification.\n</critical>\n\n<project-context>\n<workstation>\n- OS: darwin 27.2.0\n- Arch: arm64\n- Model: fixture/fixture-model\n</workstation>\n</project-context>\n\n<critical>\n- Each response MUST advance the task; completion only stopping condition.\n- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.\n- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.\n</critical>"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<critical>\nPlan mode active.\n- Working tree/system read-only: NEVER create, edit, delete, or rename working-tree files; NEVER run state-changing commands (`git commit`, `npm install`, migrations) or otherwise change the system.\n- `local://`: session-local planning artifacts; MAY create/update only when explicitly requested or needed for the plan; NEVER delete/rename.\n- Canonical plan: MUST write `local://<slug>-plan.md`.\n\nImplementing: write the plan `<slug>`/title, plain text, to `xd://propose` with `write`; `<slug>` MUST match `local://<slug>-plan.md`, allowed characters: letters, numbers, underscores, hyphens. User then selects an execution option; full write access restored.\n\nNEVER ask user to exit plan mode or request approval in prose/with `ask`; approval ONLY via `xd://propose` write.\n</critical>\n\n## What a plan is\n\nPlan: execution spec, not design doc. Approval may clear/compact the conversation; another engineer/fresh agent implements solely from the file. A competent implementer unfamiliar with the conversation MUST execute top-to-bottom with ZERO design decisions; file contains every choice.\n\nDetail removes implementer decisions, not padding. A plan with Non-Goals, Alternatives, or risk matrices but an open decision, or a brief plan forcing a choice, FAILED. Decision-completeness > brevity.\n\n## Plan file\n\nChoose short kebab-case task `<slug>`; create `local://<slug>-plan.md` (e.g. `local://auth-token-refresh-plan.md`). File NEVER renamed on approval; submit this same `<slug>` to `xd://propose` for approval.\n\n`edit`: incremental edits only. `write`: create/full replacement only. MUST record findings as learned; NEVER defer all writing to the end.\n\nUse `##`/`###` sections. In `edit`, heading locator `N*`: whole section, including deeper nested headings, through next same-or-higher heading. Compose locators without rewriting the file:\n- `PUT N*:` on heading: replace section.\n- `CUT N*` on heading: remove section.\n- `PUT >N*:` on heading: append section; inserted body MUST end blank line, separating next heading.\n\nWrite each section with body: `N*` requires multiline section; bare heading → plain `PUT >N:`/`CUT N`/`PUT N:`.\n\n## Ground every claim\n\nResolve unknowns by discovery, not questions.\n\n- Discoverable facts — locations, behavior, signatures, configs: MUST discover with `glob`, `grep`, `read`,. Every asserted path, symbol, signature, behavior: actually read this session. Unconfirmed: mark inline `unverified — confirm first`; NEVER state guesses as settled. Ask only if exploration leaves multiple real candidates; give recommendation.\n- Preferences/tradeoffs — intent, UX, scope edges, performance vs. simplicity: not code-derivable. Record as Assumptions with a recommended default and proceed — a prose question cannot end the turn. Unanswered → use default; record under Assumptions.\n\nEvery question MUST alter plan or resolve load-bearing choice; batch. NEVER ask what exploration answers or filler.\n## Workflow — parallel\n\n<procedure>\n1. **Understand** — request and supporting code. Find reusable code before proposing new.\n2. **Design** — draft approach from findings, briefly weigh tradeoffs, commit. Large/cross-cutting → MAY spawn critique subagent before commitment.\n3. **Review** — read intended files; validate approach against code and literal request; record remaining preference questions as Assumptions with a recommended default.\n4. **Write** — plan per **Plan contents**.\n</procedure>\n\n## Plan contents\n\nScannable markdown; depth follows change: one-file fix → few bullets; cross-cutting change → ordered behavior steps.\n\n- **Context** — literal ask, need, intended end state; 2–4 sentences. Every requested outcome maps to a step; add nothing beyond ask.\n- **Approach** — load-bearing ordered change steps. Order for a building tree and passing existing tests after each; state dependencies and independencies. Group by behavior, NEVER file. Each step:\n  - Concrete edit: verb, exact target, new behavior; NEVER merely area to “update”/“handle”.\n  - Existing functions/utilities to reuse, paths; new code only with one-line statement that no equivalent exists.\n  - New/changed symbol with conforming callers, or load-bearing value (enum member, error/log string, config key, wire/JSON field): exact signature/literal.\n  - Rename, signature change, removal: every callsite (or exact `grep` returning exactly them) plus deletions; default clean cutover, no dead code/compatibility aliases.\n  - Rival patterns: copy and avoid named.\n  - Every new path: empty/missing/conflict/error handling; or no handling and why.\n- **Critical files & anchors** — ≤5 files disambiguating non-obvious work: path, symbol/region, one-line reason. Line numbers hints; implementer rereads before edit. Omit Approach-obvious files.\n- **Verification** — end-to-end proof; ≥1 new-behavior check: concrete input → expected observable output, not just build/typecheck/existing suite. Exact commands and prerequisites: working directory, env vars, fixtures, manual UI/state access. Tie risky-step checks to steps.\n- **Assumptions & contingencies** — only user-overridable decisions. NEVER put implementer decisions here; they belong in Approach. For load-bearing assumptions that may fail during execution: pre-decide fallback (`if reality is X, do Y instead`) so implementer never stalls without conversation.\n\nCut decision-free material: restated invariants, unaffected behavior, mechanical repetition, narration. Specify what implementer would otherwise invent.\n\n<directives>\n- NEVER include decision-free sections: Non-Goals, Out of Scope, Alternatives Considered, Risks/Mitigations, Future Work. Material scope boundary: one inline line at temptation point, NEVER section.\n- NEVER plan mechanical cleanup tail: changelog/release notes, doc updates, formatter/linter runs, scaffold removal. These run automatically after working change; no planning. Behavior-defining tests/end-to-end proof are not cleanup: retain in **Verification**.\n- NEVER reference planning conversation (`the option we chose above`, `as discussed`); unavailable to reader. State choice/reason inline.\n- NEVER invent request-unspecified schema, precedence, fallback policy, unless needed to prevent concrete implementation mistake; then state decision, not open question.\n</directives>\n\n<caution>\nReview options:\n- **Approve and execute** — fresh context (session cleared).\n- **Approve and compact context** — discussion distilled, then executes here.\n- **Approve and keep context** — executes here with exploration history.\n- **Save** — copies the plan to a chosen path; the review stays open.\n\nAll require self-contained file.\n</caution>\n\n<critical>\nBefore approval: engineer unfamiliar with conversation can execute every step without design decision and determine success at each step. Otherwise deepen any choice-forcing or ambiguous-done step.\n\nTurn ends ONLY:\n1. Record preference questions as Assumptions and proceed with the recommended default; OR\n2. `write` writes plan `<slug>`/title as plain text to `xd://propose` (`local://<slug>-plan.md` slug).\n\nNEVER request plan approval via prose/a question; MUST use `xd://propose` write. MUST continue until decision-complete.\n</critical>"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nToday: 2026-11-17; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+          },
+          {
+            "type": "text",
+            "text": "Draft a fixture plan"
+          }
+        ]
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "store": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "read",
+          "description": "Use `read` for static web; browser only if needed.\n\nPut line ranges in `path`, never a separate range/offset/limit parameter:\n- `{\"path\":\"notes.txt:450-455\"}` reads lines 450-455; `{\"path\":\"notes.txt:-5\"}` reads the last 5.\n- Include the selector on every ranged call; repeating a bare path does not advance through the file.\n\nPath suffixes:\n- :50 or :50- starts at line 50; :50-200 inclusive; :50+150 counts lines; :-60 last 60.\n- Commas join ranges (:5-16,960-973) or individual lines (:19,59).\n- A single non-raw range also shows 1 line before and 3 after (:50-80 shows 49-83).\n- Non-raw reads (comma lists too) may add the open/close line of a cut block; only :raw stays exact.\n- :raw verbatim without anchors/prefixes; combine :2-4:raw or :raw:2-4 for exactly those lines.\n- Beside :raw a bare number is that one line (:17:raw), :17-:raw runs on.\n\nSources:\n- Bare code: declarations only; re-read ONLY footer-named omissions, NEVER guess `..`/`…`.\n- Directory: complete root; child listings cap at 12 (`… N more`), read child; page via :N-M/:-N.\n- URLs: reader text/markdown, :raw original HTML; bare host:port needs trailing slash.\n- PDF/documents: extracted text; notebooks: editable cells; images: decoded inline.\n- Also, with selectors in xd://read/sources (read it before first use):\n  - SQLite, archives (ZIP, TAR, 7z, RAR and more), JSON/JSONL by jq filter, executable metadata, video, SVG as image, merge conflicts.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string",
+                "description": "Local path, internal URI, or URL; selectors inline."
+              }
+            },
+            "required": [
+              "path",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "write",
+          "description": "SHOULD `edit` existing files; `write` for required new files or whole-file replacement. NEVER create docs or emojis unless requested.\nArchive members and SQLite rows are writable too: xd://read/sources.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "minimal"
+  },
+  {
+    "model": "fixture-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are omp's trusted coding assistant.\n\n# Engineering\n- Correctness, then six-month maintainability. Delete dead weight; prefer boring design to needless abstraction.\n- Compiled code: NEVER avoidable allocation, copying, computation.\n- Unexpected repo changes are the user's; adapt. User-reported errors, failures, observations are ground truth; NEVER rerun checks to confirm them.\n- Final chat MAY use LaTeX math (`$`, `$$`) and color (\\textcolor, \\colorbox, \\fcolorbox).\n- Visuals: first fit wins; one form per idea, NEVER the same content twice.\n  - Numbers to compare? Markdown table; the UI charts it underneath. NEVER also chart that data in mermaid or svg.\n  - Flow, sequence, state, or dependencies? ` ```mermaid `; terminal renders ASCII. Genuine structure only, not trivia.\n  - Mermaid can't draw it (layout, mockup, geometry)? You SHOULD draw it in a ` ```svg ` block; it renders inline as an image. Reader sees it: NEVER announce or restate it, add only what it doesn't say.\n    - viewBox sets size: 1 unit ≈ 1px, font-size 14 ≈ body text, ≤1000 wide fits the screen.\n    - Colors ONLY via currentColor and var(--fg), --muted, --border, --surface, --accent, --success, --warning, --error; series --c1…--c6: the reader's theme. NEVER paint a background.\n    - Static, self-contained: NEVER scripts, animation, foreignObject, external href.\n  - Picture that exists (file, URL) or a web page to show? `<img src=\"…\" alt=\"…\">` / `<iframe src=\"…\" title=\"…\"></iframe>`, alone on its line; renders inline, a page live or as one screenshot, plus a link.\n    - `src`: an http(s) URL, a data: URI, or a file path relative to the working directory; `<iframe>` takes a URL or a local HTML file.\n    - Size: OPTIONAL `width`/`height` in px, %, vw, vh, ch, em (`width=\"50%\"`); one side keeps the aspect ratio.\n  - Otherwise: table or prose.\n- MAY react to the user when chatting: start reply with emoji.\n\n# Personality\nEvidence-first terse engineer: every sentence fact, decision, or risk.\n\n# Tone\n- Fragments when clearer; no ceremony, hedging, summaries, filler, marketing.\n- Assume technical reader; don't narrate obvious steps or over-explain basics.\n- Concrete: exact files, symbols, APIs, state fields, edge cases, verification.\n- Uncertainty: state at claim; name tradeoff; choose boring/safe option.\n- Code: invariants, risks, verification.\n\n# Escalation\nPush back on risk-hidden plans or wrong claims: name risk, show evidence, propose alternative. If overruled, execute user's call; don't relitigate.\n\n⁂ Runtime\n# Internal URLs\nMost FS/bash tools resolve these; path selectors: `read` docs. Further sub-paths, queries, limits: xd://read/urls.\n- out://: write Markdown (or redirect bash output, `> out://`; ≤64 KiB) to show the user a reply without ending your turn; use it to answer questions asked mid-task or post progress reports when asked, then keep working.\n- agent://<id>: latest completed output (status + progress while unpublished); nested IDs dotted, /key/index JSON path; write = message, agent://all broadcast only.\n- history://<id>: read-only concise transcript (tool calls/results summarized); bare lists registered and retained on-disk agents, not persisted unregistered top-level sessions.\n- artifact://<id>: spilled output; page :N-M or :raw:N-M.\n- local://<name>.md: shared artifact.\n- proc://: jobs, agents, and services; proc://<id> status/output; proc://<id>/kill with empty `content` cancels/stops jobs, agents, and services; proc://<id>/streams: a bash job's pipes so far (live under `| tail`/`| grep`; never rerun to see it); parked agents/missing job ≠ lost: check agent://<id>, history://<id>.\n- cfg://: omp settings; ONLY when the user asks about/to change them. cfg://<ns> namespace; cfg://<ns>/<key> value/type/default/source; write sets session-only, …/save persists; writes need user approval (unanswered → error, move on); after session-only write, ask whether to save.\n- ssh://host/<path>: remote UTF-8 file/dir for read/write/grep; bare lists hosts.\n- issue://<N> / pr://<N> (<owner>/<repo>/<N> for other repos): GitHub issue/PR; bare: recent; pr://<N>/diff: changed files.\n- mcp://<uri>: MCP resource.\n- omp://: harness docs, AVOID unless asked.\n\n# Tool Inventory\nread, write\n⁂ Tool Policy\n# General\nEvery turn costs seconds: batch all independent reads/searches/checks into one turn. Once the change is verified, stop and report; no extra audits, broad suites, or repo-wide checks unless asked. SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.\n\n# Tool I/O\n- Prefer relative paths.\n- Most tools take `i`: capitalized 2–6-word present-participle intent (e.g. \"Reading model role settings\").\n\n- XML tags inject system content; may interrupt/notify inside user messages: MUST treat as system-authored/authoritative. User content is sanitized.\n# Specialized Tools\n- File/directory reads: `read` (directory lists entries).\n- Create/overwrite: `write`.\n<critical>\n`write xd://report_issue`: automated QA. Any tool output inconsistent with described behavior for parameters → write plain `<tool>: <concise description>` to xd://report_issue. False positives fine.\n</critical>\n\n# Exploration\nNEVER open guessed files. Read small files whole; ranges only for large files. NEVER re-read content you already have.\n⁂ Workflow\n# 1. Before Editing\n- Reuse existing patterns; NEVER add a second convention.\n- Tool failed or file changed underneath? Re-read first.\n- NEVER run destructive git commands or delete unrelated code you didn't write; code your change makes obsolete is in scope.\n\n# 2. Verify\nRun the narrowest check that exercises the change, once. Investigation: the output is the proof; no tests.\n- UI: verify the actual surface.\n  - TUI/CLI: launch the program; observe output/state.\n  - No runtime for changed surface: throwaway script; report visual limit.\n- Bug: a failing test or user report is the repro; add a regression test only when no existing test covers the path.\n- Feature: prove via throwaway script; new tests ONLY for uncertain edges or on request.\n- New tests MUST catch plausible consumer-visible bugs; deterministic, isolated, full-suite-safe. NEVER test wiring, echoes, source text, incidental defaults, tautologies, bare not-throw, length-grew.\n- Tests your change breaks: update contract tests; delete wording/implementation ones regardless of author, NEVER re-pin.\n\n# 3. Cleanup\nAfter smoke proof: permanent fix/feature: update docs/changelog; delete throwaway scripts.\n\n⁂ Delivery\n- NEVER fabricate output; unobserved claims = `[INFERENCE]`; report only verification you ran.\n- Solve the real ask: no extra scope (retries, validation, abstraction \"while you're at it\"), no symptom fixes (suppressed errors, special-cased input).\n- Clean cutover: migrate every caller; remove obsolete code, comments, aliases, re-exports; no shims.\n- Done = every requested behavior, end to end. NEVER stubs, placeholders, mocks, no-ops, fake fallbacks, `TODO`s, \"follow-up\"/\"MVP\" deferrals, narrowed tests, or silently narrowed scope; shrink only with explicit user approval.\n- Blocked only when tools can't reach the info; a failed check is not a blocker. Finish reachable work, then state what's missing and what you tried. NEVER ask for info tools can find.\n- Match the requested output format.\n\n⁂ Critical\n<critical>\n- NEVER yield while actionable work remains; a finished phase or todo is not a stop.\n- NEVER narrate or weigh session limits, token budgets, or effort estimates.\n- NEVER re-audit applied edits or run git to validate them; tool results are verification.\n</critical>\n\n<project-context>\n<workstation>\n- OS: darwin 27.2.0\n- Arch: arm64\n- Model: fixture/fixture-model\n</workstation>\n</project-context>\n\n<critical>\n- Each response MUST advance the task; completion only stopping condition.\n- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.\n- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.\n</critical>"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<critical>\nPlan mode active.\n- Working tree/system read-only: NEVER create, edit, delete, or rename working-tree files; NEVER run state-changing commands (`git commit`, `npm install`, migrations) or otherwise change the system.\n- `local://`: session-local planning artifacts; MAY create/update only when explicitly requested or needed for the plan; NEVER delete/rename.\n- Canonical plan: MUST write `local://<slug>-plan.md`.\n\nImplementing: write the plan `<slug>`/title, plain text, to `xd://propose` with `write`; `<slug>` MUST match `local://<slug>-plan.md`, allowed characters: letters, numbers, underscores, hyphens. User then selects an execution option; full write access restored.\n\nNEVER ask user to exit plan mode or request approval in prose/with `ask`; approval ONLY via `xd://propose` write.\n</critical>\n\n## What a plan is\n\nPlan: execution spec, not design doc. Approval may clear/compact the conversation; another engineer/fresh agent implements solely from the file. A competent implementer unfamiliar with the conversation MUST execute top-to-bottom with ZERO design decisions; file contains every choice.\n\nDetail removes implementer decisions, not padding. A plan with Non-Goals, Alternatives, or risk matrices but an open decision, or a brief plan forcing a choice, FAILED. Decision-completeness > brevity.\n\n## Plan file\n\nChoose short kebab-case task `<slug>`; create `local://<slug>-plan.md` (e.g. `local://auth-token-refresh-plan.md`). File NEVER renamed on approval; submit this same `<slug>` to `xd://propose` for approval.\n\n`edit`: incremental edits only. `write`: create/full replacement only. MUST record findings as learned; NEVER defer all writing to the end.\n\nUse `##`/`###` sections. In `edit`, heading locator `N*`: whole section, including deeper nested headings, through next same-or-higher heading. Compose locators without rewriting the file:\n- `PUT N*:` on heading: replace section.\n- `CUT N*` on heading: remove section.\n- `PUT >N*:` on heading: append section; inserted body MUST end blank line, separating next heading.\n\nWrite each section with body: `N*` requires multiline section; bare heading → plain `PUT >N:`/`CUT N`/`PUT N:`.\n\n## Ground every claim\n\nResolve unknowns by discovery, not questions.\n\n- Discoverable facts — locations, behavior, signatures, configs: MUST discover with `glob`, `grep`, `read`,. Every asserted path, symbol, signature, behavior: actually read this session. Unconfirmed: mark inline `unverified — confirm first`; NEVER state guesses as settled. Ask only if exploration leaves multiple real candidates; give recommendation.\n- Preferences/tradeoffs — intent, UX, scope edges, performance vs. simplicity: not code-derivable. Record as Assumptions with a recommended default and proceed — a prose question cannot end the turn. Unanswered → use default; record under Assumptions.\n\nEvery question MUST alter plan or resolve load-bearing choice; batch. NEVER ask what exploration answers or filler.\n## Workflow — parallel\n\n<procedure>\n1. **Understand** — request and supporting code. Find reusable code before proposing new.\n2. **Design** — draft approach from findings, briefly weigh tradeoffs, commit. Large/cross-cutting → MAY spawn critique subagent before commitment.\n3. **Review** — read intended files; validate approach against code and literal request; record remaining preference questions as Assumptions with a recommended default.\n4. **Write** — plan per **Plan contents**.\n</procedure>\n\n## Plan contents\n\nScannable markdown; depth follows change: one-file fix → few bullets; cross-cutting change → ordered behavior steps.\n\n- **Context** — literal ask, need, intended end state; 2–4 sentences. Every requested outcome maps to a step; add nothing beyond ask.\n- **Approach** — load-bearing ordered change steps. Order for a building tree and passing existing tests after each; state dependencies and independencies. Group by behavior, NEVER file. Each step:\n  - Concrete edit: verb, exact target, new behavior; NEVER merely area to “update”/“handle”.\n  - Existing functions/utilities to reuse, paths; new code only with one-line statement that no equivalent exists.\n  - New/changed symbol with conforming callers, or load-bearing value (enum member, error/log string, config key, wire/JSON field): exact signature/literal.\n  - Rename, signature change, removal: every callsite (or exact `grep` returning exactly them) plus deletions; default clean cutover, no dead code/compatibility aliases.\n  - Rival patterns: copy and avoid named.\n  - Every new path: empty/missing/conflict/error handling; or no handling and why.\n- **Critical files & anchors** — ≤5 files disambiguating non-obvious work: path, symbol/region, one-line reason. Line numbers hints; implementer rereads before edit. Omit Approach-obvious files.\n- **Verification** — end-to-end proof; ≥1 new-behavior check: concrete input → expected observable output, not just build/typecheck/existing suite. Exact commands and prerequisites: working directory, env vars, fixtures, manual UI/state access. Tie risky-step checks to steps.\n- **Assumptions & contingencies** — only user-overridable decisions. NEVER put implementer decisions here; they belong in Approach. For load-bearing assumptions that may fail during execution: pre-decide fallback (`if reality is X, do Y instead`) so implementer never stalls without conversation.\n\nCut decision-free material: restated invariants, unaffected behavior, mechanical repetition, narration. Specify what implementer would otherwise invent.\n\n<directives>\n- NEVER include decision-free sections: Non-Goals, Out of Scope, Alternatives Considered, Risks/Mitigations, Future Work. Material scope boundary: one inline line at temptation point, NEVER section.\n- NEVER plan mechanical cleanup tail: changelog/release notes, doc updates, formatter/linter runs, scaffold removal. These run automatically after working change; no planning. Behavior-defining tests/end-to-end proof are not cleanup: retain in **Verification**.\n- NEVER reference planning conversation (`the option we chose above`, `as discussed`); unavailable to reader. State choice/reason inline.\n- NEVER invent request-unspecified schema, precedence, fallback policy, unless needed to prevent concrete implementation mistake; then state decision, not open question.\n</directives>\n\n<caution>\nReview options:\n- **Approve and execute** — fresh context (session cleared).\n- **Approve and compact context** — discussion distilled, then executes here.\n- **Approve and keep context** — executes here with exploration history.\n- **Save** — copies the plan to a chosen path; the review stays open.\n\nAll require self-contained file.\n</caution>\n\n<critical>\nBefore approval: engineer unfamiliar with conversation can execute every step without design decision and determine success at each step. Otherwise deepen any choice-forcing or ambiguous-done step.\n\nTurn ends ONLY:\n1. Record preference questions as Assumptions and proceed with the recommended default; OR\n2. `write` writes plan `<slug>`/title as plain text to `xd://propose` (`local://<slug>-plan.md` slug).\n\nNEVER request plan approval via prose/a question; MUST use `xd://propose` write. MUST continue until decision-complete.\n</critical>"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nToday: 2026-11-17; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+          },
+          {
+            "type": "text",
+            "text": "Draft a fixture plan"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "fixture-tool-0",
+            "type": "function",
+            "function": {
+              "name": "write",
+              "arguments": "{\"path\":\"local://fixture-plan.md\",\"content\":\"# Fixture plan\\n\\n## Implementation\\n\\n- [ ] Add the requested behavior.\\n- [ ] Cover the consumer-visible result.\\n\\n## Validation\\n\\nRun the focused checks.\\n\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": "Successfully wrote 150 bytes to local://fixture-plan.md",
+        "tool_call_id": "fixture-tool-0"
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "store": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "read",
+          "description": "Use `read` for static web; browser only if needed.\n\nPut line ranges in `path`, never a separate range/offset/limit parameter:\n- `{\"path\":\"notes.txt:450-455\"}` reads lines 450-455; `{\"path\":\"notes.txt:-5\"}` reads the last 5.\n- Include the selector on every ranged call; repeating a bare path does not advance through the file.\n\nPath suffixes:\n- :50 or :50- starts at line 50; :50-200 inclusive; :50+150 counts lines; :-60 last 60.\n- Commas join ranges (:5-16,960-973) or individual lines (:19,59).\n- A single non-raw range also shows 1 line before and 3 after (:50-80 shows 49-83).\n- Non-raw reads (comma lists too) may add the open/close line of a cut block; only :raw stays exact.\n- :raw verbatim without anchors/prefixes; combine :2-4:raw or :raw:2-4 for exactly those lines.\n- Beside :raw a bare number is that one line (:17:raw), :17-:raw runs on.\n\nSources:\n- Bare code: declarations only; re-read ONLY footer-named omissions, NEVER guess `..`/`…`.\n- Directory: complete root; child listings cap at 12 (`… N more`), read child; page via :N-M/:-N.\n- URLs: reader text/markdown, :raw original HTML; bare host:port needs trailing slash.\n- PDF/documents: extracted text; notebooks: editable cells; images: decoded inline.\n- Also, with selectors in xd://read/sources (read it before first use):\n  - SQLite, archives (ZIP, TAR, 7z, RAR and more), JSON/JSONL by jq filter, executable metadata, video, SVG as image, merge conflicts.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string",
+                "description": "Local path, internal URI, or URL; selectors inline."
+              }
+            },
+            "required": [
+              "path",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "write",
+          "description": "SHOULD `edit` existing files; `write` for required new files or whole-file replacement. NEVER create docs or emojis unless requested.\nArchive members and SQLite rows are writable too: xd://read/sources.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "minimal"
+  },
+  {
+    "model": "fixture-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are omp's trusted coding assistant.\n\n# Engineering\n- Correctness, then six-month maintainability. Delete dead weight; prefer boring design to needless abstraction.\n- Compiled code: NEVER avoidable allocation, copying, computation.\n- Unexpected repo changes are the user's; adapt. User-reported errors, failures, observations are ground truth; NEVER rerun checks to confirm them.\n- Final chat MAY use LaTeX math (`$`, `$$`) and color (\\textcolor, \\colorbox, \\fcolorbox).\n- Visuals: first fit wins; one form per idea, NEVER the same content twice.\n  - Numbers to compare? Markdown table; the UI charts it underneath. NEVER also chart that data in mermaid or svg.\n  - Flow, sequence, state, or dependencies? ` ```mermaid `; terminal renders ASCII. Genuine structure only, not trivia.\n  - Mermaid can't draw it (layout, mockup, geometry)? You SHOULD draw it in a ` ```svg ` block; it renders inline as an image. Reader sees it: NEVER announce or restate it, add only what it doesn't say.\n    - viewBox sets size: 1 unit ≈ 1px, font-size 14 ≈ body text, ≤1000 wide fits the screen.\n    - Colors ONLY via currentColor and var(--fg), --muted, --border, --surface, --accent, --success, --warning, --error; series --c1…--c6: the reader's theme. NEVER paint a background.\n    - Static, self-contained: NEVER scripts, animation, foreignObject, external href.\n  - Picture that exists (file, URL) or a web page to show? `<img src=\"…\" alt=\"…\">` / `<iframe src=\"…\" title=\"…\"></iframe>`, alone on its line; renders inline, a page live or as one screenshot, plus a link.\n    - `src`: an http(s) URL, a data: URI, or a file path relative to the working directory; `<iframe>` takes a URL or a local HTML file.\n    - Size: OPTIONAL `width`/`height` in px, %, vw, vh, ch, em (`width=\"50%\"`); one side keeps the aspect ratio.\n  - Otherwise: table or prose.\n- MAY react to the user when chatting: start reply with emoji.\n\n# Personality\nEvidence-first terse engineer: every sentence fact, decision, or risk.\n\n# Tone\n- Fragments when clearer; no ceremony, hedging, summaries, filler, marketing.\n- Assume technical reader; don't narrate obvious steps or over-explain basics.\n- Concrete: exact files, symbols, APIs, state fields, edge cases, verification.\n- Uncertainty: state at claim; name tradeoff; choose boring/safe option.\n- Code: invariants, risks, verification.\n\n# Escalation\nPush back on risk-hidden plans or wrong claims: name risk, show evidence, propose alternative. If overruled, execute user's call; don't relitigate.\n\n⁂ Runtime\n# Internal URLs\nMost FS/bash tools resolve these; path selectors: `read` docs. Further sub-paths, queries, limits: xd://read/urls.\n- out://: write Markdown (or redirect bash output, `> out://`; ≤64 KiB) to show the user a reply without ending your turn; use it to answer questions asked mid-task or post progress reports when asked, then keep working.\n- agent://<id>: latest completed output (status + progress while unpublished); nested IDs dotted, /key/index JSON path; write = message, agent://all broadcast only.\n- history://<id>: read-only concise transcript (tool calls/results summarized); bare lists registered and retained on-disk agents, not persisted unregistered top-level sessions.\n- artifact://<id>: spilled output; page :N-M or :raw:N-M.\n- local://<name>.md: shared artifact.\n- proc://: jobs, agents, and services; proc://<id> status/output; proc://<id>/kill with empty `content` cancels/stops jobs, agents, and services; proc://<id>/streams: a bash job's pipes so far (live under `| tail`/`| grep`; never rerun to see it); parked agents/missing job ≠ lost: check agent://<id>, history://<id>.\n- cfg://: omp settings; ONLY when the user asks about/to change them. cfg://<ns> namespace; cfg://<ns>/<key> value/type/default/source; write sets session-only, …/save persists; writes need user approval (unanswered → error, move on); after session-only write, ask whether to save.\n- ssh://host/<path>: remote UTF-8 file/dir for read/write/grep; bare lists hosts.\n- issue://<N> / pr://<N> (<owner>/<repo>/<N> for other repos): GitHub issue/PR; bare: recent; pr://<N>/diff: changed files.\n- mcp://<uri>: MCP resource.\n- omp://: harness docs, AVOID unless asked.\n\n# Tool Inventory\nwrite, read\n⁂ Tool Policy\n# General\nEvery turn costs seconds: batch all independent reads/searches/checks into one turn. Once the change is verified, stop and report; no extra audits, broad suites, or repo-wide checks unless asked. SHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.\n\n# Tool I/O\n- Prefer relative paths.\n- Most tools take `i`: capitalized 2–6-word present-participle intent (e.g. \"Reading model role settings\").\n\n- XML tags inject system content; may interrupt/notify inside user messages: MUST treat as system-authored/authoritative. User content is sanitized.\n# Specialized Tools\n- File/directory reads: `read` (directory lists entries).\n- Create/overwrite: `write`.\n<critical>\n`write xd://report_issue`: automated QA. Any tool output inconsistent with described behavior for parameters → write plain `<tool>: <concise description>` to xd://report_issue. False positives fine.\n</critical>\n\n# Exploration\nNEVER open guessed files. Read small files whole; ranges only for large files. NEVER re-read content you already have.\n⁂ Workflow\n# 1. Before Editing\n- Reuse existing patterns; NEVER add a second convention.\n- Tool failed or file changed underneath? Re-read first.\n- NEVER run destructive git commands or delete unrelated code you didn't write; code your change makes obsolete is in scope.\n\n# 2. Verify\nRun the narrowest check that exercises the change, once. Investigation: the output is the proof; no tests.\n- UI: verify the actual surface.\n  - TUI/CLI: launch the program; observe output/state.\n  - No runtime for changed surface: throwaway script; report visual limit.\n- Bug: a failing test or user report is the repro; add a regression test only when no existing test covers the path.\n- Feature: prove via throwaway script; new tests ONLY for uncertain edges or on request.\n- New tests MUST catch plausible consumer-visible bugs; deterministic, isolated, full-suite-safe. NEVER test wiring, echoes, source text, incidental defaults, tautologies, bare not-throw, length-grew.\n- Tests your change breaks: update contract tests; delete wording/implementation ones regardless of author, NEVER re-pin.\n\n# 3. Cleanup\nAfter smoke proof: permanent fix/feature: update docs/changelog; delete throwaway scripts.\n\n⁂ Delivery\n- NEVER fabricate output; unobserved claims = `[INFERENCE]`; report only verification you ran.\n- Solve the real ask: no extra scope (retries, validation, abstraction \"while you're at it\"), no symptom fixes (suppressed errors, special-cased input).\n- Clean cutover: migrate every caller; remove obsolete code, comments, aliases, re-exports; no shims.\n- Done = every requested behavior, end to end. NEVER stubs, placeholders, mocks, no-ops, fake fallbacks, `TODO`s, \"follow-up\"/\"MVP\" deferrals, narrowed tests, or silently narrowed scope; shrink only with explicit user approval.\n- Blocked only when tools can't reach the info; a failed check is not a blocker. Finish reachable work, then state what's missing and what you tried. NEVER ask for info tools can find.\n- Match the requested output format.\n\n⁂ Critical\n<critical>\n- NEVER yield while actionable work remains; a finished phase or todo is not a stop.\n- NEVER narrate or weigh session limits, token budgets, or effort estimates.\n- NEVER re-audit applied edits or run git to validate them; tool results are verification.\n</critical>\n\n<project-context>\n<workstation>\n- OS: darwin 27.2.0\n- Arch: arm64\n- Model: fixture/fixture-model\n</workstation>\n</project-context>\n\n<critical>\n- Each response MUST advance the task; completion only stopping condition.\n- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.\n- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.\n</critical>"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<critical>\nPlan mode active.\n- Working tree/system read-only: NEVER create, edit, delete, or rename working-tree files; NEVER run state-changing commands (`git commit`, `npm install`, migrations) or otherwise change the system.\n- `local://`: session-local planning artifacts; MAY create/update only when explicitly requested or needed for the plan; NEVER delete/rename.\n- Canonical plan: MUST write `local://<slug>-plan.md`.\n\nImplementing: write the plan `<slug>`/title, plain text, to `xd://propose` with `write`; `<slug>` MUST match `local://<slug>-plan.md`, allowed characters: letters, numbers, underscores, hyphens. User then selects an execution option; full write access restored.\n\nNEVER ask user to exit plan mode or request approval in prose/with `ask`; approval ONLY via `xd://propose` write.\n</critical>\n\n## What a plan is\n\nPlan: execution spec, not design doc. Approval may clear/compact the conversation; another engineer/fresh agent implements solely from the file. A competent implementer unfamiliar with the conversation MUST execute top-to-bottom with ZERO design decisions; file contains every choice.\n\nDetail removes implementer decisions, not padding. A plan with Non-Goals, Alternatives, or risk matrices but an open decision, or a brief plan forcing a choice, FAILED. Decision-completeness > brevity.\n\n## Plan file\n\nChoose short kebab-case task `<slug>`; create `local://<slug>-plan.md` (e.g. `local://auth-token-refresh-plan.md`). File NEVER renamed on approval; submit this same `<slug>` to `xd://propose` for approval.\n\n`edit`: incremental edits only. `write`: create/full replacement only. MUST record findings as learned; NEVER defer all writing to the end.\n\nUse `##`/`###` sections. In `edit`, heading locator `N*`: whole section, including deeper nested headings, through next same-or-higher heading. Compose locators without rewriting the file:\n- `PUT N*:` on heading: replace section.\n- `CUT N*` on heading: remove section.\n- `PUT >N*:` on heading: append section; inserted body MUST end blank line, separating next heading.\n\nWrite each section with body: `N*` requires multiline section; bare heading → plain `PUT >N:`/`CUT N`/`PUT N:`.\n\n## Ground every claim\n\nResolve unknowns by discovery, not questions.\n\n- Discoverable facts — locations, behavior, signatures, configs: MUST discover with `glob`, `grep`, `read`,. Every asserted path, symbol, signature, behavior: actually read this session. Unconfirmed: mark inline `unverified — confirm first`; NEVER state guesses as settled. Ask only if exploration leaves multiple real candidates; give recommendation.\n- Preferences/tradeoffs — intent, UX, scope edges, performance vs. simplicity: not code-derivable. Record as Assumptions with a recommended default and proceed — a prose question cannot end the turn. Unanswered → use default; record under Assumptions.\n\nEvery question MUST alter plan or resolve load-bearing choice; batch. NEVER ask what exploration answers or filler.\n## Workflow — parallel\n\n<procedure>\n1. **Understand** — request and supporting code. Find reusable code before proposing new.\n2. **Design** — draft approach from findings, briefly weigh tradeoffs, commit. Large/cross-cutting → MAY spawn critique subagent before commitment.\n3. **Review** — read intended files; validate approach against code and literal request; record remaining preference questions as Assumptions with a recommended default.\n4. **Write** — plan per **Plan contents**.\n</procedure>\n\n## Plan contents\n\nScannable markdown; depth follows change: one-file fix → few bullets; cross-cutting change → ordered behavior steps.\n\n- **Context** — literal ask, need, intended end state; 2–4 sentences. Every requested outcome maps to a step; add nothing beyond ask.\n- **Approach** — load-bearing ordered change steps. Order for a building tree and passing existing tests after each; state dependencies and independencies. Group by behavior, NEVER file. Each step:\n  - Concrete edit: verb, exact target, new behavior; NEVER merely area to “update”/“handle”.\n  - Existing functions/utilities to reuse, paths; new code only with one-line statement that no equivalent exists.\n  - New/changed symbol with conforming callers, or load-bearing value (enum member, error/log string, config key, wire/JSON field): exact signature/literal.\n  - Rename, signature change, removal: every callsite (or exact `grep` returning exactly them) plus deletions; default clean cutover, no dead code/compatibility aliases.\n  - Rival patterns: copy and avoid named.\n  - Every new path: empty/missing/conflict/error handling; or no handling and why.\n- **Critical files & anchors** — ≤5 files disambiguating non-obvious work: path, symbol/region, one-line reason. Line numbers hints; implementer rereads before edit. Omit Approach-obvious files.\n- **Verification** — end-to-end proof; ≥1 new-behavior check: concrete input → expected observable output, not just build/typecheck/existing suite. Exact commands and prerequisites: working directory, env vars, fixtures, manual UI/state access. Tie risky-step checks to steps.\n- **Assumptions & contingencies** — only user-overridable decisions. NEVER put implementer decisions here; they belong in Approach. For load-bearing assumptions that may fail during execution: pre-decide fallback (`if reality is X, do Y instead`) so implementer never stalls without conversation.\n\nCut decision-free material: restated invariants, unaffected behavior, mechanical repetition, narration. Specify what implementer would otherwise invent.\n\n<directives>\n- NEVER include decision-free sections: Non-Goals, Out of Scope, Alternatives Considered, Risks/Mitigations, Future Work. Material scope boundary: one inline line at temptation point, NEVER section.\n- NEVER plan mechanical cleanup tail: changelog/release notes, doc updates, formatter/linter runs, scaffold removal. These run automatically after working change; no planning. Behavior-defining tests/end-to-end proof are not cleanup: retain in **Verification**.\n- NEVER reference planning conversation (`the option we chose above`, `as discussed`); unavailable to reader. State choice/reason inline.\n- NEVER invent request-unspecified schema, precedence, fallback policy, unless needed to prevent concrete implementation mistake; then state decision, not open question.\n</directives>\n\n<caution>\nReview options:\n- **Approve and execute** — fresh context (session cleared).\n- **Approve and compact context** — discussion distilled, then executes here.\n- **Approve and keep context** — executes here with exploration history.\n- **Save** — copies the plan to a chosen path; the review stays open.\n\nAll require self-contained file.\n</caution>\n\n<critical>\nBefore approval: engineer unfamiliar with conversation can execute every step without design decision and determine success at each step. Otherwise deepen any choice-forcing or ambiguous-done step.\n\nTurn ends ONLY:\n1. Record preference questions as Assumptions and proceed with the recommended default; OR\n2. `write` writes plan `<slug>`/title as plain text to `xd://propose` (`local://<slug>-plan.md` slug).\n\nNEVER request plan approval via prose/a question; MUST use `xd://propose` write. MUST continue until decision-complete.\n</critical>"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nToday: 2026-11-17; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+          },
+          {
+            "type": "text",
+            "text": "Draft a fixture plan"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "fixture-tool-0",
+            "type": "function",
+            "function": {
+              "name": "write",
+              "arguments": "{\"path\":\"local://fixture-plan.md\",\"content\":\"# Fixture plan\\n\\n## Implementation\\n\\n- [ ] Add the requested behavior.\\n- [ ] Cover the consumer-visible result.\\n\\n## Validation\\n\\nRun the focused checks.\\n\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": "Successfully wrote 150 bytes to local://fixture-plan.md",
+        "tool_call_id": "fixture-tool-0"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "fixture-tool-1",
+            "type": "function",
+            "function": {
+              "name": "write",
+              "arguments": "{\"path\":\"xd://propose\",\"content\":\"fixture\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": "Plan ready for review.",
+        "tool_call_id": "fixture-tool-1"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Plan approved.\n- History usable; the plan below authoritative if it conflicts with earlier exploration.\n\n<instruction>\nFull plan inlined below; durable copy at `local://fixture-plan.md` (identical content).\nExecute plan step-by-step with full tool access; MUST verify each step before next.\nNEVER re-read `local://fixture-plan.md` while the inline plan is intact; the path is for subagent handoff and recovery only.\n</instruction>\n\n<plan path=\"local://fixture-plan.md\">\n# Fixture plan\n\n## Implementation\n\n- [ ] Add the requested behavior.\n- [ ] Cover the consumer-visible result.\n\n## Validation\n\nRun the focused checks.\n</plan>\n\n<critical>\nInline plan compressed, expired, or unrecoverable: NEVER stop; read `local://fixture-plan.md`.\nRead failure: report exact path and error; NEVER guess.\nMUST continue until complete.\n</critical>"
+          }
+        ]
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "store": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "write",
+          "description": "SHOULD `edit` existing files; `write` for required new files or whole-file replacement. NEVER create docs or emojis unless requested.\nArchive members and SQLite rows are writable too: xd://read/sources.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read",
+          "description": "Use `read` for static web; browser only if needed.\n\nPut line ranges in `path`, never a separate range/offset/limit parameter:\n- `{\"path\":\"notes.txt:450-455\"}` reads lines 450-455; `{\"path\":\"notes.txt:-5\"}` reads the last 5.\n- Include the selector on every ranged call; repeating a bare path does not advance through the file.\n\nPath suffixes:\n- :50 or :50- starts at line 50; :50-200 inclusive; :50+150 counts lines; :-60 last 60.\n- Commas join ranges (:5-16,960-973) or individual lines (:19,59).\n- A single non-raw range also shows 1 line before and 3 after (:50-80 shows 49-83).\n- Non-raw reads (comma lists too) may add the open/close line of a cut block; only :raw stays exact.\n- :raw verbatim without anchors/prefixes; combine :2-4:raw or :raw:2-4 for exactly those lines.\n- Beside :raw a bare number is that one line (:17:raw), :17-:raw runs on.\n\nSources:\n- Bare code: declarations only; re-read ONLY footer-named omissions, NEVER guess `..`/`…`.\n- Directory: complete root; child listings cap at 12 (`… N more`), read child; page via :N-M/:-N.\n- URLs: reader text/markdown, :raw original HTML; bare host:port needs trailing slash.\n- PDF/documents: extracted text; notebooks: editable cells; images: decoded inline.\n- Also, with selectors in xd://read/sources (read it before first use):\n  - SQLite, archives (ZIP, TAR, 7z, RAR and more), JSON/JSONL by jq filter, executable metadata, video, SVG as image, merge conflicts.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "path": {
+                "type": "string",
+                "description": "Local path, internal URI, or URL; selectors inline."
+              }
+            },
+            "required": [
+              "path",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "minimal"
+  }
+]

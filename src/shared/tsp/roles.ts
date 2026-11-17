@@ -76,10 +76,20 @@ export function isTreeSelectorNode(node: TspNode): boolean {
 		|| node.k === "list" && (node.p?.role === TSP_ROLES.tree || node.p?.role === TSP_ROLES.treeSelector);
 }
 export const TSP_BTW_STATUS = { running: "Answering", cancelled: "Cancelled", error: "Failed", interrupted: "Interrupted" } as const;
+/**
+ * Plan Review option labels. `save` is "Save and quit" through omp 18.21; omp 18.22.0 replaced it with `saveCopy`,
+ * "Save", which writes the plan to a file the user names and keeps the review open. omp 18.22.0 also lists
+ * Refine only while its own review has annotations or deleted sections.
+ */
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
-	refine: "Refine plan", save: "Save and quit",
+	refine: "Refine plan", save: "Save and quit", saveCopy: "Save",
 } as const;
+/** The option an omp label stands for: a prefix match ("Approve and keep context (~4k / 128k)"), except bare "Save". */
+export function planOptionAction(label: string): keyof typeof TSP_PLAN_OPTIONS | null {
+	if (label === TSP_PLAN_OPTIONS.saveCopy) return "saveCopy";
+	return (Object.keys(TSP_PLAN_OPTIONS) as (keyof typeof TSP_PLAN_OPTIONS)[]).find(action => action !== "saveCopy" && label.startsWith(TSP_PLAN_OPTIONS[action])) ?? null;
+}
 export const TSP_ADVISOR = {
 	command: "/advisor configure", title: "Advisors", fileSection: "file", addAction: "add",
 	projectFile: "WATCHDOG.yml · project", userFile: "WATCHDOG.yml · user",

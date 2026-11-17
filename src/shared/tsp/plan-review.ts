@@ -1,6 +1,6 @@
 import type { TspNode, TspText } from "../tsp";
 import type { TspRendererEvent } from "../tsp-host";
-import { TSP_ACTIONS, TSP_PLAN_OPTIONS, TSP_ROLES } from "./roles";
+import { planOptionAction, TSP_ACTIONS, type TSP_PLAN_OPTIONS, TSP_ROLES } from "./roles";
 import { liveSurfaces, region, walkNodes, type TspSurfaces } from "./view-state";
 
 export type PlanAction = keyof typeof TSP_PLAN_OPTIONS;
@@ -43,7 +43,7 @@ export function projectPlanReview(node: TspNode, sf: string): TspPlanReview | nu
 	if (!body || (!options && !committed)) return null;
 	const choices: PlanReviewOption[] = (options?.c ?? []).filter((child): child is Extract<TspNode, { k: "item" }> => child.k === "item" && !child.p?.hidden).map(child => {
 		const label = text(child.p?.label);
-		const action = (Object.keys(TSP_PLAN_OPTIONS) as PlanAction[]).find(action => label.startsWith(TSP_PLAN_OPTIONS[action])) ?? null;
+		const action = planOptionAction(label);
 		const id = child.p?.key ?? child.id;
 		return { id, label, selected: id === options?.p?.selected, disabled: child.p?.disabled === true, action };
 	});

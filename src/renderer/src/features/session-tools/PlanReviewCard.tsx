@@ -20,29 +20,27 @@ import { useTspPlanReview } from "./planReviewTsp";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 
-type PlanAction = "execute" | "compact" | "keep" | "refine" | "save";
-
-/** Overlay option label prefixes, in omp's order. */
-const OPTION_PREFIX: Record<PlanAction, string> = {
-	execute: "Approve and execute",
-	compact: "Approve and compact context",
-	keep: "Approve and keep context",
-	refine: "Refine plan",
-	save: "Save and quit",
-};
+import type { PlanAction } from "@shared/tsp/plan-review";
+import { planOptionAction, TSP_PLAN_OPTIONS } from "@shared/tsp/roles";
 
 /** omp disables "keep context" above this context use (`PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT`). */
 const KEEP_CONTEXT_LIMIT = 95;
 
 /** Move the overlay cursor onto the option for `action` and confirm it. */
 async function choose(session: SessionController, action: PlanAction): Promise<void> {
-	const prefix = OPTION_PREFIX[action];
 	for (let step = 0; step < 8; step++) {
 		const review = parsePlanReview(await readScreen(session));
 		if (!review) throw new Error("Plan Review is no longer open.");
-		const target = review.options.findIndex(option => option.label.startsWith(prefix));
+		const target = review.options.findIndex(option => planOptionAction(option.label) === action);
 		const current = review.options.findIndex(option => option.selected);
-		if (target < 0) throw new Error(`omp did not offer "${prefix}".`);
+		if (target < 0 && action === "refine") {
+			// omp 18.22.0 lists Refine only while its own review has annotations or deleted sections; closing it keeps plan mode.
+			await press(session, "escape");
+			if (!await waitForScreen(session, lines => !isPlanReview(lines), 6000)) throw new Error("omp did not close Plan Review.");
+			void screenPoller(session).refresh();
+			return;
+		}
+		if (target < 0) throw new Error(`omp did not offer "${TSP_PLAN_OPTIONS[action]}".`);
 		if (current === target) {
 			await press(session, "enter");
 			const closed = await waitForScreen(session, lines => !isPlanReview(lines), 6000);
@@ -115,11 +113,16 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	if (!review) return null;
 	const planText = semantic ? tsp.review?.body ?? null : plan;
 	const unavailable = semantic && (tsp.disabled || tsp.review?.committed === true);
-	const offered = (action: PlanAction) => !semantic || tsp.review?.options.some(option => option.action === action && !option.disabled) === true;
+	const listed = (action: PlanAction) => semantic ? tsp.review?.options.some(option => option.action === action && !option.disabled) === true
+		: review.options.some(option => planOptionAction(option.label) === action);
+	// omp 18.22.0 lists Refine only while its own review has annotations or deleted sections; closing the review stands in for it.
+	const offered = (action: PlanAction) => listed(action) || (action === "refine" && (!semantic || !!tsp.review?.cancelId));
+	// omp 18.22.0 replaced Save and quit with Save, which names a file and keeps the review open (TSP chats only).
+	const saveAction: PlanAction = !listed("save") && semantic && listed("saveCopy") ? "saveCopy" : "save";
 
 	const percent = view.guest?.state?.contextUsage?.percent ?? 0;
 	const keepOffered = semantic ? tsp.review?.options.some(option => option.action === "keep") === true
-		: review.options.some(option => option.label.startsWith(OPTION_PREFIX.keep)) && percent <= KEEP_CONTEXT_LIMIT;
+		: listed("keep") && percent <= KEEP_CONTEXT_LIMIT;
 	const title = (semantic ? tsp.review?.title : plan && /^#{1,3}\s+(.+)$/m.exec(plan)?.[1]?.trim()) || t("plan.untitled");
 	const slider = review.slider && review.slider.roles.length > 1 ? review.slider : null;
 
@@ -135,7 +138,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 				useComposerDrafts.getState().setDraft(session.tabId, t("plan.refinePrefix"));
 				useComposerDrafts.getState().focus(session.tabId);
 			}
-			setDone(semantic && action === "save" ? null : action);
+			setDone(semantic && (action === "save" || action === "saveCopy") ? null : action);
 		} catch (error) {
 			reportFailure(error);
 		} finally {
@@ -254,8 +257,8 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 						</MenuContent>
 					</Menu>
 					<span className="flex-1" />
-					<Button variant="ghost" disabled={semantic && (!!busy || unavailable || !offered("save"))} loading={busy === "save"} onClick={() => void act("save")}>
-						{t("plan.actions.save")}
+					<Button variant="ghost" disabled={!offered(saveAction) || (semantic && (!!busy || unavailable))} loading={busy === saveAction} onClick={() => void act(saveAction)}>
+						{t(`plan.actions.${saveAction}`)}
 					</Button>
 				</div>
 			</Card>
