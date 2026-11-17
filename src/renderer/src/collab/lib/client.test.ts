@@ -618,6 +618,36 @@ describe("18.18.7 guest backlog resync", () => {
 		expect(client.getSnapshot().loading).toBeNull();
 	});
 
+	it("says hello again when a rejoin's welcome fails to apply, and ignores its snapshot chunks", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		feed(resync);
+		expect(hellos()).toBe(1);
+		// omp 18.20.1's collab-web fix: the chunks of a welcome that threw must not take the chat live.
+		feed({ ...welcome, entryCount: 1, agents: undefined });
+		feed({ t: "snapshot-chunk", entries: [entry], final: true });
+		expect(client.getSnapshot().phase).toBe("reconnecting");
+		expect(hellos()).toBe(2);
+		feed({ ...welcome, entryCount: 1 });
+		feed({ t: "snapshot-chunk", entries: [entry], final: true });
+		expect(client.getSnapshot()).toMatchObject({ phase: "live", entries: [entry] });
+		warn.mockRestore();
+	});
+
+	it("keeps the previous state when a rejoin's welcome carries a malformed helper", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const helper = { id: "Helper", kind: "sub", status: "running" };
+		feed({ t: "entry", entry });
+		feed({ t: "agents", agents: [helper] });
+		const before = client.getSnapshot();
+		feed(resync);
+		// Read in place, the null helper would throw after the welcome's header, state and snapshot had changed.
+		feed({ ...welcome, header: { id: "other" }, entryCount: 1, state: { isStreaming: true, participants: [] }, agents: [null] });
+		feed({ t: "snapshot-chunk", entries: [], final: true });
+		expect(client.getSnapshot()).toMatchObject({ phase: "reconnecting", header: before.header, state: before.state, agents: [helper], entries: [entry] });
+		expect(hellos()).toBe(2);
+		warn.mockRestore();
+	});
+
 	it("bounds a missing welcome after an older host reconnect without requiring resync support", async () => {
 		vi.useFakeTimers();
 		socket.current!.onClose("connection lost", true);

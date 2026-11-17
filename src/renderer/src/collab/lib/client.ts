@@ -139,6 +139,18 @@ interface PendingTranscript {
 	timer: Timer;
 }
 
+/** A copied helper roster and the status key `#semanticMark` compares. */
+interface PreparedAgents {
+	agents: readonly AgentSnapshot[];
+	roster: string;
+}
+
+/** Reads every agent field the client keeps, so a malformed roster throws before any state changes. */
+function prepareAgents(agents: readonly AgentSnapshot[]): PreparedAgents {
+	const copy = [...agents];
+	return { agents: copy, roster: copy.map(agent => `${agent.id}:${agent.status}`).join("\n") };
+}
+
 /** The name this app joins omp's collab session with; omp announces it in join and leave notices. */
 export const APP_GUEST_NAME = "visual-omp";
 
@@ -463,8 +475,13 @@ export class GuestClient {
 			this.#applyFrame(frame);
 		} catch (err) {
 			console.warn("collab: failed to apply frame", frame.t, err);
-			if (frame.t === "welcome" && !this.#welcomed) {
-				this.#end(`failed to apply session snapshot: ${err instanceof Error ? err.message : String(err)}`);
+			if (frame.t === "welcome") {
+				const reason = `failed to apply session snapshot: ${err instanceof Error ? err.message : String(err)}`;
+				// A failed welcome must never go live through its snapshot chunks (omp 18.20.1's
+				// collab-web fix). A guest already in the session says hello again instead, which
+				// also drops any earlier welcome's snapshot and timer.
+				if (this.#welcomed) this.#rejoin(reason);
+				else this.#end(reason);
 				return;
 			}
 			this.#pushNotice("error", `failed to apply ${frame.t} frame`);
@@ -475,7 +492,11 @@ export class GuestClient {
 	#applyFrame(frame: HostFrame): void {
 		const before = deferrable(frame) ? this.#semanticMark() : null;
 		switch (frame.t) {
-			case "welcome":
+			case "welcome": {
+				// Read every field that can throw on a malformed frame before any state changes,
+				// so a failed welcome leaves the guest as it was.
+				const agents = prepareAgents(frame.agents);
+				const streaming = frame.state.isStreaming;
 				// A fresh welcome (first join or reconnect) restarts the snapshot.
 				// Entries already on screen stay until the new snapshot replaces
 				// them once complete, so a resync never blanks the transcript.
@@ -488,7 +509,7 @@ export class GuestClient {
 					this.#pendingSnapshot = { entries: [], live: [], total: frame.entryCount };
 				}
 				this.#state = frame.state;
-				this.#setAgents(frame.agents);
+				this.#setAgents(agents);
 				this.#stream = null;
 				this.#streamDone = false;
 				this.#activeTools = new Map();
@@ -500,7 +521,7 @@ export class GuestClient {
 				this.#continuing = false;
 				this.#working ||= this.#awaitingAsyncWork;
 				this.#awaitingAsyncWork = false;
-				if (frame.state.isStreaming) {
+				if (streaming) {
 					this.#lastStreamingAt = Date.now();
 					this.#markWorking();
 				} else this.#observeIdle(514);
@@ -521,6 +542,7 @@ export class GuestClient {
 				this.#endedReason = null;
 				this.#scheduleIdle();
 				break;
+			}
 			case "snapshot-chunk": {
 				// Buffer fragments and publish the transcript once, when the
 				// snapshot completes (as the TUI guest does). Intermediate chunks
@@ -584,7 +606,7 @@ export class GuestClient {
 				} else this.#observeIdle(513);
 				break;
 			case "agents":
-				this.#setAgents(frame.agents);
+				this.#setAgents(prepareAgents(frame.agents));
 				break;
 			case "bus":
 				if (frame.channel === "task:subagent:progress") {
@@ -650,9 +672,9 @@ export class GuestClient {
 		else this.#commit();
 	}
 
-	#setAgents(agents: readonly AgentSnapshot[]): void {
-		this.#agents = [...agents];
-		this.#agentRoster = agents.map(agent => `${agent.id}:${agent.status}`).join("\n");
+	#setAgents(prepared: PreparedAgents): void {
+		this.#agents = prepared.agents;
+		this.#agentRoster = prepared.roster;
 	}
 
 	/** What turn ends, questions, the connection, helper status and the thinking menu depend on. A change here publishes at once. */
