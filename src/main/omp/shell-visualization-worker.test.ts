@@ -57,6 +57,9 @@ vi.mock("./shell-visualization-windows", async () => {
 		const configuration = JSON.parse(readFileSync(options.config, "utf8")) as { executable: string; args: string[] };
 		// This seam emulates the job owner, while the separate protocol suite tests its real transport.
 		const child = spawn(configuration.executable, configuration.args, { cwd: options.cwd, env: options.env, stdio: ["ignore", "ignore", "ignore"], windowsHide: true }) as unknown as FakeChild;
+		// Like the real job, an exit nobody asked for is a crash.
+		let stopping = false;
+		child.once("exit", () => { if (!stopping) options.onLoss("crash"); });
 		const job = { child, onLoss: options.onLoss, cancelSample: vi.fn(),
 			started: state.windowsStartGate?.promise ?? Promise.resolve(),
 			sample: vi.fn(async () => {
@@ -65,6 +68,7 @@ vi.mock("./shell-visualization-windows", async () => {
 				return { jobRssBytes, monitorRssBytes: state.monitorRss, totalRssBytes: jobRssBytes + state.monitorRss };
 			}),
 			stop: vi.fn(async () => {
+				stopping = true;
 				state.windowsStartGate?.reject(new Error("Cancelled job startup"));
 				if (state.windowsStopError) throw new Error("The shell presentation process tree could not be confirmed stopped.");
 				if (state.windowsStopGate) await state.windowsStopGate.promise;

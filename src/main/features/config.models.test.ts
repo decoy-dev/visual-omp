@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { access, readFile } from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { configWritten, listModels, register } from "./config";
@@ -62,7 +63,8 @@ describe("model window policies", () => {
 		else fake.path = "/fixture/other-omp";
 		// The updater and minute refresh force a status read. A path preference also bypasses cached status.
 		await ompStatus(change === "version");
-		expect(fake.broadcast).toHaveBeenCalledWith("omp:status", expect.objectContaining({ path: fake.path, version: fake.version }));
+		// Status reports the resolved preference, which on Windows gains a drive letter.
+		expect(fake.broadcast).toHaveBeenCalledWith("omp:status", expect.objectContaining({ path: resolve(fake.path), version: fake.version }));
 		for (const models of await Promise.all([
 			listModels("/fixture/project"),
 			listModels("/fixture/project", false, true),
