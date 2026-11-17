@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { DirEntry } from "@shared/ipc";
 import { userEnv } from "./env";
@@ -33,6 +33,17 @@ export function pathExists(path: string): Promise<boolean> {
 		() => true,
 		() => false,
 	);
+}
+
+/** A folder a chat can start in: a directory the app can list and enter. */
+export async function usableDirectory(path: string): Promise<boolean> {
+	try {
+		if (!(await stat(path)).isDirectory()) return false;
+		await access(path, constants.R_OK | constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** Project-relative file list for the @-mention picker: git-tracked + untracked-not-ignored, else a bounded walk. */

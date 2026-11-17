@@ -8,7 +8,9 @@
 			"aria": "Project folder: {{name}}",
 			"choose": "Choose a project folder",
 			"open": "Open folder…",
-			"create": "Create project…"
+			"create": "Create project…",
+			"makeDefault": "Use for new chats",
+			"isDefault": "New chats start here"
 		}
 	},
 	"recent": {

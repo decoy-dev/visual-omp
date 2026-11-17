@@ -172,6 +172,8 @@
 	},
 	"chooser": {
 		"title": "Start a chat in…",
+		"makeDefault": "Use {{name}} for new chats",
+		"isDefault": "New chats start in {{name}}",
 		"body": "omp reads and changes files inside the folder you choose.",
 		"moveTitle": "Choose a folder for this chat",
 		"moveBody": "Nothing has been sent yet, so the chat can still switch folders. Your unsent text is kept.",

@@ -5,13 +5,15 @@ import { useDeferredTranslation } from "@/i18n";
 import { lazyView, LoadFailed } from "@/registry/lazy";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
+import { Button, PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
 import { useResource } from "../shared";
 import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
 import { AutoUpdateSwitch } from "./AutoUpdateSetting";
 import { CompactAtField } from "../../compaction/CompactAtField";
+import { pickNewChatFolder, saveNewChatFolder } from "../../projects/newChatFolder";
+import { useState } from "react";
 
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 const ProofsSetting = lazyView(() => import("../../live-preview/ProofsSetting").then(m => m.ProofsSetting), null, LoadFailed);
@@ -22,6 +24,13 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
+	const systemFolder = useApp(state => state.defaultChatFolder);
+	const [folderBusy, setFolderBusy] = useState(false);
+	const folderAction = (run: () => Promise<boolean>) => {
+		if (folderBusy) return;
+		setFolderBusy(true);
+		void run().finally(() => setFolderBusy(false));
+	};
 	const compaction = omp.byKey.get("compaction.enabled");
 	const compactAt = omp.byKey.get("compaction.thresholdTokens");
 	// In project scope an empty field inherits the global point.
@@ -74,6 +83,24 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 			</SettingsSection>}
 
 			<SettingsSection title={t("general.chats")}>
+				{prefs && (
+					<SettingRow
+						label={t("general.newChatFolder.label")}
+						description={prefs.newChatFolder
+							? t("general.newChatFolder.set", { path: prefs.newChatFolder })
+							: t("general.newChatFolder.unset", { path: systemFolder ?? "" })}
+						control={
+							<div className="flex items-center gap-2">
+								{prefs.newChatFolder && (
+									<Button size="sm" variant="ghost" disabled={folderBusy} onClick={() => folderAction(() => saveNewChatFolder(null))}>{t("general.newChatFolder.reset")}</Button>
+								)}
+								<Button size="sm" variant="secondary" disabled={folderBusy} onClick={() => folderAction(pickNewChatFolder)}>
+									{t("general.newChatFolder.choose")}
+								</Button>
+							</div>
+						}
+					/>
+				)}
 				{prefs && (
 					<SettingRow
 						label={t("general.transcript.label")}

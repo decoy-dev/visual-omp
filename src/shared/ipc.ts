@@ -261,6 +261,8 @@ export interface AppPreferences {
 	 * is announced once; the list keeps every key so a sign-in omp still lists is never announced again.
 	 */
 	expiredSignInsShown: string[];
+	/** Folder that New chat and Home start chats in; null uses omp's unscoped folder (`defaultChatFolder`). */
+	newChatFolder: string | null;
 }
 
 /** Unopened chat results, including other chats in a focused window (DESIGN §4.22). */
@@ -392,6 +394,8 @@ export interface IpcInvokeMap {
 	"fs:read": { args: [file: string]; result: string };
 	"fs:write": { args: [file: string, content: string]; result: void };
 	"fs:exists": { args: [path: string]; result: boolean };
+	/** A directory the app can list and enter, such as a folder a chat can start in. */
+	"fs:usableDirectory": { args: [path: string]; result: boolean };
 	"fs:files": { args: [cwd: string]; result: string[] };
 }
 

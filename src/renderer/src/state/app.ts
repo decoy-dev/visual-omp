@@ -11,6 +11,8 @@ import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { reconcileUnseen, type UnseenChats } from "../features/onboarding/attention";
+// Imported for use inside newChat only; that module reads useApp lazily, so the import cycle is safe.
+import { usableNewChatFolder } from "../features/projects/newChatFolder";
 import { type BulkCloseScope, confirmBulkClose, confirmTabClose, preparePaneLeave } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
@@ -57,6 +59,11 @@ export interface OpenPage {
 	props: unknown;
 	/** Increments on every `openPage`, so a page can apply a new deep link while it is already open. */
 	seq: number;
+}
+
+/** Where New chat and Home start a chat: the folder chosen in Settings, else omp's unscoped folder. */
+export function newChatFolder(state: Pick<AppState, "prefs" | "defaultChatFolder">): string | null {
+	return state.prefs?.newChatFolder ?? state.defaultChatFolder;
 }
 
 export interface AppState {
@@ -536,7 +543,8 @@ export const useApp = create<AppState>()(
 			},
 
 			async newChat(projectPath, options) {
-				const path = projectPath ?? get().defaultChatFolder ?? (await window.vomp.invoke("app:info")).defaultChatFolder;
+				const path = projectPath ?? await usableNewChatFolder();
+				if (!path) return null;
 				const result = await whenLeaving(() => {
 					const tab: ChatTab = { id: newTabId(), projectPath: path, sessionFile: null, title: null };
 					const controller = ensureController(tab, options?.extraArgs);

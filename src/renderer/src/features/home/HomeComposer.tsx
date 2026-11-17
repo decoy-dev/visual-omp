@@ -6,14 +6,14 @@
  * they survive leaving Home and restarting the app.
  */
 import type { ModelInfo } from "@shared/contracts/config";
-import { ArrowUp, Brain, CaretDown, Folder, FolderOpen, FolderPlus, Paperclip, Plus } from "@phosphor-icons/react";
+import { ArrowUp, Brain, CaretDown, Folder, FolderOpen, FolderPlus, Paperclip, Plus, PushPin } from "@phosphor-icons/react";
 import { AnimatePresence } from "motion/react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { attachFiles, attachPaths } from "@/chat/composer/attach";
 import { AttachmentChip } from "@/chat/composer/Composer";
 import { type Attachment, HOME_DRAFT as HOME, useComposerDrafts } from "@/chat/composer/drafts";
-import { useApp } from "@/state/app";
+import { newChatFolder, useApp } from "@/state/app";
 import { projectColorValue, useProjectColor } from "@/state/projectColors";
 import { sortProjects } from "@/shell/sidebarRows";
 import {
@@ -35,6 +35,7 @@ import {
 } from "@/ui";
 import { ProjectColorDot } from "../projects/ProjectColor";
 import { chooseFolder, startChat } from "../projects/actions";
+import { saveNewChatFolder, sendHomeDraft } from "../projects/newChatFolder";
 import { folderName } from "../projects/format";
 import { thinkingChoices, useChatModels } from "../session-tools/model";
 import { ModelList, PermissionMenu } from "../session-tools/pickers";
@@ -82,7 +83,8 @@ interface Choice {
 export function HomeComposer(): ReactNode {
 	const { t } = useTranslation("home");
 	const { t: tc } = useTranslation("composer");
-	const defaultFolder = useApp(state => state.defaultChatFolder);
+	const defaultFolder = useApp(newChatFolder);
+	const systemFolder = useApp(state => state.defaultChatFolder);
 	const folder = useComposerDrafts(state => state.homeFolder);
 	const projectPath = folder ?? defaultFolder;
 	const draft = useComposerDrafts(state => state.drafts[HOME] ?? "");
@@ -114,10 +116,10 @@ export function HomeComposer(): ReactNode {
 
 	const send = async () => {
 		if (!projectPath || !canSend) return;
-		const store = useComposerDrafts.getState();
 		setSending(true);
 		try {
-			const started = await store.sendHome(projectPath, ({ projectPath: path, text, images }) =>
+			// A folder picked on Home wins; otherwise the folder for new chats is checked, and the draft stays when it is unavailable.
+			const started = await sendHomeDraft(({ projectPath: path, text, images }) =>
 				startChat(path, {
 					text,
 					images,
@@ -240,6 +242,7 @@ export function HomeComposer(): ReactNode {
 					<ProjectPicker
 						projectPath={projectPath}
 						defaultFolder={defaultFolder}
+						systemFolder={systemFolder}
 						onPick={path => {
 							useComposerDrafts.getState().setHomeFolder(path);
 							setChoice(null);
@@ -272,15 +275,18 @@ export function HomeComposer(): ReactNode {
 	);
 }
 
-/** The folder omp will work in: projects pinned first, then by activity, with their colors; or add a folder. */
-function ProjectPicker({ projectPath, defaultFolder, onPick }: { projectPath: string | null; defaultFolder: string | null; onPick(path: string): void }): ReactNode {
+/**
+ * The folder omp will work in: projects pinned first, then by activity, with their colors; or add a folder. The
+ * folder new chats start in is listed too, and the menu can make the chosen folder that default (Settings › General).
+ */
+function ProjectPicker({ projectPath, defaultFolder, systemFolder, onPick }: { projectPath: string | null; defaultFolder: string | null; systemFolder: string | null; onPick(path: string): void }): ReactNode {
 	const { t } = useTranslation("home");
 	const projects = useApp(state => state.projects);
 	const pins = useApp(state => state.prefs?.pinnedProjects);
+	const [saving, setSaving] = useState(false);
 	const color = useProjectColor(projectPath ?? "");
-	const folders = defaultFolder && !projects.some(project => project.path === defaultFolder)
-		? [...projects, { path: defaultFolder, name: folderName(defaultFolder), sessionCount: 0, lastActivity: 0, exists: true }]
-		: projects;
+	const extra = [...new Set([systemFolder, defaultFolder])].filter((path): path is string => !!path && !projects.some(project => project.path === path));
+	const folders = [...projects, ...extra.map(path => ({ path, name: folderName(path), sessionCount: 0, lastActivity: 0, exists: true }))];
 	const name = folders.find(project => project.path === projectPath)?.name ?? (projectPath ? folderName(projectPath) : null);
 	return (
 		<Menu>
@@ -324,6 +330,21 @@ function ProjectPicker({ projectPath, defaultFolder, onPick }: { projectPath: st
 				<MenuItem icon={<FolderPlus />} onSelect={() => useApp.getState().openSheet("project-new")}>
 					{t("composer.project.create")}
 				</MenuItem>
+				{projectPath && (
+					<>
+						<MenuSeparator />
+						<MenuItem
+							icon={<PushPin />}
+							disabled={projectPath === defaultFolder || saving}
+							onSelect={() => {
+								setSaving(true);
+								void saveNewChatFolder(projectPath).finally(() => setSaving(false));
+							}}
+						>
+							{t(projectPath === defaultFolder ? "composer.project.isDefault" : "composer.project.makeDefault")}
+						</MenuItem>
+					</>
+				)}
 			</MenuContent>
 		</Menu>
 	);

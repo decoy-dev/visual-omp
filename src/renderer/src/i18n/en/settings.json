@@ -74,6 +74,16 @@
 			}
 		},
 		"chats": "Chats",
+		"newChatFolder": {
+			"label": "Folder for new chats",
+			"set": "New chat and Home start chats in {{path}}, in every project, unless you pick another folder on Home. You can also set it from the folder menu under a message box.",
+			"unset": "New chat and Home start chats in {{path}}, omp's folder for chats without a project, unless you pick another folder on Home. A folder you choose here applies in every project.",
+			"choose": "Choose…",
+			"pickTitle": "Folder for new chats",
+			"reset": "Use default",
+			"unavailable": "The folder for new chats can't be opened",
+			"saveFailed": "Couldn't save the folder for new chats"
+		},
 		"transcript": {
 			"label": "Transcript view",
 			"description": "Normal groups tool calls into one row. Thinking lists every step and opens every thought. Verbose also opens each step with its raw arguments.",

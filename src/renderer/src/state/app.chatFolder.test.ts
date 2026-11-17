@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { commandChatFolder, defaultChatFolder } from "@shared/chatFolder";
-import type { Platform } from "@shared/ipc";
+import type { AppPreferences, Platform } from "@shared/ipc";
 
 const env = vi.hoisted(() => {
 	const storage = new Map<string, string>();
@@ -74,6 +74,22 @@ describe("chat entry point folders", () => {
 		useApp.setState({ defaultChatFolder: "/tmp", activeProject: "/last" });
 		const id = await useApp.getState().newChat("/chosen");
 		expect(useApp.getState().tabs.find(tab => tab.id === id)?.projectPath).toBe("/chosen");
+	});
+	it("starts unscoped new chats in the folder chosen in Settings, stops when it is gone, and uses omp's folder after Use default", async () => {
+		const { useApp } = await loadApp();
+		let exists = true;
+		env.invoke.mockImplementation(async (channel: string) => channel === "fs:usableDirectory" ? exists : []);
+		useApp.setState({ defaultChatFolder: "/tmp", activeProject: "/last", prefs: { newChatFolder: "/work/inbox" } as AppPreferences });
+		const chosen = await useApp.getState().newChat();
+		expect(useApp.getState().tabs.find(tab => tab.id === chosen)?.projectPath).toBe("/work/inbox");
+		exists = false;
+		const tabs = useApp.getState().tabs.length;
+		// A folder that is gone starts nothing; a toast offers Choose… and Use default instead.
+		expect(await useApp.getState().newChat()).toBeNull();
+		expect(useApp.getState().tabs).toHaveLength(tabs);
+		useApp.setState({ prefs: { newChatFolder: null } as AppPreferences });
+		const reset = await useApp.getState().newChat();
+		expect(useApp.getState().tabs.find(tab => tab.id === reset)?.projectPath).toBe("/tmp");
 	});
 	it("uses the focused split for the command and keeps the primary project for a fresh side-by-side chat", async () => {
 		const { useApp, focusedTabId } = await loadApp();

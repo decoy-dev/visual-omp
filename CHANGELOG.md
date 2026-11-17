@@ -6,6 +6,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Detailed changes
 
+#### New
+
+- Settings › General has Folder for new chats, for all projects: New chat and Home start chats there instead of omp's folder for chats without a project, unless you pick another folder on Home. Use for new chats in the folder menu under Home's message box, or in a new chat's folder chooser, sets it in one step. If the folder is gone, the app asks you to choose another folder or use the default instead of starting the chat.
+
 #### Improved
 
 - Diffs in the omp screen wrap long lines, as omp draws them, and follow the Wrap lines setting in omp 18.22.1's git app.

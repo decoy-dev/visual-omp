@@ -45,6 +45,7 @@ const DEFAULTS: AppPreferences = {
 	classicPresentation: false,
 	sendCrashReports: true,
 	expiredSignInsShown: [],
+	newChatFolder: null,
 };
 
 const file = join(app.getPath("userData"), "preferences.json");
@@ -68,6 +69,7 @@ function signInKeys(value: unknown): string[] {
 function projectPreferences<T extends Partial<AppPreferences>>(prefs: T): T {
 	const normalized = { ...prefs };
 	if (prefs.extraProjects !== undefined) normalized.extraProjects = [...new Set(prefs.extraProjects.map(projectPath))];
+	if (prefs.newChatFolder !== undefined) normalized.newChatFolder = typeof prefs.newChatFolder === "string" && prefs.newChatFolder ? projectPath(prefs.newChatFolder) : null;
 	if (prefs.pinnedProjects !== undefined) normalized.pinnedProjects = [...new Set(prefs.pinnedProjects.map(projectPath))];
 	if (prefs.projectColors !== undefined) {
 		const colors: AppPreferences["projectColors"] = {};

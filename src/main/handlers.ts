@@ -8,7 +8,7 @@ import { defaultChatFolder } from "@shared/chatFolder";
 import { compactAtValue } from "@shared/compaction";
 import fileLabels from "../shared/i18n/en/fileActions.json";
 import { registerAttention } from "./attention";
-import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
+import { listDir, pathExists, projectFiles, readText, usableDirectory, writeText } from "./files";
 import { handle, handleWithEvent } from "./ipc";
 import { runOmp } from "./omp/cli";
 import { getHost, listHosts, startHost, stopHost } from "./omp/host";
@@ -179,5 +179,6 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("fs:read", file => readText(file));
 	handle("fs:write", (file, content) => writeText(file, content));
 	handle("fs:exists", path => pathExists(path));
+	handle("fs:usableDirectory", path => usableDirectory(path));
 	handle("fs:files", cwd => projectFiles(cwd));
 }

@@ -5,15 +5,17 @@
  * `purpose: "open"` the folder is added as a project and its overview opens; with `purpose: "pick"`
  * it is added and returned to the Home draft without changing the active project.
  */
-import { Folder, FolderOpen, MagnifyingGlass } from "@phosphor-icons/react";
+import { Folder, FolderOpen, MagnifyingGlass, PushPin } from "@phosphor-icons/react";
 import type { RecentFolder } from "@shared/contracts/project";
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
-import { useApp } from "@/state/app";
+import { newChatFolder, useApp } from "@/state/app";
 import { Button, Chip, cn, Dialog, DialogContent, Expand, PresenceSwap, SearchInput } from "@/ui";
 import { menuItem, menuItemActive, menuItemDescribed } from "@/ui/styles";
 import { addProject, registerDraftProject, startChatIn } from "../actions";
+import { folderName } from "../format";
+import { saveNewChatFolder } from "../newChatFolder";
 import { errorText } from "@shared/errors";
 import { type EscapeHandler, FolderBrowser, nativePickerLabel } from "./FolderBrowser";
 import { useHomeDir } from "./homeDir";
@@ -115,8 +117,34 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 						{error}
 					</p>
 				</Expand>
+				{tabId && currentPath && <NewChatFolderShortcut path={currentPath} />}
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+/** From a chat's folder chip: make the chat's folder the one New chat and Home start in (Settings › General). */
+function NewChatFolderShortcut({ path }: { path: string }): ReactNode {
+	const { t } = useTranslation("projects");
+	const isDefault = useApp(state => newChatFolder(state) === path);
+	const [saving, setSaving] = useState(false);
+	const name = folderName(path);
+	return (
+		<div className="mt-3 flex justify-start border-t border-border pt-3">
+			<Button
+				size="sm"
+				variant="ghost"
+				icon={<PushPin />}
+				disabled={isDefault || saving}
+				loading={saving}
+				onClick={() => {
+					setSaving(true);
+					void saveNewChatFolder(path).finally(() => setSaving(false));
+				}}
+			>
+				{t(isDefault ? "chooser.isDefault" : "chooser.makeDefault", { name })}
+			</Button>
+		</div>
 	);
 }
 
