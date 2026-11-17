@@ -10,7 +10,8 @@ import { ompAgentDir } from "../omp/config-file";
 import { getHost } from "../omp/host";
 import { rpcRequest } from "../omp/rpc";
 import { discoverCommands } from "../services/composer";
-import { mergeSlashCommands, OMP_BUILTIN_COMMANDS } from "../services/omp-builtin-commands";
+import { builtinCommandsFor, mergeSlashCommands } from "../services/omp-builtin-commands";
+import { ompStatus } from "../omp/locate";
 import { readPromptHistory } from "../services/prompt-history";
 import { userEnv } from "../env";
 import { agentDataDir } from "../omp/paths";
@@ -69,7 +70,12 @@ async function readSlashCommands(folder: string): Promise<SlashCommandInfo[]> {
 			},
 		];
 	});
-	return mergeSlashCommands(OMP_BUILTIN_COMMANDS, listed);
+	return mergeSlashCommands(await installedBuiltins(), listed);
+}
+
+/** The builtin catalog for the installed omp version, or the whole catalog when it can't be read. */
+async function installedBuiltins(): Promise<SlashCommandInfo[]> {
+	return builtinCommandsFor(await ompStatus().then(status => status.version, () => null));
 }
 
 /** omp's answers per project folder; a failed listing is not kept, so the next request asks again. */
@@ -81,9 +87,9 @@ function slashCommands(folder: string, fresh: boolean): Promise<SlashCommandList
 	if (cached && !fresh) return cached;
 	const listing: Promise<SlashCommandListing> = readSlashCommands(folder).then(
 		commands => ({ commands, complete: true }),
-		() => {
+		async () => {
 			if (slashCache.get(folder) === listing) slashCache.delete(folder);
-			return { commands: [...OMP_BUILTIN_COMMANDS], complete: false };
+			return { commands: await installedBuiltins(), complete: false };
 		},
 	);
 	slashCache.set(folder, listing);
@@ -145,7 +151,7 @@ export function register(): void {
 	handle("composer:retainPredictions", (cwd, owner) => retainPredictionFolder(cwd, owner));
 	handle("composer:releasePredictions", (cwd, owner) => releasePredictionFolder(cwd, owner));
 	handle("composer:isSideCommand", async (hostId, name) => {
-		if (OMP_BUILTIN_COMMANDS.some(command => command.name === name || command.aliases.includes(name))) return false;
+		if ((await installedBuiltins()).some(command => command.name === name || command.aliases.includes(name))) return false;
 		return (await nativeBridge(hostId).sideCommands()).includes(name);
 	});
 	handle("composer:predictWord", (cwd, text, cursor) => predictWord(cwd, text, cursor));

@@ -1,6 +1,6 @@
 import type { SlashCommandInfo } from "@shared/contracts/composer";
 import { describe, expect, it } from "vitest";
-import { mergeSlashCommands, OMP_BUILTIN_COMMANDS } from "./omp-builtin-commands";
+import { builtinCommandsFor, mergeSlashCommands, OMP_BUILTIN_COMMANDS } from "./omp-builtin-commands";
 
 const command = (name: string, source: SlashCommandInfo["source"], extra: Partial<SlashCommandInfo> = {}): SlashCommandInfo => ({
 	name,
@@ -34,6 +34,17 @@ describe("OMP_BUILTIN_COMMANDS", () => {
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "hub")?.aliases).toContain("subagents");
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "seance")).toBeDefined();
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "unpin")).toBeDefined();
+	});
+	it("offers each command only to the omp versions that have it", () => {
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "commit")).toMatchObject({ description: "Commit only the changes this agent and its subagents made", hint: "[instructions]" });
+		const offered = (name: string, version: string | null) => builtinCommandsFor(version).some(entry => entry.name === name);
+		// omp 18.17.0 added /unpin and omp 18.20.1 added /commit; omp 18.20.3 removed /seance.
+		expect([offered("unpin", "18.16.9"), offered("unpin", "18.17.0")]).toEqual([false, true]);
+		expect([offered("commit", "18.15.0"), offered("commit", "18.20.0"), offered("commit", "18.20.1")]).toEqual([false, false, true]);
+		expect([offered("seance", "18.15.0"), offered("seance", "18.20.2"), offered("seance", "18.20.3"), offered("seance", "18.22.0")]).toEqual([true, true, false, false]);
+		// A version omp did not report keeps the whole catalog.
+		expect(builtinCommandsFor(null)).toEqual(OMP_BUILTIN_COMMANDS);
+		expect(builtinCommandsFor("18.22.0")).toHaveLength(OMP_BUILTIN_COMMANDS.length - 1);
 	});
 	it("offers 18.15 Ultrafast service and retains the upstream jobs and compact syntax", () => {
 		const fast = OMP_BUILTIN_COMMANDS.find(entry => entry.name === "fast")!;

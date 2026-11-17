@@ -1,16 +1,19 @@
 /**
- * omp's builtin slash commands, reviewed against omp v18.18.5 (`packages/coding-agent/src/slash-commands/`
- * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
+ * omp's builtin slash commands, reviewed against omp v18.22.0 (`packages/coding-agent/src/slash-commands/`
+ * `builtin-*.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
  * them at runtime from key bindings (`/loop`, `/switch`, `/effort`); those name the default keys
  * here. The `/effort` and `/compact` subcommands are spelled out from omp's thinking levels and
  * compact modes. Smithery's `/mcp` subcommands are omitted: Smithery shut down its API on October 31,
- * 2026, and omp 18.18.9 removed them.
+ * 2026, and omp 18.18.9 removed them. `/unpin` arrived in omp 18.17.0 and `/commit` in omp 18.20.1;
+ * omp 18.20.3 removed `/seance`. `addedIn` and `removedIn` keep each one to the omp versions that have
+ * it (`builtinCommandsFor`).
  *
  * When omp is asked, its own entries replace these by name (`mergeSlashCommands`).
  */
 import type { SlashCommandInfo } from "@shared/contracts/composer";
+import { compareSemver } from "@shared/semver";
 
 interface BuiltinSpec {
 	name: string;
@@ -18,6 +21,10 @@ interface BuiltinSpec {
 	description: string;
 	hint?: string;
 	subcommands?: { name: string; description?: string; usage?: string }[];
+	/** The first omp version with this command; older omp does not offer it. */
+	addedIn?: string;
+	/** The first omp version without this command; older omp still offers it. */
+	removedIn?: string;
 }
 
 const BUILTINS: readonly BuiltinSpec[] = [
@@ -302,6 +309,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 			{ name: "help", description: "Show help message" },
 		],
 	},
+	{ name: "commit", description: "Commit only the changes this agent and its subagents made", hint: "[instructions]", addedIn: "18.20.1" },
 	{
 		name: "ssh",
 		description: "Manage SSH hosts (add, list, remove)",
@@ -338,10 +346,10 @@ const BUILTINS: readonly BuiltinSpec[] = [
 		],
 	},
 	{ name: "handoff", description: "Summarize the session into a handoff document and compact in place", hint: "[focus instructions]" },
-	{ name: "seance", description: "Consult a saved session without resuming it", hint: "[session id|path] [--model selector]" },
+	{ name: "seance", description: "Consult a saved session without resuming it", hint: "[session id|path] [--model selector]", removedIn: "18.20.3" },
 	{ name: "resume", description: "Resume a different session", hint: "[session id|@claude|@codex]" },
 	{ name: "pin", description: "Pin or unpin a session at the top of the resume list", hint: "[session id]" },
-	{ name: "unpin", description: "Unpin a session from the top of the resume list", hint: "[session id]" },
+	{ name: "unpin", description: "Unpin a session from the top of the resume list", hint: "[session id]", addedIn: "18.17.0" },
 	{ name: "btw", description: "Ask a side question, or browse this session's BTW history", hint: "[question]" },
 	{ name: "tan", description: "Run a full background agent on tangential work", hint: "<work>" },
 	{ name: "omfg", description: "Forge a TTSR rule from a complaint to stop a recurring behavior", hint: "<complaint>" },
@@ -434,6 +442,20 @@ export const OMP_BUILTIN_COMMANDS: readonly SlashCommandInfo[] = BUILTINS.map(sp
 	subcommands: (spec.subcommands ?? []).map(sub => ({ name: sub.name, description: sub.description ?? null, usage: sub.usage ?? null })),
 	source: "builtin",
 }));
+
+const SPECS = new Map(BUILTINS.map(spec => [spec.name, spec]));
+
+/**
+ * The catalog for the installed omp: commands it does not have yet, or no longer has, are left out.
+ * An unknown version keeps them all.
+ */
+export function builtinCommandsFor(version: string | null): SlashCommandInfo[] {
+	if (version === null) return [...OMP_BUILTIN_COMMANDS];
+	return OMP_BUILTIN_COMMANDS.filter(command => {
+		const { addedIn, removedIn } = SPECS.get(command.name)!;
+		return (!addedIn || compareSemver(version, addedIn) >= 0) && (!removedIn || compareSemver(version, removedIn) < 0);
+	});
+}
 
 /**
  * The project's command list: the static builtins first, in omp's order, then builtins omp lists that

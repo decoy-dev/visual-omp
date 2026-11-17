@@ -26,6 +26,7 @@ const RPC_BUILTINS_1814 = [
 	"force", "forget-approvals",
 ];
 const RPC_BUILTINS_1817 = ["unpin"];
+const RPC_BUILTINS_18201 = ["commit"];
 const CommandsSchema = z.object({ commands: z.array(z.object({ name: z.string(), description: z.string(), source: z.string() })) });
 const evidence: Record<string, unknown> = {};
 let root = "";
@@ -121,7 +122,7 @@ describe.skipIf(!process.env.OMP_BIN)("live omp compatibility (no sign-in or mod
 		});
 		const builtin = CommandsSchema.parse(data).commands.filter(command => command.source === "builtin").map(command => command.name).sort();
 		const appNames = new Set(OMP_BUILTIN_COMMANDS.map(command => command.name));
-		const expected = [...RPC_BUILTINS_1814, ...(version && compareSemver(version, "18.17.0") >= 0 ? RPC_BUILTINS_1817 : [])];
+		const expected = [...RPC_BUILTINS_1814, ...(version && compareSemver(version, "18.17.0") >= 0 ? RPC_BUILTINS_1817 : []), ...(version && compareSemver(version, "18.20.1") >= 0 ? RPC_BUILTINS_18201 : [])];
 		const baseline = new Set(expected);
 		const added = builtin.filter(name => !baseline.has(name));
 		const removed = expected.filter(name => !builtin.includes(name));
