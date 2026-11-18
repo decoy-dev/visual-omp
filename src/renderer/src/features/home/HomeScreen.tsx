@@ -186,7 +186,7 @@ function RecentRow({ session, projectName, now }: { session: SessionSummary; pro
 					<ProjectDot path={session.cwd} />
 					<span className="min-w-0 truncate">{projectName}</span>
 					<span aria-hidden>·</span>
-					<span className="shrink-0 font-mono">{shortAgo(session.updatedAt, now)}</span>
+					<span className="shrink-0 font-mono">{shortAgo(session.lastPromptAt, now)}</span>
 				</span>
 			</button>
 		</li>

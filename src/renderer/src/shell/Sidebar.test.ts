@@ -142,7 +142,7 @@ it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats un
 	await act(async () => { await useApp.getState().init(); });
 	const live = (working: boolean, helpers = 0, phase = "live") => ({
 		mode: "live", host: { phase: "running" }, working, queue: [],
-		guest: { phase, agents: Array.from({ length: helpers }, (_, index) => ({ id: `helper${index}`, status: "running", kind: "sub" })), progress: new Map(), lifecycle: new Map() },
+		guest: { phase, entries: [], agents: Array.from({ length: helpers }, (_, index) => ({ id: `helper${index}`, status: "running", kind: "sub" })), progress: new Map(), lifecycle: new Map() },
 	}) as unknown as SessionView;
 	for (const [id, view] of [["row0", live(true)], ["row1", live(false, 1)], ["row2", live(false, 0, "connecting")]] as const) {
 		// The mock controller exposes its view so the test can change omp's reported state.
@@ -196,7 +196,7 @@ it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats un
 it("selects chats to close, keeps a working one open on Close idle chats, and leaves selection with Escape", async () => {
 	await act(async () => { await useApp.getState().init(); });
 	const controller = controllerFor("row0") as unknown as { view: SessionView };
-	controller.view = { mode: "live", host: { phase: "running" }, working: true, queue: [], guest: { phase: "live", agents: [], progress: new Map(), lifecycle: new Map() } } as unknown as SessionView;
+	controller.view = { mode: "live", host: { phase: "running" }, working: true, queue: [], guest: { phase: "live", entries: [], agents: [], progress: new Map(), lifecycle: new Map() } } as unknown as SessionView;
 	setBulkCloseGuard(confirmBulkCloseTabs);
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Fragment, null, createElement(Sidebar, { width: 200 }), createElement("main", { id: "vo-main", tabIndex: -1 }), createElement(QuitDialog), createElement(Shortcuts)))));
 	const menuItem = async (label: string) => {

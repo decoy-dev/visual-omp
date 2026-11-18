@@ -34,7 +34,7 @@ async function loadAllChats(): Promise<SessionSummary[]> {
 	const lists = await Promise.all(
 		projects.filter(project => project.exists).map(project => window.vomp.invoke("sessions:list", project.path).catch(() => [])),
 	);
-	return lists.flat().sort((a, b) => b.updatedAt - a.updatedAt);
+	return lists.flat().sort((a, b) => b.lastPromptAt - a.lastPromptAt);
 }
 
 function useAllChats(): SessionSummary[] {
@@ -318,7 +318,7 @@ function PaletteBody() {
 								value={`chat:${chat.file}`}
 								icon={ChatCenteredText}
 								title={<SessionTitle title={chatTitle(chat)} />}
-								hint={`${projectName(chat.cwd)} · ${shortAgo(chat.updatedAt, now)}`}
+								hint={`${projectName(chat.cwd)} · ${shortAgo(chat.lastPromptAt, now)}`}
 								onSelect={() => {
 									close();
 									useApp.getState().openSession(chat, { split: modHeld.current });

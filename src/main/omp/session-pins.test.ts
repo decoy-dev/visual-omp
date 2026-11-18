@@ -9,7 +9,7 @@ const fake = vi.hoisted(() => ({ root: "", legacy: undefined as string[] | undef
 vi.mock("../env", () => ({ userEnv: async () => ({ PI_CODING_AGENT_DIR: fake.root }) }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ pinnedSessions: fake.legacy }), finishSessionPinMigration: () => { fake.legacy = undefined; fake.finish(); } }));
 vi.mock("./rpc", () => ({ rpcRequest: fake.rpc }));
-const summary = (id: string, previousSessionIds: string[] = []): SessionSummary => ({ id, file: `/saved/${id}.jsonl`, cwd: "/project", title: null, createdAt: 0, updatedAt: 0, parentSession: null, preview: null, archived: false, previousSessionIds });
+const summary = (id: string, previousSessionIds: string[] = []): SessionSummary => ({ id, file: `/saved/${id}.jsonl`, cwd: "/project", title: null, createdAt: 0, updatedAt: 0, lastPromptAt: 0, parentSession: null, preview: null, archived: false, previousSessionIds });
 beforeEach(async () => {
 	fake.root = await mkdtemp(join(tmpdir(), "vomp-pins-"));
 	fake.legacy = undefined;

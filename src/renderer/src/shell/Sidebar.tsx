@@ -73,6 +73,7 @@ import {
 	Mark,
 	useMotionReduced,
 	usePageNavSlot,
+	useRowCue,
 	Wordmark,
 } from "../ui";
 import { PROJECT_COLOR_CHOICES, ProjectColorDot } from "../features/projects/ProjectColor";
@@ -195,8 +196,12 @@ type ChatRowProps =
 	/** A Current chats row: project name as meta, ⌘1-⌘9 `number` shown while ⌘/Ctrl is held. */
 	| { variant: "current"; chat: CurrentChat; now: number; number: number | null; showNumber: boolean; move(delta: number): void; canMoveUp: boolean; canMoveDown: boolean };
 
+/** `updates` counts omp's transcript entries while the chat is live, for the row's update wash. */
 function sidebarSelection(view: SessionView | null) {
-	return { status: chatStatus(view), title: chatTitle(view, null), host: view?.host ?? null };
+	return {
+		status: chatStatus(view), title: chatTitle(view, null), host: view?.host ?? null,
+		updates: view?.guest?.phase === "live" ? view.guest.entries.length : null,
+	};
 }
 
 /**
@@ -239,6 +244,10 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 	const status = liveView.status;
 	const title = liveView.title ?? session?.title ?? tab?.title ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
 	const active = primary || secondary;
+	// An open chat lights up as omp adds to its transcript; a saved one as its file changes (omp in a terminal). The
+	// chat on screen does not.
+	const cueRef = useRef<HTMLSpanElement>(null);
+	useRowCue(cueRef, active ? null : controller ? liveView.updates : session?.updatedAt ?? null);
 	const rename = getCommand("chat.rename");
 	const renameContext = controller ? { session: controller, projectPath: controller.projectPath } : null;
 	const liveRename = rename !== undefined && renameContext !== null && Boolean(liveView?.host && liveView.host.phase !== "exited") && (rename.when?.(renameContext) ?? true);
@@ -328,6 +337,7 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 							current && active ? "font-medium text-fg [--mark-overlay:var(--pill)]" : cn("text-fg-muted hover:bg-hover hover:text-fg hover:[--mark-overlay:var(--hover)]", rowMenuOpen),
 						)}
 					>
+						<span ref={cueRef} aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-md bg-accent-muted opacity-0" />
 						{current && active && (
 							<motion.span
 								aria-hidden
@@ -389,7 +399,7 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 							)
 						) : (
 							<span className={cn("shrink-0 font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden", hideWhileMenuOpen)}>
-								{session ? shortAgo(session.updatedAt, now) : null}
+								{session ? shortAgo(session.lastPromptAt, now) : null}
 							</span>
 						)}
 						<Menu>

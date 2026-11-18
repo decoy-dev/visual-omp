@@ -8,7 +8,7 @@ import { sidebarTitles } from "./sidebarTitles";
 const labels = { untitledTitle: "Untitled chat", newChatTitle: "New chat" };
 const saved = (id: string, title: string | null): SessionSummary => ({
 	id, file: `/project/${id}.jsonl`, cwd: "/project", title,
-	createdAt: 1, updatedAt: 1, archived: false, preview: null, parentSession: null,
+	createdAt: 1, updatedAt: 1, lastPromptAt: 1, archived: false, preview: null, parentSession: null,
 });
 
 function liveController(title: string | null) {

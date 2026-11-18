@@ -126,6 +126,34 @@ export function useUpdateCue(ref: RefObject<HTMLElement | null>, value: string):
 	}, [ref, value, reduced]);
 }
 
+/**
+ * A brief accent wash on a list row whose chat changed, the row counterpart of `useUpdateCue` with the same timing.
+ * `ref` is a decorative overlay behind the row's content; `revision` grows with each update. A mount, a revision that
+ * appears or returns from null (a chat loading or reconnecting, or a row the user is looking at) and a revision that
+ * does not grow stay at rest. Updates during a wash join it instead of restarting it, so a busy chat's rows pulse once
+ * per update burst rather than staying lit; reduced motion keeps a 140ms fade.
+ */
+export function useRowCue(ref: RefObject<HTMLElement | null>, revision: number | null): void {
+	const reduced = useMotionReduced();
+	const previous = useRef(revision);
+	const playing = useRef<Animation | null>(null);
+	useEffect(() => {
+		const before = previous.current;
+		previous.current = revision;
+		if (revision === null) {
+			// The row came on screen or its chat went away: no wash stays behind.
+			playing.current?.cancel();
+			playing.current = null;
+			return;
+		}
+		if (before === null || revision <= before) return;
+		const element = ref.current;
+		if (!element || typeof element.animate !== "function" || playing.current?.playState === "running") return;
+		playing.current = element.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduced ? 140 : duration.xl * 1000, easing: "cubic-bezier(0.25, 1, 0.5, 1)" });
+	}, [ref, revision, reduced]);
+	useEffect(() => () => playing.current?.cancel(), []);
+}
+
 // ---------------- Expand ----------------
 
 export interface ExpandProps {

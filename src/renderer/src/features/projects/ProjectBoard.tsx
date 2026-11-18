@@ -134,7 +134,7 @@ function ProjectBoardRow({ row, group, now, ref }: { row: BoardRow; group: Board
 	} else if (group === "unseen") {
 		sublabel = recap;
 	}
-	const time = group === "working" && view?.workingSince != null ? elapsed(now - view.workingSince) : session ? shortAgo(session.updatedAt, now) : undefined;
+	const time = group === "working" && view?.workingSince != null ? elapsed(now - view.workingSince) : session ? shortAgo(session.lastPromptAt, now) : undefined;
 	const unseenLabel = unseen ? t(`shell:sidebar.unseen.${unseen}`) : undefined;
 	const label = [sessionTitleText(title), statusLabel, unseenLabel !== statusLabel ? unseenLabel : undefined, sublabel, view?.readOnly ? t("overview.recent.readOnly") : undefined, time].filter(Boolean).join(". ");
 	return (

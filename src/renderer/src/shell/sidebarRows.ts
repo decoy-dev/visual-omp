@@ -19,6 +19,7 @@ export interface OpenChatRef {
  * One chat row. `session`: a saved chat, with the open chat showing it when there is one. `open`: an open
  * chat the project's saved list does not include yet (a new chat before omp writes its file, or a file the
  * list has not included). Unknown dates follow saved chats in created order and lead them in recent order.
+ * Recent order is the newest message you sent (`lastPromptAt`), so omp's replies never move a row.
  */
 export type SidebarChat =
 	| { kind: "session"; key: string; session: SessionSummary; tabId: string | null }
@@ -88,8 +89,8 @@ function compareChats(a: SidebarChat, b: SidebarChat, input: SidebarInput): numb
 		const createdB = savedB?.createdAt ?? Infinity;
 		return createdA === createdB ? 0 : createdA < createdB ? -1 : 1;
 	}
-	const recentA = savedA?.updatedAt ?? Infinity;
-	const recentB = savedB?.updatedAt ?? Infinity;
+	const recentA = savedA?.lastPromptAt ?? Infinity;
+	const recentB = savedB?.lastPromptAt ?? Infinity;
 	return recentA === recentB ? 0 : recentA > recentB ? -1 : 1;
 }
 
@@ -177,7 +178,7 @@ export function archivedChats(input: SidebarInput): SidebarChat[] {
 	return Object.values(input.sessionsByProject)
 		.flat()
 		.filter(session => session.archived && (!query || matchesSession(session, query)))
-		.sort((a, b) => b.updatedAt - a.updatedAt)
+		.sort((a, b) => b.lastPromptAt - a.lastPromptAt)
 		.map((session): SidebarChat => ({
 			kind: "session", key: session.file, session,
 			tabId: [session.file, ...(session.previousSessionFiles ?? [])].map(file => tabByFile.get(file)).find(Boolean) ?? null,

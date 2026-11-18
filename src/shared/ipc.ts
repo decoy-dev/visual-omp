@@ -44,7 +44,7 @@ export interface ProjectSummary {
 	path: string;
 	name: string;
 	sessionCount: number;
-	/** Epoch ms of the newest session activity. */
+	/** Epoch ms of the newest message you sent in any of its chats (`SessionSummary.lastPromptAt`). */
 	lastActivity: number;
 	exists: boolean;
 }
@@ -57,8 +57,13 @@ export interface SessionSummary {
 	title: string | null;
 	/** Epoch ms. */
 	createdAt: number;
-	/** Epoch ms (file mtime). */
+	/** Epoch ms (file mtime): any write, including omp's replies. */
 	updatedAt: number;
+	/**
+	 * Epoch ms of the newest message you sent the chat, from the app or omp in a terminal, else its creation. Recent
+	 * activity sorts by it, so omp's own writes never move a chat.
+	 */
+	lastPromptAt: number;
 	parentSession: string | null;
 	/** omp's predecessor id, present only for a continuation rather than a deliberate fork. */
 	continuationOf?: string | null;

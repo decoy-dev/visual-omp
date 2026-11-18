@@ -93,6 +93,23 @@ describe("allSessions", () => {
 		expect((await listProjects())[0]?.sessionCount).toBe(1);
 	});
 
+	it("sorts by the newest message you sent, across continuation copies and later replies", async () => {
+		const line = (item: object) => `${JSON.stringify(item)}\n`;
+		const asked = { type: "message", id: "u1", timestamp: "2026-10-28T12:00:00.000Z", message: { role: "user", content: "asked" } };
+		const latest = join(bucket, "latest.jsonl");
+		await writeFile(join(bucket, "chat.jsonl"), line({ type: "session", id: "s1", cwd: "/project", timestamp: "2026-10-28T11:00:00.000Z" }) + line(asked));
+		// omp continued the chat much later, copying the earlier message with its own time.
+		await writeFile(latest, line({ type: "session", id: "s2", cwd: "/project", continuationOf: "s1", timestamp: "2026-11-02T09:00:00.000Z" }) + line(asked));
+		const when = async () => [(await allSessions())[0]?.lastPromptAt, (await listProjects())[0]?.lastActivity];
+		expect(await when()).toEqual([Date.parse(asked.timestamp), Date.parse(asked.timestamp)]);
+		await appendFile(latest, line({ type: "message", id: "a1", timestamp: "2026-11-02T09:05:00.000Z", message: { role: "assistant", content: "reply" } }));
+		await utimes(latest, new Date(), new Date("2030-01-01"));
+		expect(await when()).toEqual([Date.parse(asked.timestamp), Date.parse(asked.timestamp)]);
+		await appendFile(latest, line({ type: "message", id: "u2", timestamp: "2026-11-02T09:10:00.000Z", message: { role: "user", content: "next" } }));
+		await utimes(latest, new Date(), new Date("2030-01-02"));
+		expect(await when()).toEqual([Date.parse("2026-11-02T09:10:00.000Z"), Date.parse("2026-11-02T09:10:00.000Z")]);
+	});
+
 	it("keeps a deliberate fork and an original that continued writing separate", async () => {
 		const save = (name: string, header: object, ids: string[]) => writeFile(join(bucket, name), [
 			JSON.stringify({ type: "session", cwd: "/project", ...header }),

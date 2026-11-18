@@ -102,6 +102,7 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 					title: chat.title,
 					createdAt: chat.createdAt || chat.firstAt,
 					updatedAt: chat.lastAt,
+					lastPromptAt: chat.lastAt,
 					parentSession: null,
 					preview: null,
 					archived: false,

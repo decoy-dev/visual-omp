@@ -9,6 +9,7 @@ import { broadcast } from "../ipc";
 import { getPrefs } from "../prefs";
 import { agentDir, sessionsDir } from "./paths";
 import { loadPinnedSessionIds, migrateSessionPins } from "./session-pins";
+import { appendedPrompt, newestPrompt, type PromptScan } from "./session-prompts";
 
 /** Bytes read from the head of each session file: title slot, header and the first user message. */
 const HEAD_BYTES = 64 * 1024;
@@ -18,6 +19,8 @@ const PREVIEW_LINE_BYTES = 1024 * 1024;
 
 interface CacheEntry {
 	mtimeMs: number;
+	/** Where the last read for the newest message you sent ended, so a change reads only what omp appended. */
+	prompt: PromptScan;
 	summary: SessionSummary | null;
 	activity?: Promise<{ id?: string; time: number }>;
 	contains?: Map<string, Promise<boolean>>;
@@ -114,13 +117,16 @@ async function summarize(file: string, mtimeMs: number): Promise<SessionSummary 
 	}
 	if (!header) return null;
 	if (!preview && Buffer.byteLength(head, "utf8") >= HEAD_BYTES) preview = await scanPreview(file);
+	const createdAt = header.timestamp ? Date.parse(header.timestamp) : mtimeMs;
 	return {
 		id: header.id,
 		file,
 		cwd: header.cwd,
 		title: title ?? header.title ?? null,
-		createdAt: header.timestamp ? Date.parse(header.timestamp) : mtimeMs,
+		createdAt,
 		updatedAt: mtimeMs,
+		// `allSessions` replaces this with the conversation's newest message you sent.
+		lastPromptAt: createdAt,
 		parentSession: header.parentSession ?? null,
 		continuationOf: header.continuationOf ?? null,
 		preview,
@@ -156,10 +162,11 @@ async function physicalSessions(): Promise<SessionSummary[]> {
 						const file = join(root, bucket, name);
 						seen.add(file);
 						try {
-							const { mtimeMs } = await stat(file);
+							const { mtimeMs, size, ino } = await stat(file);
 							const hit = cache.get(file);
 							if (hit && hit.mtimeMs === mtimeMs) return;
-							cache.set(file, { mtimeMs, summary: await summarize(file, mtimeMs) });
+							const prompt = hit ? await appendedPrompt(file, size, ino, hit.prompt) : await newestPrompt(file, size, ino);
+							cache.set(file, { mtimeMs, prompt, summary: await summarize(file, mtimeMs) });
 						} catch {
 							cache.delete(file);
 						}
@@ -262,7 +269,7 @@ async function continuationTargets(sessions: SessionSummary[]): Promise<Map<stri
 	return targets;
 }
 
-/** Saved conversations, newest first, with superseded copies folded into their latest file. */
+/** Saved conversations, most recently messaged first, with superseded copies folded into their latest file. */
 export async function allSessions(): Promise<SessionSummary[]> {
 	const physical = await physicalSessions();
 	const targets = await continuationTargets(physical);
@@ -277,13 +284,18 @@ export async function allSessions(): Promise<SessionSummary[]> {
 	}
 	const conversations = physical.filter(session => targets.get(session.file)?.file === session.file).map(session => {
 		const previous = previousByFile.get(session.file) ?? [];
+		const copies = [session, ...previous];
+		// A continuation copies earlier messages with their own times, and its file is created later: the newest message
+		// you sent decides, and the conversation's first creation stands in only when no copy has one.
+		const prompts = copies.flatMap(copy => cache.get(copy.file)?.prompt.at ?? []);
 		return {
 			...session,
+			lastPromptAt: prompts.length > 0 ? Math.max(...prompts) : Math.min(...copies.map(copy => copy.createdAt)),
 			previousSessionFiles: previous.map(copy => copy.file),
 			previousSessionIds: previous.map(copy => copy.id),
 			archived: archived.has(session.id) || previous.some(copy => archived.has(copy.id)),
 		};
-	}).sort((a, b) => b.updatedAt - a.updatedAt);
+	}).sort((a, b) => b.lastPromptAt - a.lastPromptAt);
 	await migrateSessionPins(conversations).catch(error => console.warn("Could not migrate saved chat pins", error));
 	const pinned = await loadPinnedSessionIds();
 	return conversations.map(session => ({
@@ -321,13 +333,13 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 		const project = byCwd.get(session.cwd);
 		if (project) {
 			project.sessionCount++;
-			project.lastActivity = Math.max(project.lastActivity, session.updatedAt);
+			project.lastActivity = Math.max(project.lastActivity, session.lastPromptAt);
 		} else {
 			byCwd.set(session.cwd, {
 				path: session.cwd,
 				name: basename(session.cwd) || session.cwd,
 				sessionCount: 1,
-				lastActivity: session.updatedAt,
+				lastActivity: session.lastPromptAt,
 				exists: true,
 			});
 		}

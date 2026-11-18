@@ -10,6 +10,7 @@ const session = (cwd: string, id: string, updatedAt: number, extra: Partial<Sess
 	title: id,
 	createdAt: updatedAt,
 	updatedAt,
+	lastPromptAt: updatedAt,
 	parentSession: null,
 	preview: null,
 	archived: false,
@@ -96,6 +97,13 @@ describe("Projects sorting", () => {
 		expect(groups.map(group => group.project.name)).toEqual(["Alpha", "Empty", "Project 10", "project 2"]);
 		expect(groups.find(group => group.project.name === "Project 10")?.chats.map(chat => chat.key))
 			.toEqual(["Project 10/Pinned.jsonl", "Project 10/Chat 10.jsonl", "Project 10/chat 2.jsonl"]);
+	});
+
+	it("orders recent chats by the message you sent last, whatever omp wrote since", () => {
+		// omp just wrote to "Replied" (a reply or a helper result); "Asked" got your newer message.
+		const state = sortedInput({ sessionsByProject: { Alpha: [session("Alpha", "Replied", 20, { updatedAt: 99 }), session("Alpha", "Asked", 40)] } });
+		expect(sidebarGroups(state).find(group => group.project.name === "Alpha")?.chats.map(chat => chat.key)).toEqual(["Alpha/Asked.jsonl", "Alpha/Replied.jsonl"]);
+		expect(flatChats(state).map(chat => chat.key)).toEqual(["Alpha/Asked.jsonl", "Alpha/Replied.jsonl"]);
 	});
 
 	it("uses case-insensitive natural names for grouped projects and chats, with pins first", () => {

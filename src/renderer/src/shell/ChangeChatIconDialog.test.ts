@@ -14,7 +14,7 @@ vi.mock("../state/app", () => ({
 	controllerFor: () => ({ loadHistory: fake.loadHistory }),
 	useApp: { getState: () => ({ tabs: fake.tabs, loadSessions: fake.loadSessions }), setState: (update: (state: { tabs: typeof fake.tabs }) => { tabs: typeof fake.tabs }) => { fake.tabs = update({ tabs: fake.tabs }).tabs; } },
 }));
-const saved: SessionSummary = { id: "session", file: "/project/chat.jsonl", cwd: "/project", title: "Original", createdAt: 1, updatedAt: 2, parentSession: null, preview: null, archived: false };
+const saved: SessionSummary = { id: "session", file: "/project/chat.jsonl", cwd: "/project", title: "Original", createdAt: 1, updatedAt: 2, lastPromptAt: 1, parentSession: null, preview: null, archived: false };
 let root: Root;
 let element: HTMLDivElement;
 let close: Mock;

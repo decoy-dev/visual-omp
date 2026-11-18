@@ -78,6 +78,21 @@ opening memory, image or skill entries without loading a whole large transcript.
 The existing per-file modification-time cache also retains fallback results.
 Files that exceed these scan limits can still have no preview.
 
+Recent ordering uses `SessionSummary.lastPromptAt`, the newest message you sent, which
+`main/omp/session-prompts.ts` reads from the session file. The first read of a file goes back
+from its end in 64 KiB steps until it finds one, keeping at most 64 KiB of a line while it reads
+back to the line's start and noting whether the rest of that line marked it as omp's own. Later
+changes read only the bytes omp appended since the last complete line. The scan records the
+file's inode and the 64 bytes before its end. A change that appended nothing, a replaced or
+shrunken file, one that grew by more than 8 MiB, and, as a heuristic for rewrites, one whose
+bytes before the old end differ, is read back from its end again. Matching is byte-level
+(`{"type":"message"` at the line start and `"message":{"role":"user"`), so omp's own entries
+and quoted JSON in text never count, and user messages omp marks `attribution: "agent"` or
+`synthetic` are skipped. `allSessions()` takes the newest time across a conversation's
+continuation copies, or its earliest copy's creation time when none has one, returns
+conversations in that order (Home's recent list keeps it), and `ProjectSummary.lastActivity`
+is the newest `lastPromptAt` of the project's chats.
+
 Home's folder selection is stored with its text and attachments in `useComposerDrafts`. `visitHome` keeps
 the folder of an unfinished draft and resets an empty draft to the platform default. The mounted composer
 subscribes to Home navigation too, so a quick return during its exit animation follows the same rule.
