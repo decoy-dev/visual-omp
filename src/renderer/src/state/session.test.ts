@@ -588,6 +588,29 @@ describe("SessionController working start", () => {
 		expect(events).toEqual(["finished"]);
 		expect(chatStatus(session.getSnapshot())).toBe("live");
 	});
+
+	it("shows the robot, without a reload, while omp's ended turn waits on a helper it started", () => {
+		const session = new SessionController({ tabId: "t5w", projectPath: "/p", sessionFile: null });
+		const events: string[] = [];
+		session.onEvent(event => events.push(event.kind));
+		session.attach(host({ link: "L1" }));
+		const helper = { id: "Atlas", displayName: "Atlas", kind: "sub", status: "running", hasSessionFile: true, createdAt: 0, lastActivity: 0 };
+		const helpers = { agents: [helper], progress: new Map(), lifecycle: new Map() } as unknown as Partial<GuestSnapshot>;
+		fakes.guests[0]?.emit("live", [u1], false);
+		fakes.guests[0]?.emit("live", [u1, a1], true, helpers);
+		expect(chatStatus(session.getSnapshot())).toBe("working");
+		// omp's agent_end says only a background result can resume it, and the helper is still running.
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...helpers, awaitingAsyncWork: true });
+		expect(session.getSnapshot().working).toBe(true);
+		expect(chatStatus(session.getSnapshot())).toBe("helpersWorking");
+		expect(events).toEqual([]);
+		// The helper's result resumes the turn: omp's own work again.
+		fakes.guests[0]?.emit("live", [u1, a1], true, { ...helpers, agents: [{ ...helper, status: "idle" }] } as Partial<GuestSnapshot>);
+		expect(chatStatus(session.getSnapshot())).toBe("working");
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...helpers, agents: [{ ...helper, status: "idle" }] } as Partial<GuestSnapshot>);
+		expect(events).toEqual(["finished"]);
+		expect(chatStatus(session.getSnapshot())).toBe("live");
+	});
 });
 
 const tui = (overlays: number) => ({ overlays, focused: "vw", altScreen: false, overlayKinds: [] });

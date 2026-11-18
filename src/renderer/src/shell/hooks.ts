@@ -20,22 +20,41 @@ export function useSessionSelection<T>(controller: SessionController | null, sel
 }
 
 /**
- * `working` is omp's own turn; `helpersWorking` is a chat whose turn has ended while helpers it started still run, so
- * it takes a message now and its finished turn has already notified.
+ * `working` is omp's own turn; `helpersWorking` is a chat whose own reply is not running while helpers it started
+ * still do: its turn ended, or it only waits for their results.
  */
 export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "error" | "live" | "idle";
 
 /**
+ * omp's own reply only waits for background work: its turn ended until a job result can resume it
+ * (`awaitingAsyncWork`), or every tool it runs is a `hub` wait for jobs or a peer's message. A `hub` wait that names a
+ * launched process waits on that process, not on helpers.
+ */
+function replyOnlyWaits(view: SessionView): boolean {
+	const guest = view.guest;
+	if (!guest) return false;
+	if (guest.awaitingAsyncWork) return true;
+	if (guest.activeTools.size === 0) return false;
+	for (const tool of guest.activeTools.values()) {
+		const args = tool.args as { op?: unknown; name?: unknown } | null;
+		if (tool.toolName !== "hub" || args?.op !== "wait" || args.name) return false;
+	}
+	return true;
+}
+
+/**
  * Waiting for an answer, then omp's turn, then helpers at work (the Tasks badge's rule, none without a running omp),
- * then open (omp starting, running or reconnecting), else saved.
+ * then open (omp starting, running or reconnecting), else saved. A turn that only waits for its helpers counts as
+ * helpers at work.
  */
 export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
 	const status = view.mode === "live" || view.mode === "starting" || view.mode === "reconnecting" ? view.host?.programStatus : null;
 	if (view.guest?.uiRequest || questionPresentation(view).pending || status?.state === "blocked") return "needsInput";
 	if (status?.state === "error" || view.error) return "error";
-	if (view.working) return "working";
-	if (helpersAtWork(view)) return "helpersWorking";
+	const helpers = helpersAtWork(view);
+	if (view.working && !(helpers && replyOnlyWaits(view))) return "working";
+	if (helpers) return "helpersWorking";
 	return view.mode === "history" || view.mode === "exited" ? "idle" : "live";
 }
 

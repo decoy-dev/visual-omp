@@ -1,6 +1,6 @@
 import type { AgentSnapshot, SubagentLifecyclePayload } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
-import type { GuestSnapshot } from "../collab/lib/client";
+import type { ActiveTool, GuestSnapshot } from "../collab/lib/client";
 import type { SessionView } from "../state/session";
 import { chatActivityKey, chatStatus } from "./hooks";
 
@@ -15,7 +15,7 @@ function view(guest: Partial<GuestSnapshot>, patch: Partial<SessionView> = {}): 
 		working: false,
 		readOnly: false,
 		follow: null,
-		guest: { agents: [], progress: new Map(), lifecycle: new Map(), uiRequest: null, ...guest } as GuestSnapshot,
+		guest: { agents: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), uiRequest: null, ...guest } as GuestSnapshot,
 		...patch,
 	} as SessionView;
 }
@@ -31,6 +31,23 @@ describe("chatStatus", () => {
 		// Reported by the lifecycle channel alone, as a background spawn starts.
 		expect(chatStatus(view({ lifecycle: new Map([started("Bolt", "started")]) }))).toBe("helpersWorking");
 		expect(chatStatus(view({ agents: [agent("Atlas", "idle")], lifecycle: new Map([started("Atlas", "completed")]) }))).toBe("live");
+	});
+
+	it("shows the helpers, not omp's turn, while omp only waits for its helpers' results", () => {
+		const helpers = { agents: [agent("Atlas", "running")] };
+		// omp ended its turn and resumes when a job result arrives; the session keeps the chat working meanwhile.
+		expect(chatStatus(view({ ...helpers, awaitingAsyncWork: true }, { working: true }))).toBe("helpersWorking");
+		const tool = (toolName: string, args: unknown): ActiveTool => ({ toolCallId: toolName, toolName, args, startedAt: 0 });
+		const running = (...tools: ActiveTool[]) => ({ ...helpers, activeTools: new Map(tools.map(item => [item.toolCallId, item])) });
+		expect(chatStatus(view(running(tool("hub", { op: "wait" })), { working: true }))).toBe("helpersWorking");
+		expect(chatStatus(view(running(tool("hub", { op: "wait", from: "Atlas" })), { working: true }))).toBe("helpersWorking");
+		// Waiting on a launched process, or doing anything else beside the wait, is omp's own work.
+		expect(chatStatus(view(running(tool("hub", { op: "wait", name: "web", for: "ready" })), { working: true }))).toBe("working");
+		expect(chatStatus(view(running(tool("hub", { op: "wait" }), { ...tool("read", { path: "a.ts" }), toolCallId: "r" }), { working: true }))).toBe("working");
+		expect(chatStatus(view(running(), { working: true }))).toBe("working");
+		// The same waits with no helper at work, such as a background command, keep the spinner.
+		expect(chatStatus(view({ awaitingAsyncWork: true }, { working: true }))).toBe("working");
+		expect(chatStatus(view({ activeTools: new Map([["hub", tool("hub", { op: "wait" })]]) }, { working: true }))).toBe("working");
 	});
 
 	it("puts a question first, even while helpers run", () => {
