@@ -67,6 +67,8 @@ export default {
         "This chat checks question cards. Send fixture form: the local fixture model asks a few release questions in one form.",
         "Answer Release channel. On Platforms to check, check and uncheck a box: the card keeps its height. Then choose Send choices. The next question, Release note headline, is shorter, and the card shrinks to fit it instead of keeping the taller card's height. The chat stays scrolled to the bottom.",
         "Answer the remaining questions; the card closes after the last answer.",
+        "Then send fixture form-context. Above the first question, the card shows the form's introduction, a Proposals heading, a numbered list of three proposals with a link to the preview guide, and the group's name, Pick three to build. Each option shows its description under its name. The link opens example.com in your browser.",
+        "Choose three options and Send choices. The Review note question shows only its own line, Add a note for the proposal review, and the card gets shorter.",
       ].join("\n")],
     },
     {
