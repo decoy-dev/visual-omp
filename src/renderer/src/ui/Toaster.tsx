@@ -101,8 +101,9 @@ function ToastItem({ item, ref }: { item: ToastRecord; ref?: Ref<HTMLLIElement> 
 					<X className="size-3.5" aria-hidden />
 				</button>
 			</div>
-			{(item.action || item.secondaryAction) && (
+			{(item.action || item.secondaryAction || item.tertiaryAction) && (
 				<div className="flex flex-wrap items-center justify-end gap-1 pl-6">
+					{item.tertiaryAction && <ToastButton id={item.id} action={item.tertiaryAction} quiet />}
 					{item.secondaryAction && <ToastButton id={item.id} action={item.secondaryAction} quiet />}
 					{item.action && <ToastButton id={item.id} action={item.action} />}
 				</div>

@@ -518,6 +518,12 @@
 			"retry": "Try again",
 			"updated": "omp updated to {{version}}",
 			"whatsNew": "What's new in omp",
+			"autoOff": {
+				"action": "Turn off automatic updates",
+				"done": "Automatic omp updates are off",
+				"doneBody": "omp no longer installs new versions in the background. To update it, use Check for updates in Settings › About. You can turn automatic updates back on in Settings › General.",
+				"failed": "Couldn't turn off automatic omp updates"
+			},
 			"notesLoading": "Loading omp's release notes…",
 			"notesFailed": "Couldn't load omp's release notes: {{reason}}",
 			"done": "omp is up to date",

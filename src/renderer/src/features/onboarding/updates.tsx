@@ -41,6 +41,8 @@ const noticeChecks = new Set<string>();
 let engineNotice: string | null = null;
 let engineNoticeVersion: string | null = null;
 let engineNoticeCount = 0;
+/** omp's own `update.auto` was on when the notice opened, so the notice offers to turn it off. */
+let engineNoticeAutoUpdate = false;
 
 export function openOmpNotes(): void {
 	useApp.getState().openSheet(OMP_NOTES_SHEET);
@@ -54,14 +56,36 @@ export async function acknowledgeOmpNotes(version: string): Promise<void> {
 	}
 }
 
-function engineNoticeActions(version: string, count: number) {
+/** Turns off omp's own background updates (`update.auto` in the global config), the switch in Settings › General. */
+async function turnOffOmpAutoUpdate(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
+	try {
+		await window.vomp.invoke("config:set", "update.auto", false, "global");
+		toast({ tone: "ok", message: t("update.omp.autoOff.done"), description: t("update.omp.autoOff.doneBody") });
+	} catch (error) {
+		toast({ tone: "err", message: t("update.omp.autoOff.failed"), description: errorText(error) });
+	}
+}
+
+function engineNoticeActions(version: string, count: number, autoUpdate: boolean) {
+	const t = i18n.getFixedT(null, "onboarding");
+	const whatsNew = { label: t("update.omp.whatsNew"), onClick: openOmpNotes };
+	const turnOff = autoUpdate ? { label: t("update.omp.autoOff.action"), onClick: () => void turnOffOmpAutoUpdate() } : undefined;
 	return {
 		description: count ? t("update.omp.restartNote", { count }) : t("update.omp.doneVersion", { version }),
-		action: count ? { label: t("update.omp.restartChats"), onClick: () => void restartStaleChats() }
-			: { label: t("update.omp.whatsNew"), onClick: openOmpNotes },
-		secondaryAction: count ? { label: t("update.omp.whatsNew"), onClick: openOmpNotes } : undefined,
+		action: count ? { label: t("update.omp.restartChats"), onClick: () => void restartStaleChats() } : whatsNew,
+		secondaryAction: count ? whatsNew : turnOff,
+		tertiaryAction: count ? turnOff : undefined,
 	};
+}
+
+/** Whether omp's own background updates are on; a failed read leaves the notice without the switch. */
+async function ompAutoUpdateOn(): Promise<boolean> {
+	try {
+		return (await window.vomp.invoke("config:get", "update.auto")).value === true;
+	} catch {
+		return false;
+	}
 }
 
 /** Main persists delivery independently of omp's hidden startup marker and this renderer's lifetime. */
@@ -69,7 +93,7 @@ function checkEngineNotice(version: string, stale: boolean): void {
 	const key = `${version}:${stale}`;
 	if (noticeChecks.has(key)) return;
 	noticeChecks.add(key);
-	void window.vomp.invoke("updates:omp:notice", stale ? version : undefined).then(notice => {
+	void Promise.all([window.vomp.invoke("updates:omp:notice", stale ? version : undefined), ompAutoUpdateOn()]).then(([notice, autoUpdate]) => {
 		if (!notice || notice.pendingVersion !== version || notice.acknowledgedVersion === version
 			|| useUpdates.getState().installedOmp !== version || announcedEngines.has(version)) return;
 		announcedEngines.add(version);
@@ -78,9 +102,10 @@ function checkEngineNotice(version: string, stale: boolean): void {
 		if (engineNotice) dismissToast(engineNotice);
 		engineNoticeVersion = version;
 		engineNoticeCount = count;
+		engineNoticeAutoUpdate = autoUpdate;
 		engineNotice = toast({
 			tone: "info", sticky: true, message: t("update.omp.updated", { version }),
-			...engineNoticeActions(version, count),
+			...engineNoticeActions(version, count, autoUpdate),
 		});
 	}).catch(() => noticeChecks.delete(key));
 }
@@ -476,7 +501,7 @@ export function reconcileInstalledOmp(version: string): void {
 	});
 	if (engineNotice && engineNoticeVersion === version && engineNoticeCount !== staleChats.length) {
 		engineNoticeCount = staleChats.length;
-		updateToast(engineNotice, engineNoticeActions(version, engineNoticeCount));
+		updateToast(engineNotice, engineNoticeActions(version, engineNoticeCount, engineNoticeAutoUpdate));
 	}
 	checkEngineNotice(version, staleChats.length > 0);
 }

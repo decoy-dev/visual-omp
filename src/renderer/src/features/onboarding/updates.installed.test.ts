@@ -5,6 +5,7 @@ import type { SessionView } from "../../state/session";
 const fake = vi.hoisted(() => ({
  listeners: new Map<string, (value: unknown) => void>(), controllers: [] as FakeChat[],
  toast: vi.fn(), updateToast: vi.fn(), openSheet: vi.fn(), refreshOmp: vi.fn(async () => {}), acknowledged: null as string | null, pending: null as string | null,
+ autoUpdate: false, configWrites: [] as unknown[][], configFails: false,
 }));
 vi.mock("../../ui", () => ({ toast: fake.toast, updateToast: fake.updateToast, dismissToast: vi.fn() }));
 vi.mock("../../state/app", () => ({ allControllers: () => fake.controllers, controllerFor: (id: string) => fake.controllers.find(c => c.tabId === id), useApp: { getState: () => ({ openSheet: fake.openSheet, refreshOmp: fake.refreshOmp }) } }));
@@ -34,11 +35,17 @@ const flush = async () => { for (let n = 0; n < 5; n++) await Promise.resolve();
 beforeEach(() => {
  fake.listeners.clear(); fake.controllers.length = 0; fake.toast.mockClear(); fake.openSheet.mockClear(); fake.acknowledged = null;
  fake.pending = null; fake.updateToast.mockClear(); fake.toast.mockReturnValue("engine-notice");
+ fake.autoUpdate = false; fake.configWrites = []; fake.configFails = false;
  vi.stubGlobal("window", { vomp: {
   on: (channel: string, callback: (value: unknown) => void) => { fake.listeners.set(channel, callback); return () => {}; },
-  invoke: vi.fn(async (channel: string, version?: string) => {
+  invoke: vi.fn(async (channel: string, version?: string, ...rest: unknown[]) => {
    if (channel === "updates:omp:acknowledge") fake.acknowledged = version ?? null;
    if (channel === "updates:omp:notice" || channel === "updates:omp:acknowledge") return { observedVersion: version, pendingVersion: fake.acknowledged === version ? null : fake.pending ?? version, acknowledgedVersion: fake.acknowledged };
+   if (channel === "config:get") return { key: version, value: fake.autoUpdate };
+   if (channel === "config:set") {
+    if (fake.configFails) throw new Error("omp refused the config");
+    fake.configWrites.push([version, ...rest]);
+   }
    return null;
   }),
  } });
@@ -97,5 +104,29 @@ describe("installed omp reconciliation", () => {
  it("removes an obsolete update offer after a background installer replaces omp", () => {
   useUpdates.setState({ omp: { currentVersion: "18.16.0", latestVersion: "18.17.2", updateAvailable: true, channel: "stable", packageMovedTo: null, checkedAt: 1, fromCache: false, error: null } });
   reconcileInstalledOmp("18.17.2"); expect(useUpdates.getState().omp).toMatchObject({ currentVersion: "18.17.2", updateAvailable: false });
+ });
+ it("offers to turn off omp's automatic updates only while they are on", async () => {
+  fake.autoUpdate = true; fake.pending = "18.17.8"; reconcileInstalledOmp("18.17.8"); await flush();
+  const notice = fake.toast.mock.calls[0]![0];
+  expect(notice.action.label).toBe("What's new in omp");
+  expect(notice.secondaryAction.label).toBe("Turn off automatic updates");
+  notice.secondaryAction.onClick(); await flush();
+  expect(fake.configWrites).toEqual([["update.auto", false, "global"]]);
+  expect(fake.toast).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "ok", message: "Automatic omp updates are off" }));
+
+  fake.toast.mockClear(); fake.autoUpdate = false; fake.pending = "18.17.9"; reconcileInstalledOmp("18.17.9"); await flush();
+  expect(fake.toast.mock.calls[0]![0].secondaryAction).toBeUndefined();
+ });
+ it("keeps the restart offer first and the switch last when chats run the previous omp", async () => {
+  fake.autoUpdate = true; chat("stale", "18.16.0"); reconcileInstalledOmp("18.17.10"); await flush();
+  const notice = fake.toast.mock.calls[0]![0];
+  expect([notice.action.label, notice.secondaryAction.label, notice.tertiaryAction.label]).toEqual(["Restart open chats", "What's new in omp", "Turn off automatic updates"]);
+  fake.controllers[0]!.engine("18.17.10", "stale", 2);
+  expect(fake.updateToast).toHaveBeenLastCalledWith("engine-notice", expect.objectContaining({ secondaryAction: expect.objectContaining({ label: "Turn off automatic updates" }), tertiaryAction: undefined }));
+ });
+ it("says so when omp refuses to turn its automatic updates off", async () => {
+  fake.autoUpdate = true; fake.configFails = true; fake.pending = "18.17.11"; reconcileInstalledOmp("18.17.11"); await flush();
+  fake.toast.mock.calls[0]![0].secondaryAction.onClick(); await flush();
+  expect(fake.toast).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "err", message: "Couldn't turn off automatic omp updates", description: expect.stringContaining("omp refused the config") }));
  });
 });

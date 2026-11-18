@@ -57,7 +57,9 @@ be able to use it, and it exposes the features that set omp apart from other cod
   in the background and uses the release next launch; open chats keep their running engine.
   An update refused because another omp installer is active explains that state and offers Try again.
   Installed-version refreshes also catch updates made outside the app. A single notice offers
-  Restart open chats and What's new in omp. Pending notes and acknowledgment survive app restarts;
+  Restart open chats and What's new in omp. While omp's `update.auto` is on, the notice also offers
+  Turn off automatic updates, which writes `update.auto: false` to omp's global configuration and
+  says where to turn it back on. Pending notes and acknowledgment survive app restarts;
   About always offers What's new in omp, independently of restart availability. Replies and helpers
   must both be idle, including after restart preparation. A reconnect counts only when its current
   host generation reports the installed engine. Notes come from the installed omp's

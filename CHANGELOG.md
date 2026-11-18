@@ -32,6 +32,7 @@ visual-omp 0.8.3 adds color themes you can edit, keeps the sidebar's order stead
 - Each time omp adds to a chat's transcript, the chat's sidebar rows show a brief teal wash, with the timing of the running-helper cards above the message box. The chat you are viewing shows none, and a chat that keeps changing pulses rather than staying lit. For a chat that is not open in visual-omp, the wash follows changes to its saved file.
 - The project page is organized into cards on the gray page background, like Home. Chats comes first, with omp's questions, working chats, new results and recent chats, then Instructions and settings beside Git, then the example prompts. The header shows the folder in the project's color, and the Git card shows the branch and how many files and lines changed. Show in folder left the page's ⋯ menu, since the button beside the folder path does the same.
 - Diffs in the omp screen wrap long lines, as omp draws them, and follow the Wrap lines setting in omp 18.22.1's git app.
+- When omp updates itself, the "omp updated to …" notice offers Turn off automatic updates while omp's own automatic updates are on. It turns off the same switch as Settings › General › Update omp automatically, so omp stops installing new versions in the background; Check for updates in Settings › About still updates it when you choose.
 
 #### Fixed
 
