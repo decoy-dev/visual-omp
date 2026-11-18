@@ -8,7 +8,7 @@ import { ChatStatusMark } from "../../shell/ChatStatusMark";
 import { chatActivityKey, chatTitle, elapsed, shortAgo, useNow } from "../../shell/hooks";
 import { type ChatTab, controllerFor, useApp } from "../../state/app";
 import { liveEntries, liveGuest, type SessionView } from "../../state/session";
-import { Button, Chip, cn, Expand, FadeIn, SectionHeader, Skeleton, spring } from "../../ui";
+import { Button, Card, Chip, cn, Expand, FadeIn, SectionHeader, Skeleton, spring } from "../../ui";
 import { SessionTitle } from "../../ui/SessionTitle";
 import { runningHelpers } from "../panes/derive";
 import { BOARD_GROUPS, type BoardGroup, type BoardRow, projectBoard, recentFold, WaitingTracker } from "./boardModel";
@@ -60,6 +60,7 @@ export function ProjectBoard({ path, sessions, failed = false }: { path: string;
 	}, [groups, t, tracker]);
 	const fold = recentFold(groups.recent, all);
 	const hasAttention = groups.waiting.length + groups.working.length + groups.unseen.length > 0;
+	const totalChats = groups.waiting.length + groups.working.length + groups.unseen.length + groups.recent.length;
 	const list = (rows: readonly BoardRow[], group: BoardGroup) => (
 		<ul className="relative flex flex-col">
 			<AnimatePresence initial={false} mode="popLayout">
@@ -69,45 +70,61 @@ export function ProjectBoard({ path, sessions, failed = false }: { path: string;
 	);
 	return (
 		<LayoutGroup id={id}>
-			<div className="sr-only" role="status" aria-atomic="true">
-				{announcement && <p key={announcement.id}>{announcement.text}</p>}
-			</div>
-			<AnimatePresence initial={false} mode="popLayout">
-				{BOARD_GROUPS.map(group => {
-					const recent = group === "recent";
-					const rows = groups[group];
-					if (!rows.length && (!recent || (hasAttention && sessions !== undefined))) return null;
-					return (
-						<FadeIn as="section" key={group} aria-labelledby={`${id}-${group}`} exit={{ opacity: 0 }}>
-							<SectionHeader
-								id={`${id}-${group}`}
-								title={recent ? t("overview.recent.title") : <>{t(`overview.board.${group}`)} <span className="font-normal text-fg-faint">· {rows.length}</span></>}
-								className="mb-2"
-								actions={recent && fold.hidden > 0 && (
-									<Button variant="ghost" size="sm" onClick={() => setAll(value => !value)} aria-expanded={all} aria-controls={`${id}-more`}>
-										{all ? t("overview.recent.fewer") : t("overview.recent.all", { count: rows.length })}
-									</Button>
-								)}
-							/>
-							{recent && sessions === undefined && (failed ? (
-								<p className="py-1 text-md text-fg-muted">{t("overview.board.loadFailed")}</p>
-							) : (
-								<div className="flex flex-col gap-3 py-1" aria-busy="true">
-									{[0, 1, 2].map(row => <Skeleton key={row} height={20} />)}
-								</div>
-							))}
-							{rows.length === 0 ? (!recent || sessions !== undefined) && (
-								<p className="py-1 text-md text-fg-muted">{t("overview.recent.empty")}</p>
-							) : (
-								<div className="-mx-2">
-									{list(recent ? fold.first : rows, group)}
-									{recent && <Expand open={all} id={`${id}-more`}>{list(fold.rest, group)}</Expand>}
-								</div>
-							)}
-						</FadeIn>
-					);
-				})}
-			</AnimatePresence>
+			<Card className="min-w-0" role="region" aria-labelledby={`${id}-chats`}>
+				<div className="sr-only" role="status" aria-atomic="true">
+					{announcement && <p key={announcement.id}>{announcement.text}</p>}
+				</div>
+				<SectionHeader
+					id={`${id}-chats`}
+					title={
+						<>
+							{t("overview.board.title")} <span className="text-sm font-normal text-fg-muted">{totalChats}</span>
+						</>
+					}
+					className="mb-stack"
+				/>
+				<div className="flex flex-col gap-stack">
+					<AnimatePresence initial={false} mode="popLayout">
+						{BOARD_GROUPS.map(group => {
+							const recent = group === "recent";
+							const rows = groups[group];
+							if (!rows.length && (!recent || (hasAttention && sessions !== undefined))) return null;
+							return (
+								<FadeIn as="section" key={group} aria-labelledby={`${id}-${group}`} exit={{ opacity: 0 }}>
+									<div className={recent ? "border-t border-border pt-card" : undefined}>
+										<div className="mb-stack flex items-center justify-between gap-2">
+											<h3 id={`${id}-${group}`} className="min-w-0 text-sm font-medium text-fg-muted">
+												{recent ? t("overview.recent.title") : t(`overview.board.${group}`)}
+												{!recent && <span className="ml-1 text-xs text-fg-faint">· {rows.length}</span>}
+											</h3>
+											{recent && fold.hidden > 0 && (
+												<Button variant="ghost" size="sm" onClick={() => setAll(value => !value)} aria-expanded={all} aria-controls={`${id}-more`}>
+													{all ? t("overview.recent.fewer") : t("overview.recent.all", { count: rows.length })}
+												</Button>
+											)}
+										</div>
+										{recent && sessions === undefined && (failed ? (
+											<p className="py-1 text-md text-fg-muted">{t("overview.board.loadFailed")}</p>
+										) : (
+											<div className="flex flex-col gap-3 py-1" aria-busy="true">
+												{[0, 1, 2].map(row => <Skeleton key={row} height={20} />)}
+											</div>
+										))}
+										{rows.length === 0 ? (!recent || sessions !== undefined) && (
+											<p className="py-2 text-md text-fg-muted">{t("overview.recent.empty")}</p>
+										) : (
+											<div className="-mx-2">
+												{list(recent ? fold.first : rows, group)}
+												{recent && <Expand open={all} id={`${id}-more`}>{list(fold.rest, group)}</Expand>}
+											</div>
+										)}
+									</div>
+								</FadeIn>
+							);
+						})}
+					</AnimatePresence>
+				</div>
+			</Card>
 		</LayoutGroup>
 	);
 }

@@ -15,6 +15,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Projects in the sidebar keep their order while omp works. Recent activity sorts chats and projects by the last message you sent them, from visual-omp or from omp in a terminal. omp's replies, tool steps and helper results no longer move a chat or its project to the top, so two busy chats in different projects keep their places. Home's recent chats and projects and the command palette's chat list use the same order, and chat rows there, in the sidebar and in project overviews show the time of your last message.
 - Each time omp adds to a chat's transcript, the chat's sidebar rows show a brief teal wash, with the timing of the running-helper cards above the message box. The chat you are viewing shows none, and a chat that keeps changing pulses rather than staying lit. For a chat that is not open in visual-omp, the wash follows changes to its saved file.
+- The project page is organized into cards on the gray page background, like Home. Chats comes first, with omp's questions, working chats, new results and recent chats, then Instructions and settings beside Git, then the example prompts. The header shows the folder in the project's color, and the Git card shows the branch and how many files and lines changed. Show in folder left the page's ⋯ menu, since the button beside the folder path does the same.
 - Diffs in the omp screen wrap long lines, as omp draws them, and follow the Wrap lines setting in omp 18.22.1's git app.
 
 #### Fixed

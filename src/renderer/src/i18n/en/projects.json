@@ -47,6 +47,7 @@
 		}
 	},
 	"overview": {
+		"pinned": "Pinned",
 		"noProjects": "No projects yet. A project is a folder that omp works in.",
 		"pickProject": "Pick a project on the left, or start a new one.",
 		"newProject": "Create project",
@@ -68,6 +69,7 @@
 			"locate": "Find folder…"
 		},
 		"board": {
+			"title": "Chats",
 			"waiting": "Waiting for you",
 			"working": "Working",
 			"unseen": "New results",
@@ -112,7 +114,9 @@
 		"health": {
 			"title": "Git",
 			"openDiff": "Review changes",
-			"clean": "No changes",
+			"clean": "Clean",
+			"filesChanged_one": "{{count}} file changed",
+			"filesChanged_other": "{{count}} files changed",
 			"noCommits": "No saved versions (commits) yet",
 			"noUpstream": "No tracking branch configured",
 			"synced": "Up to date with the tracking branch",

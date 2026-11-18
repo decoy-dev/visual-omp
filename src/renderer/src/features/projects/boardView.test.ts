@@ -97,6 +97,15 @@ describe("project board rendered history states", () => {
 		expect(row.classList.contains("h-10")).toBe(true);
 		expect(row.querySelector(".text-fg-muted")).toBeNull();
 	});
+
+	it("keeps the Chats card and empty state when no chats are available", async () => {
+		useApp.setState({ tabs: [] });
+		await render([]);
+		expect(container.querySelector(".vo-card")).not.toBeNull();
+		expect(container.querySelector("h2")?.textContent).toBe("Chats 0");
+		expect(container.textContent).toContain("No chats in this project yet.");
+	});
+
 });
 
 describe("project board rendered announcements", () => {
