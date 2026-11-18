@@ -268,8 +268,8 @@ export function parseAskForm(html: string): AskForm {
 	};
 	const labelNode = (node: Element): Element | null => {
 		const id = node.getAttribute("id");
-		return (id ? [...root.querySelectorAll("label[for]")].find(label => label.getAttribute("for") === id) ?? null : null)
-			?? node.closest("label");
+		const byFor = id ? [...root.querySelectorAll("label[for]")].find(label => label.getAttribute("for") === id) : undefined;
+		return byFor ?? node.closest("label");
 	};
 	const label = (node: Element): string => plain(labelNode(node)) || node.getAttribute("aria-label") || node.getAttribute("title") || "";
 	const fields: AskFormField[] = [];

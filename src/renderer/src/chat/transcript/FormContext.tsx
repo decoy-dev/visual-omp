@@ -7,10 +7,11 @@ function InlineRuns({ runs }: { runs: readonly AskFormInlineRun[] }): ReactNode 
 		const children = <InlineRuns runs={run.children} />;
 		if (run.type === "strong") return <strong key={index} className="font-semibold text-fg">{children}</strong>;
 		if (run.type === "em") return <em key={index}>{children}</em>;
-		if (run.type === "code") return <code key={index} className="rounded-sm bg-inset px-1 font-mono text-code text-fg">{children}</code>;
-		return <a key={index} href={run.href} onClick={event => {
+		if (run.type !== "link") return <code key={index} className="rounded-sm bg-inset px-1 font-mono text-code text-fg">{children}</code>;
+		const { href } = run;
+		return <a key={index} href={href} onClick={event => {
 			event.preventDefault();
-			void window.vomp.invoke("app:openExternal", run.href);
+			void window.vomp.invoke("app:openExternal", href);
 		}} className="rounded-sm text-accent underline decoration-current/40 underline-offset-2 outline-none hover:text-accent-hover focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">{children}</a>;
 	})}</>;
 }
