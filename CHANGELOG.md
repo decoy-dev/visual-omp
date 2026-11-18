@@ -14,6 +14,7 @@ visual-omp 0.8.3 adds color themes you can edit, keeps the sidebar's order stead
 - **New:** Choose the folder that New chat starts chats in, from Settings › General.
 - **Improved:** **Steady sidebar order.** Chats and projects are sorted by the last message you sent, so busy chats keep their places, and a chat's row shows a brief teal wash when omp adds to the chat.
 - **Improved:** The project page puts chats, settings and git status in separate cards.
+- **Improved:** The "omp updated" notice can turn off omp's automatic updates.
 - **Improved:** Diffs in the omp screen wrap long lines.
 - **Fixed:** Question cards show the explanations, lists and links in omp's forms, and a description under each option.
 - **Fixed:** A form question's card gets shorter when the next question is shorter.
