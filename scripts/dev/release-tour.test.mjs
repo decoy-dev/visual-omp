@@ -18,13 +18,14 @@ import release0718 from "./tours/0.7.18.mjs";
 import release080 from "./tours/0.8.0.mjs";
 import release081 from "./tours/0.8.1.mjs";
 import release082 from "./tours/0.8.2.mjs";
+import release083 from "./tours/0.8.3.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.8.2");
+  assert.equal(parseArguments([]).release, "0.8.3");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -148,8 +149,8 @@ test("0.8.1 remains available and checks a form question's footer and closing id
   assert.equal(tourLayout(release081.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
 });
 
-test("0.8.2 is the default and checks compaction points and omp 18.22.0's model switcher, side questions, plan review, commands and tool cards", () => {
-  assert.equal(defaultRelease, "0.8.2");
+test("0.8.2 remains available and checks compaction points and omp 18.22.0's model switcher, side questions, plan review, commands and tool cards", () => {
+  assert.notEqual(defaultRelease, "0.8.2");
   assert.equal(release082.version, "0.8.2");
   assert.deepEqual(release082.chats.map(chat => chat.id), ["model-switch", "side-questions", "plan-review", "commands-and-cards", "summarize-at"]);
   assert.ok(release082.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
@@ -168,6 +169,25 @@ test("0.8.2 is the default and checks compaction points and omp 18.22.0's model 
   assert.match(summarize.prompts[0], /reopen it/);
   assert.ok(release082.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release082.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
+});
+
+test("0.8.3 is the default and checks the helpers mark, sidebar order, the project page, color themes, question height, the new-chat folder and diff wrapping", () => {
+  assert.equal(defaultRelease, "0.8.3");
+  assert.equal(release083.version, "0.8.3");
+  assert.deepEqual(release083.chats.map(chat => chat.id), ["robot-mark", "busy-a", "busy-b", "project-page", "color-themes", "question-form", "new-chat-folder", "diff-wrap"]);
+  assert.ok(release083.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
+  const byId = Object.fromEntries(release083.chats.map(chat => [chat.id, chat]));
+  // The robot appears once omp's turn ends while its helpers still run.
+  assert.match(byId["robot-mark"].prompts[0], /fixture helpers/);
+  // Two chats in their own folders, so two projects work at once.
+  assert.match(byId["busy-a"].prompts[0], /fixture helper-work/);
+  assert.notEqual(byId["busy-a"].folder ?? "busy-a", byId["busy-b"].folder ?? "busy-b");
+  // The Git card and omp's git app need a repository with a change.
+  assert.match(byId["project-page"].setup, /git init/);
+  assert.match(byId["diff-wrap"].setup, /git init/);
+  assert.match(byId["question-form"].prompts[0], /fixture form/);
+  assert.ok(release083.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release083.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 8);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
@@ -545,4 +565,33 @@ send({ type: "ready" });
   assert.equal(chat.projectPath, cwd);
   assert.notEqual(chat.projectPath, join(root, "chats", "cwd-test"));
   assert.equal(tourLayout([chat]).tabs[0].projectPath, cwd);
+});
+
+test("a chat's setup command runs in its folder before omp starts there", { skip: process.platform === "win32" }, async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-setup-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, "fixture-omp.mjs");
+  const sessionFile = join(root, "generated.jsonl");
+  const seen = join(root, "omp-saw-setup.txt");
+  const entries = [
+    { type: "session", id: "setup-test", cwd: join(root, "chats", "setup-test") },
+    { type: "message", message: { role: "user", content: "fixture" } },
+    { type: "message", message: { role: "assistant", content: [], stopReason: "stop" } },
+  ];
+  await writeFile(sessionFile, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+  await writeFile(binary, `#!${process.execPath}
+import { existsSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+writeFileSync(${JSON.stringify(seen)}, String(existsSync("setup-marker.txt")));
+const send = value => process.stdout.write(JSON.stringify(value) + "\\n");
+createInterface({ input: process.stdin }).on("line", line => {
+  const frame = JSON.parse(line);
+  if (frame.type === "prompt") send({ type: "agent_end" });
+  else send({ type: "response", id: frame.id, success: true, data: frame.type === "get_state" ? { sessionFile: ${JSON.stringify(sessionFile)} } : {} });
+});
+send({ type: "ready" });
+`, { mode: 0o755 });
+  await generateChat({ root, env: { ...process.env, SHELL: "/bin/sh" }, binary, chat: { id: "setup-test", title: "Setup", prompts: ["fixture"], setup: "printf ready > setup-marker.txt" } });
+  assert.equal(await readFile(join(root, "chats", "setup-test", "setup-marker.txt"), "utf8"), "ready");
+  assert.equal(await readFile(seen, "utf8"), "true");
 });

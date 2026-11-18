@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.8.2.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.8.1, 0.8.0, 0.7.18, 0.7.17, 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.8.3.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.8.2, 0.8.1, 0.8.0, 0.7.18, 0.7.17, 0.7.16, 0.7.14, 0.7.13, 0.7.12, 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, and PATH omp 18.22.0 or later for the default 0.8.2 tour, which checks omp 18.22.0's model switcher and plan review. The 0.8.1 tour needs omp 18.18.3 or later for HTML-form questions, the 0.8.0 tour needs omp 18.19.0 or later, and the 0.7.18 tour needs omp 18.18.8 or later. The small 0.8.2, 0.8.1, 0.8.0, 0.7.18 and 0.7.17 tours need neither ffmpeg nor LibreOffice. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of preparation.
+Use Node.js 22 or later, the repository's existing dependencies, Python 3 as `python3`, git, and PATH omp 18.22.1 or later for the default 0.8.3 tour, which checks the Wrap lines setting in omp 18.22.1's git app. The 0.8.2 tour needs omp 18.22.0 or later for its model switcher and plan review checks. The 0.8.1 tour needs omp 18.18.3 or later for HTML-form questions, the 0.8.0 tour needs omp 18.19.0 or later, and the 0.7.18 tour needs omp 18.18.8 or later. The small 0.8.3, 0.8.2, 0.8.1, 0.8.0, 0.7.18 and 0.7.17 tours need neither ffmpeg nor LibreOffice. The 0.7.16 and 0.7.14 tours use omp 18.18.7. The 0.7.13 tour needs omp 18.18.6 or later; the 0.7.12 tour needs omp 18.18.3 or later for HTML-form questions; the earlier tours need omp 18.17.0 or later. The 0.7.13 and 0.7.12 tours also require ffmpeg with libx264 for their large-video samples. The 0.7.16, 0.7.14, 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. No dependency installation or provider sign-in is part of preparation.
 
 To select a separate omp installation without changing the owner's installation, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. The tour uses that executable for preparation, saves it in `tour.json` and the scratch app profile's omp preference, and prepends its directory to the isolated PATH for generators and the development app. `--resume` reuses the saved executable and PATH selection. Without an absolute executable path, PATH keeps its existing behavior. For the 0.7.16 tour with a separate omp 18.18.7 binary:
 
@@ -30,6 +30,21 @@ The command creates a new temporary root and starts the loopback fixture provide
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
+
+### The 0.8.3 tour
+
+Each chat runs in its own folder under the tour root, so every chat is its own project. A chat's `setup` command runs in that folder with the fixture environment's bash before preparation: 04 and 08 create a small git repository with an uncommitted change, and 07 creates a `rename-me` folder.
+
+| Chat | Checks |
+| --- | --- |
+| 01 Robot mark | Send `fixture helpers`: omp starts six helpers and ends its own reply while they work. The row's spinner turns into the pulsing robot without a reload, and the header says Waiting for background jobs. When the helper results come back, omp starts a new turn and replies. |
+| 02 Busy chat A, 03 Busy chat B | Send `fixture helper-work` in both. While they work, busy-a and busy-b keep their places in Projects, and each chat's rows show a brief teal wash when omp adds to that chat, except the chat on screen. Afterwards, a message sent in the lower project moves it to the top once. |
+| 04 Project page | Open the project-page project: canvas background, folder icon in the project's color, the Chats card, Instructions and settings beside Git (branch tour-sample, 1 file changed with line counts), unboxed examples; the cards stack in a narrow window. |
+| 05 Color themes | Settings, Appearance, Colors: presets in light and dark, an edited preset saved as My Ocean, Reset, a light sidebar with dark text, the contrast warning, rename, duplicate, delete and Undo. |
+| 06 Question form | Send `fixture form`: after Platforms to check, the shorter Release note headline question gets a shorter card. |
+| 07 Folder for new chats | Settings, General, Folder for new chats; Home's Use for new chats; New chat starts there. With the chat's `rename-me` folder chosen and then renamed, New chat starts nothing and offers Choose… and Use default. |
+| 08 Diff wrap | Open the omp screen and send `/git`: the long changed line in notes.md wraps, and turning Wrap lines off keeps it on one row. |
+| Covered by tests | The helpers mark while omp waits (`src/renderer/src/shell/hooks.test.ts`, `src/renderer/src/state/session.test.ts`), the message-time scanner and continuation copies (`src/main/omp/session-prompts.test.ts`, `src/main/omp/sessions.test.ts`), the row wash (`src/renderer/src/ui/rowCue.test.ts`), theme derivation, contrast and ordered theme changes (`src/renderer/src/theme/palette.test.ts`, `src/renderer/src/features/manage/settings/themeEdits.test.ts`), and form question heights (`src/main/omp/tsp/testing/ui-gate.test.ts` with `TSP_UI_GATE=1` and `TSP_FORM_LAYOUT_GATE=1`). |
 
 ### The 0.8.2 tour
 
