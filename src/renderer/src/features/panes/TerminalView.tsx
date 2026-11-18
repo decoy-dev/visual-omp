@@ -82,7 +82,7 @@ export function XTermView({ tab }: { tab: TerminalTab }) {
 		const themeObserver = new MutationObserver(() => {
 			term.options.theme = xtermTheme();
 		});
-		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "class", "style"] });
 		return () => {
 			observer.disconnect();
 			themeObserver.disconnect();

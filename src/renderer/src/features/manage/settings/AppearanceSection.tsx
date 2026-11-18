@@ -6,6 +6,7 @@ import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Slider } from "@/ui";
 import { SettingRow, SettingsSection } from "./parts";
 import { lazyView, LoadFailed } from "@/registry/lazy";
+import { ColorThemeSettings } from "./ColorThemeSettings";
 
 const StatusBarSettings = lazyView(() => import("./StatusBarSettings").then(m => m.StatusBarSettings), null, LoadFailed);
 
@@ -85,6 +86,7 @@ export function AppearanceSection() {
 					</p>
 				</div>
 			</SettingsSection>
+			<ColorThemeSettings />
 
 			<SettingsSection title={t("appearance.motion.title")}>
 				<SettingRow

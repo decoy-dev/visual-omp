@@ -140,7 +140,7 @@
 		}
 	},
 	"appearance": {
-		"description": "Change the theme, the text size and the motion in the app.",
+		"description": "Change the theme, the colors, the text size and the motion in the app.",
 		"look": "Look",
 		"theme": {
 			"label": "Theme",
@@ -153,6 +153,73 @@
 			"label": "Text size",
 			"description": "Makes all text in the app bigger or smaller.",
 			"preview": "omp fixed the coupon bug and ran the checkout tests. All 12 passed."
+		},
+		"colors": {
+			"title": "Colors",
+			"description": "Pick a color theme, or change any of its colors. Changing a preset's color saves your own copy of it.",
+			"themesLabel": "Color theme",
+			"defaultHint": "Default",
+			"preset": {
+				"visual-omp": "Teal",
+				"ocean": "Ocean",
+				"forest": "Forest",
+				"plum": "Plum",
+				"ember": "Ember",
+				"rose": "Rose"
+			},
+			"forkName": "My {{name}}",
+			"copyName": "{{name}} copy",
+			"editing": "Colors of {{name}}",
+			"mode": {
+				"label": "Mode to edit",
+				"light": "Light mode",
+				"dark": "Dark mode"
+			},
+			"key": {
+				"accent": {
+					"label": "Accent",
+					"description": "Buttons, links, selections and focus rings."
+				},
+				"sidebar": {
+					"label": "Sidebar",
+					"description": "The sidebar and the status bar. Their text turns dark on a light color."
+				},
+				"canvas": {
+					"label": "Page background",
+					"description": "Behind Home, Settings and the other pages."
+				},
+				"surface": {
+					"label": "Surfaces",
+					"description": "Chats, cards, menus and dialogs."
+				},
+				"text": {
+					"label": "Text",
+					"description": "The lighter shades of text, lines and borders follow it."
+				}
+			},
+			"pickLabel": "Choose the {{color}} color",
+			"hexLabel": "{{color}} hex value",
+			"reset": "Reset {{color}} to {{theme}}",
+			"menu": "Options for {{name}}",
+			"rename": "Rename",
+			"renameLabel": "Theme name",
+			"duplicate": "Duplicate",
+			"delete": "Delete",
+			"deleted": "Deleted {{name}}.",
+			"saveFailed": "Couldn't save the color theme",
+			"undo": "Undo",
+			"limit": "You have {{count}} custom themes, the most visual-omp keeps. Delete one to change a preset's colors or duplicate a theme.",
+			"contrast": {
+				"title": "Some text is hard to read in {{mode}}. Text needs a contrast of at least 4.5:1.",
+				"text": "Text on surfaces: {{ratio}}:1",
+				"textCanvas": "Text on the page background: {{ratio}}:1",
+				"muted": "Lighter text on surfaces: {{ratio}}:1",
+				"accent": "Links in the accent on surfaces: {{ratio}}:1",
+				"accentText": "Text on accent buttons: {{ratio}}:1",
+				"sidebarText": "Text in the sidebar: {{ratio}}:1",
+				"sidebarMuted": "Lighter text in the sidebar: {{ratio}}:1",
+				"sidebarAccent": "The accent in the sidebar: {{ratio}}:1"
+			}
 		},
 		"motion": {
 			"title": "Motion",

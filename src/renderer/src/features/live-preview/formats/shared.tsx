@@ -66,7 +66,7 @@ export function useFigurePalette() {
 		};
 		update();
 		const observer = new MutationObserver(update);
-		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-palette"] });
 		return () => observer.disconnect();
 	}, []);
 	return { ref, palette };

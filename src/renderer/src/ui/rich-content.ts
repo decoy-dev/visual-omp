@@ -99,7 +99,7 @@ export function hydrateRichContent(root: HTMLElement, streaming = false): () => 
 	};
 	update();
 	const observer = new MutationObserver(update);
-	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "class", "style"] });
 	return () => {
 		live = false;
 		observer.disconnect();

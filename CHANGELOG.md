@@ -9,6 +9,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - Settings › General has Folder for new chats, for all projects: New chat and Home start chats there instead of omp's folder for chats without a project, unless you pick another folder on Home. Use for new chats in the folder menu under Home's message box, or in a new chat's folder chooser, sets it in one step. If the folder is gone, the app asks you to choose another folder or use the default instead of starting the chat.
+- Settings › Appearance has Colors, with six color themes: Teal (the default), Ocean, Forest, Plum, Ember and Rose, each with light and dark colors. You can change a theme's accent, sidebar, page background, surfaces and text with a color well or a hex value, for light and dark mode separately, and the app shows each change right away. Changing a preset's color saves your own copy, such as My Ocean, which you can rename, duplicate or delete. visual-omp works out the lighter text, borders and hover shades from those five colors, and warns when text, links or button text on the surfaces, or text and the accent in the sidebar, falls below a 4.5:1 contrast.
 
 #### Improved
 

@@ -287,7 +287,7 @@ export function PingField({ className }: { className?: string }): ReactNode {
 			readColors();
 			drawStill();
 		});
-		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
 
 		let intersectionObserver: IntersectionObserver | undefined;
 		if (!reduced) {

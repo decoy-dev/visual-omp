@@ -5,6 +5,7 @@ import { app } from "electron";
 import { DEFAULT_SIDEBAR_SORT, type AppPreferences, type SidebarSort } from "@shared/ipc";
 import { DEFAULT_STATUS_BAR } from "@shared/statusBar";
 import { normalizeStatusBar } from "@shared/statusBarPreference";
+import { DEFAULT_COLOR_THEME, normalizeCustomThemes } from "@shared/themes";
 import type { NewUserApproval } from "./services/approval-default";
 import { broadcast } from "./ipc";
 import type { OmpUpdateNotice } from "@shared/contracts/updates";
@@ -23,6 +24,8 @@ interface StoredPreferences extends AppPreferences {
 
 const DEFAULTS: AppPreferences = {
 	theme: "light",
+	colorTheme: DEFAULT_COLOR_THEME,
+	customThemes: [],
 	textScale: 100,
 	reducedMotion: "system",
 	transcriptMode: "normal",
@@ -85,12 +88,20 @@ function projectPreferences<T extends Partial<AppPreferences>>(prefs: T): T {
 function load(): StoredPreferences {
 	try {
 		const stored = JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>;
-		return projectPreferences({ appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false, expiredSignInsShown: signInKeys(stored.expiredSignInsShown) });
+		return projectPreferences({ appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false, expiredSignInsShown: signInKeys(stored.expiredSignInsShown), ...colorThemes(stored) });
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { appUpdateSkipThrough: null, ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
 		return { appUpdateSkipThrough: null, ...DEFAULTS };
 	}
+}
+
+/** A color theme id and the custom themes, validated; a missing or non-string id falls back to the default preset. */
+function colorThemes(prefs: Partial<AppPreferences>): Pick<AppPreferences, "colorTheme" | "customThemes"> {
+	return {
+		colorTheme: typeof prefs.colorTheme === "string" && prefs.colorTheme ? prefs.colorTheme : DEFAULT_COLOR_THEME,
+		customThemes: normalizeCustomThemes(prefs.customThemes),
+	};
 }
 
 export function getPrefs(): StoredPreferences {
@@ -107,6 +118,7 @@ export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
 		textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)),
 		sendCrashReports: typeof patch.sendCrashReports === "boolean" ? patch.sendCrashReports : current.sendCrashReports,
 		expiredSignInsShown: patch.expiredSignInsShown === undefined ? current.expiredSignInsShown : signInKeys(patch.expiredSignInsShown),
+		...colorThemes({ colorTheme: patch.colorTheme ?? current.colorTheme, customThemes: patch.customThemes ?? current.customThemes }),
 	};
 	const snapshot = JSON.stringify(current, null, 2);
 	// A failed flush must still allow a subsequent write to restore the previous rollback boundary.

@@ -132,7 +132,7 @@ export function Mirror({ hostId, generation, readOnly, onIdleEscape, overlaysOpe
 		const themeObserver = new MutationObserver(() => {
 			term.options.theme = xtermTheme(activeTheme);
 		});
-		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
 
 		return () => {
 			disposed = true;

@@ -16,6 +16,7 @@ import type { TspHostPatch } from "./tsp/patch";
 import type { TspHookAnswer } from "./tsp/dialogs";
 import type { TspAdvisorAction } from "./tsp/advisor";
 import type { StatusBarPreference } from "./statusBar";
+import type { CustomTheme } from "./themes";
 import type { CompactCompletionDiagnostic } from "./completion-diagnostics";
 import type { SavedToolOutput } from "./session-output";
 
@@ -227,6 +228,10 @@ export const DEFAULT_SIDEBAR_SORT: SidebarSort = { by: "recent", groupByProject:
 
 export interface AppPreferences {
 	theme: ThemePreference;
+	/** Active color theme (`@shared/themes`): a preset id or a custom theme's id; unknown ids show the default. */
+	colorTheme: string;
+	/** The user's own color themes, newest last. */
+	customThemes: CustomTheme[];
 	/** Percent, 90–130. */
 	textScale: number;
 	reducedMotion: "system" | "on" | "off";

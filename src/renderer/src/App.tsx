@@ -1,10 +1,13 @@
 import { IconContext, type IconProps } from "@phosphor-icons/react";
+import { DEFAULT_COLOR_THEME, resolveColorTheme } from "@shared/themes";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { needsSetup, useSetup } from "./features/onboarding/setup";
 import { LoadBoundary, LoadFailed, type LoadFailureProps } from "./registry/lazy";
 import { globals, screens } from "./registry/slots";
 import { Shell } from "./shell/Shell";
 import { MAIN_ID, useApp } from "./state/app";
+import { applyColorTheme } from "./theme/palette";
+import { useThemePreview } from "./theme/preview";
 import { MotionProvider, Toaster, TooltipProvider } from "./ui";
 
 /** Phosphor defaults: size follows the text (callers size with `size-*` classes), regular weight, inherited color. */
@@ -23,7 +26,7 @@ function AppLoadFailed({ retry }: LoadFailureProps): ReactNode {
 	);
 }
 
-/** Applies theme, text size and motion preferences to <html> so tokens and rem sizes follow them. */
+/** Applies theme, color theme, text size and motion preferences to <html> so tokens and rem sizes follow them. */
 function usePreferenceAttributes(): void {
 	const prefs = useApp(state => state.prefs);
 	const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -42,6 +45,13 @@ function usePreferenceAttributes(): void {
 		if (motion === "system") delete html.dataset.motion;
 		else html.dataset.motion = motion === "on" ? "reduced" : "full";
 	}, [prefs, systemDark]);
+	const colorTheme = prefs?.colorTheme ?? DEFAULT_COLOR_THEME;
+	const customThemes = prefs?.customThemes;
+	const preview = useThemePreview(state => state.theme);
+	useEffect(() => {
+		const theme = preview ?? resolveColorTheme(colorTheme, customThemes ?? []);
+		applyColorTheme(theme.id, theme);
+	}, [colorTheme, customThemes, preview]);
 }
 
 export function App(): ReactNode {
