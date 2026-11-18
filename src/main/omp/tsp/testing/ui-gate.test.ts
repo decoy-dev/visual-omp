@@ -982,7 +982,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)"), "even a brief screen open must be reported").toEqual([]);
 		expect(frames.every(frame => frame.claims === 1), "native ownership persists through every measured request gap").toBe(true);
 		const range = (values: number[]) => Math.max(...values) - Math.min(...values);
-		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
+		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), cardBottom: range(frames.map(frame => frame.card!.bottom)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), transcriptBottom: range(frames.map(frame => frame.transcript!.scrollHeight - frame.transcript!.clientHeight - frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
 		const completion = captured.frames.filter(frame => frame.time > stabilityEnd);
 		const visibleClosing = completion.filter(frame => frame.card && (frame.cardOpacity ?? 1) > 0.05);
 		const previous = frames.at(-1)!;
@@ -995,26 +995,78 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		};
 		await writeFile(join(directory, `${outputName}-summary.json`), JSON.stringify({ baseline, closeBaseline, engine, history, motion, reply, frames: frames.length, movement, departure, shifts: captured.shifts }, null, 2));
 		if (!baseline) {
-			let tallestCard = 0;
-			let tallestForm = 0;
-			for (const frame of frames) {
-				expect(frame.card!.height + 1, `card height must not decrease at ${frame.phase}`).toBeGreaterThanOrEqual(tallestCard);
-				expect(frame.form!.height + 1, `form area must not decrease at ${frame.phase}`).toBeGreaterThanOrEqual(tallestForm);
-				tallestCard = Math.max(tallestCard, frame.card!.height);
-				tallestForm = Math.max(tallestForm, frame.form!.height);
+			const frame = (phase: string) => frames.find(candidate => candidate.phase === phase)!;
+			const radio = frame("request-1-before-click");
+			const radioGap = frame("request-1-retired-gap");
+			const checkbox = frame("request-2-before-click");
+			const checkboxGap = frame("request-2-retired-gap");
+			const checkboxUpdate = frame("request-3-matched");
+			const checkboxBeforeMatch = frame("request-3-before-main-match");
+			const text = frame("request-4-matched");
+			const responseValues = ["Beta", "Linux", "Next →", "Release fixture headline", "Full"];
+			const sameQuestion = (left: CollabUiRequest, right: CollabUiRequest) => {
+				if (left.kind !== right.kind || left.title !== right.title) return false;
+				if (left.kind === "editor" && right.kind === "editor") return true;
+				if (left.kind !== "select" || right.kind !== "select" || left.selectionMarker !== right.selectionMarker || left.options.length !== right.options.length) return false;
+				return left.options.every((option, index) => {
+					const next = right.options[index]!;
+					return (typeof option === "string" ? option : option.label) === (typeof next === "string" ? next : next.label);
+				});
+			};
+			const stepByRequest = new Map<number, number>();
+			let step = 0;
+			let previousRequest: CollabUiRequest | null = null;
+			for (const [index, stage] of requests.entries()) {
+				const current = stage.request!;
+				const previousWasSubmitted = previousRequest !== null && (
+					previousRequest.kind !== "select" || previousRequest.selectionMarker !== "checkbox" || responseValues[index - 1] === "Next →"
+				);
+				if (!previousRequest || previousWasSubmitted || !sameQuestion(previousRequest, current)) step++;
+				stepByRequest.set(current.reqId, step);
+				previousRequest = current;
 			}
-			const radioFrame = frames.find(frame => frame.phase === "request-1-before-click")!;
-			const textFrame = frames.find(frame => frame.phase === "request-4-matched")!;
-			expect(textFrame.card!.height, "the text question must retain the radio question's height").toBeGreaterThanOrEqual(radioFrame.card!.height - 1);
-			// The retained height sits above the hint and buttons: the last button stays one padding (16px plus the border)
-			// from the card's bottom instead of leaving the extra height below it.
-			const footerGap = (frame: typeof textFrame) => frame.card!.bottom - Math.max(...frame.buttons.card.map(button => button.box.bottom));
-			expect(footerGap(textFrame), "a shorter question keeps its buttons at the bottom of the retained height").toBeLessThanOrEqual(18);
-			expect(footerGap(textFrame), "the buttons stay inside the card").toBeGreaterThanOrEqual(0);
-			expect(movement.cardTop, "question card top must remain stable across all request and focus transitions").toBeLessThanOrEqual(1);
+			const stepFrames = new Map<number, typeof frames>();
+			for (const sample of frames) {
+				const requestId = sample.requestId ?? Number(sample.phase.match(/^request-(\d+)-/)?.[1] ?? requests[0]!.request!.reqId);
+				const questionStep = stepByRequest.get(requestId);
+				if (questionStep === undefined) continue;
+				const interval = stepFrames.get(questionStep);
+				if (interval) interval.push(sample);
+				else stepFrames.set(questionStep, [sample]);
+			}
+			for (const [questionStep, interval] of stepFrames) {
+				let tallestCard = 0;
+				let tallestForm = 0;
+				for (const sample of interval) {
+					expect(sample.card!.height + 1, `card height must not decrease within question step ${questionStep} at ${sample.phase}`).toBeGreaterThanOrEqual(tallestCard);
+					expect(sample.form!.height + 1, `form height must not decrease within question step ${questionStep} at ${sample.phase}`).toBeGreaterThanOrEqual(tallestForm);
+					tallestCard = Math.max(tallestCard, sample.card!.height);
+					tallestForm = Math.max(tallestForm, sample.form!.height);
+				}
+				expect(range(interval.map(sample => sample.card!.top)), `card top stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
+				expect(range(interval.map(sample => sample.form!.top)), `form top stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
+				const footerGaps = interval.map(sample => sample.card!.bottom - Math.max(...sample.buttons.card.map(button => button.box.bottom)));
+				expect(range(footerGaps), `footer position stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
+				expect(footerGaps.every(gap => gap >= 0 && gap <= 18), `footer stays inside question step ${questionStep}`).toBe(true);
+			}
+			const footerGap = (sample: typeof text) => sample.card!.bottom - Math.max(...sample.buttons.card.map(button => button.box.bottom));
+			expect(Math.abs(radioGap.card!.height - radio.card!.height)).toBeLessThanOrEqual(1);
+			expect(Math.abs(checkboxGap.card!.height - checkbox.card!.height)).toBeLessThanOrEqual(1);
+			expect(Math.abs(checkboxBeforeMatch.card!.height - checkbox.card!.height)).toBeLessThanOrEqual(1);
+			expect(checkboxUpdate.card!.height + 1).toBeGreaterThanOrEqual(checkbox.card!.height);
+			expect(checkboxUpdate.form!.height + 1).toBeGreaterThanOrEqual(checkbox.form!.height);
+			expect(text.card!.height, "a shorter question uses its own card height").toBeLessThan(checkboxUpdate.card!.height - 1);
+			expect(text.form!.height, "a shorter question uses its own form height").toBeLessThan(checkboxUpdate.form!.height - 1);
+			expect(footerGap(text), "the shorter question keeps its buttons within the card").toBeLessThanOrEqual(18);
+			expect(footerGap(text), "the buttons stay inside the card").toBeGreaterThanOrEqual(0);
+			if (history === "overflowing") {
+				const bottomDistance = frames.map(sample => Math.abs(sample.transcript!.scrollHeight - sample.transcript!.clientHeight - sample.transcript!.scrollTop));
+				expect(Math.max(...bottomDistance), "the overflowing transcript stays within its 48px pin threshold in every frame").toBeLessThanOrEqual(48);
+			} else {
+				expect(movement.scrollTop, "answering or focusing must not scroll the short transcript").toBeLessThanOrEqual(1);
+			}
 			expect(movement.composerTop, "composer top must remain stable through request retirement").toBeLessThanOrEqual(1);
 			expect(movement.composerInputTop, "composer input must not move when a blocked reason changes").toBeLessThanOrEqual(1);
-			expect(movement.scrollTop, "answering or focusing must not scroll the transcript").toBeLessThanOrEqual(1);
 			expect(movement.documentScroll).toBe(0);
 		}
 		if (!baseline && !closeBaseline) {

@@ -21,6 +21,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### Fixed
 
 - Chats show the robot mark while omp waits for its helpers. When omp ended a turn until a helper's result could resume it, or its only running tool waited for helpers, the sidebar, Home and the project overview showed the spinner for omp's own work, and the robot appeared only after visual-omp reconnected to the chat.
+- A form question's card gets shorter when the next question in the form is shorter. It kept the height of the taller question before it, with empty space below the shorter one. Checking a box still keeps the card's height, and a chat scrolled to the bottom stays at the bottom when the card changes.
 
 ## [0.8.2] - 2026-11-17
 

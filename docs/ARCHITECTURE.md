@@ -1152,16 +1152,20 @@ that ownership. The completed call keeps its disabled presenter until the paired
 departs, so result delivery cannot briefly reveal a second form. This uses no timer.
 
 Form updates reuse the question card and option nodes across guest request ids.
-`questionPresentation` derives a pending ask from its writable active form, including request
-gaps. The header subtitle, composer placeholder and question hint retain their question text,
+`questionPresentation` derives a pending ask from its writable active form. It keeps
+that ask active during request gaps. The header subtitle, composer placeholder and question hint retain their question text,
 and the working row remains absent until the ask ends. `pendingAsk` still requires a current
 request before granting prompt authority. Completion or cancellation clears the pending
 presentation; a completed card says it is closing until its paired native node departs. The visible
-card and its full form area each retain their measured high-water height for the same
-form, including through width changes. The minima are applied to the actual card and its
-outer area and released when the form ends or its source changes. A card held at a minimum
-stacks as a column with its hint and buttons in a bottom group (`mt-auto`), so the reserved
-space sits above them rather than below the buttons. Editor focus and
+card and its surrounding form area retain their tallest measured heights as minimums
+within the current step. A request after a submitted answer starts a new step, even
+when its title and options repeat. A change to request kind, title, selection mode or
+option labels also starts a step. A changed form source resets the step. Help text,
+option descriptions and checkbox state updates keep the current step. The minimums
+persist during field edits and width changes. They stay in place while omp displays
+the closing status and until it shows the next request. A shorter step gets its own
+measurement, so both areas shrink. While a minimum is held, the card stacks as a
+column and keeps its hint and buttons in a bottom group (`mt-auto`). Editor focus and
 radio-key navigation use `preventScroll`.
 The composer retains only the form's displayed question id across request gaps and delayed
 native matches. Actual `uiRequest` readiness still controls submission; the cached display

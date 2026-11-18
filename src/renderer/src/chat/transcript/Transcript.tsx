@@ -1132,8 +1132,8 @@ export function TranscriptBody({
 	);
 	const openFile = useCallback((path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId }), [scope.projectPath, scope.tabId]);
 
-	// Form results and native departure change the card, footer and viewport in one commit. Repair pinned geometry
-	// before paint, including the departure commit, without extending form input authority or moving an unpinned reader.
+	// Form-step commits and form departure can change the card and viewport together. Snap the pinned view before paint.
+	// The snap leaves an unpinned reader at the current position.
 	// Other content retains its eased following after the initial loaded commit.
 	const settledRef = useRef(false);
 	useLayoutEffect(() => {
@@ -1152,8 +1152,10 @@ export function TranscriptBody({
 			return;
 		}
 		setUnseen(false);
-		if (settledRef.current) follow.follow();
-		else {
+		if (settledRef.current) {
+			if (formCommit) follow.snap();
+			else follow.follow();
+		} else {
 			follow.snap();
 			settledRef.current = loaded;
 		}

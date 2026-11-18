@@ -52,6 +52,16 @@ async function updateRequest(request: CollabUiRequest | null) {
 		for (const listener of listeners) listener();
 	});
 }
+
+async function updateFormRequest(html: string, request: CollabUiRequest | null) {
+	await act(async () => {
+		const activeTools = new Map(view.guest!.activeTools);
+		const active = activeTools.get(call.id)!;
+		activeTools.set(call.id, { ...active, args: { ...(active.args as Record<string, unknown>), html } });
+		view = { ...view, guest: { ...view.guest!, uiRequest: request, pendingUiRequests: request ? [request] : [], activeTools } };
+		for (const listener of listeners) listener();
+	});
+}
 async function publishMatches(matches: TspHostSnapshot["questionMatches"]) {
 	await act(async () => {
 		snapshot = { ...snapshot, revision: snapshot.revision + 1, questionMatches: matches };
@@ -188,12 +198,16 @@ it("guards a repeated footer activation before the retired request rerenders", a
 
 it("resets local radio selection for a replacement request without remounting its options", async () => {
 	await updateRequest(radio);
+	const form = element.querySelector("[data-form-question]");
+	const card = element.querySelector("[data-question-card]");
 	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
 	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
 	await act(async () => options[1]!.click());
 	expect(options[1]!.getAttribute("aria-checked")).toBe("true");
 	expect(answer).not.toHaveBeenCalled();
 	await updateRequest({ ...radio, reqId: 101, initialIndex: 0 });
+	expect(element.querySelector("[data-form-question]")).toBe(form);
+	expect(element.querySelector("[data-question-card]")).toBe(card);
 	expect([...element.querySelectorAll("[data-choice]")]).toEqual(options);
 	expect(options[0]!.getAttribute("aria-checked")).toBe("true");
 	expect(options[1]!.getAttribute("aria-checked")).toBe("false");
@@ -244,7 +258,7 @@ it("resets editor text on replacement and focuses the persistent textarea withou
 	expect(element.querySelector("textarea")!.value).toBe("");
 });
 
-it("retains the actual card height and full form area until the form ends", async () => {
+it("holds measured height through one question and request gaps, then shrinks for a shorter question", async () => {
 	let width = 760;
 	let height = 300;
 	let area = 340;
@@ -256,21 +270,54 @@ it("retains the actual card height and full form area until the form ends", asyn
 	expect(card().style.minHeight).toBe("300px");
 	expect(form.style.minHeight).toBe("340px");
 	height = 200;
-	area = 200;
-	await updateRequest(editor);
+	area = 220;
+	const checkboxUpdate = next.kind === "select" ? { ...next, reqId: 104, checkedIndices: [0], helpText: "Changed instructions" } : { ...next, reqId: 104 };
+	await updateRequest(checkboxUpdate);
 	expect(card().style.minHeight).toBe("300px");
 	expect(form.style.minHeight).toBe("340px");
 	await updateRequest(null);
 	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
 	width = 600;
-	await updateRequest({ ...editor, reqId: 104 });
+	await updateRequest({ ...next, reqId: 105 });
 	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
+	await updateRequest(editor);
+	expect(card().style.minHeight).toBe("200px");
+	expect(form.style.minHeight).toBe("220px");
 	height = 360;
 	area = 400;
-	await updateRequest({ ...editor, reqId: 105 });
+	await updateRequest({ ...editor, reqId: 106, prefill: "Release notes" });
 	expect(card().style.minHeight).toBe("360px");
 	expect(form.style.minHeight).toBe("400px");
 	expect(form.isConnected).toBe(true);
+});
+
+it("resets a same-title editor height after its submitted answer advances the form", async () => {
+	let width = 760;
+	let height = 300;
+	let area = 340;
+	vi.spyOn(HTMLDivElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLDivElement) { return new DOMRect(0, 0, width, this.hasAttribute("data-form-question") ? area : 0); });
+	vi.spyOn(HTMLFieldSetElement.prototype, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, width, height));
+	const html = '<form><label for="first">Repeated note</label><textarea id="first" name="first"></textarea><label for="second">Repeated note</label><textarea id="second" name="second"></textarea></form>';
+	const firstEditor: CollabUiRequest = { reqId: 201, kind: "editor", title: "Repeated note", prefill: "The first answer is tall." };
+	const nextEditor: CollabUiRequest = { reqId: 202, kind: "editor", title: "Repeated note" };
+	await updateFormRequest(html, firstEditor);
+	const form = element.querySelector<HTMLElement>("[data-form-question]")!;
+	const card = () => element.querySelector<HTMLElement>("[data-question-card]")!;
+	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	await act(async () => element.querySelector<HTMLButtonElement>("[data-question-card] > div:last-child button:last-child")!.click());
+	expect(answer).toHaveBeenCalledExactlyOnceWith(firstEditor.reqId, firstEditor.prefill);
+	await updateRequest(null);
+	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
+	height = 180;
+	area = 200;
+	await updateRequest(nextEditor);
+	expect(card().style.minHeight).toBe("180px");
+	expect(form.style.minHeight).toBe("200px");
 });
 
 it("offers an explicit screen action for uncertain matching and recovers without opening it", async () => {

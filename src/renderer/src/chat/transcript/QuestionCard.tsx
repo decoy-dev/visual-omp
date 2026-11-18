@@ -4,7 +4,7 @@
  */
 import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
-import { type ReactNode, type SyntheticEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
 import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
@@ -60,17 +60,72 @@ function FormScreenAction({ session, standalone = false }: { session: SessionCon
 	</div>;
 }
 
-function FormQuestionCard({ session, request, form, context, owner, closing, questionPending }: { session: SessionController; request: CollabUiRequest | null; form: RunningFormAsk; context: NativeForms | null; owner: FormOwnerRef; closing: boolean; questionPending: boolean }) {
+
+function sameQuestionShape(a: CollabUiRequest | null, b: CollabUiRequest): boolean {
+	if (!a || a.kind !== b.kind || a.title !== b.title) return false;
+	if (a.kind === "editor" && b.kind === "editor") return true;
+	if (a.kind !== "select" || b.kind !== "select") return false;
+	return a.selectionMarker === b.selectionMarker && a.options.length === b.options.length
+		&& a.options.every((option, index) => {
+			const next = b.options[index]!;
+			return (typeof option === "string" ? option : option.label) === (typeof next === "string" ? next : next.label);
+		});
+}
+
+interface DisplayedFormQuestion {
+	html: string;
+	toolCallId: string;
+	request: CollabUiRequest | null;
+	step: number;
+	submittedReqId: number | null;
+}
+
+function FormQuestionCard({ session, request, form, context, owner, closing, questionPending }: {
+	session: SessionController;
+	request: CollabUiRequest | null;
+	form: RunningFormAsk;
+	context: NativeForms | null;
+	owner: FormOwnerRef;
+	closing: boolean;
+	questionPending: boolean;
+}) {
 	const { t } = useTranslation("chat");
-	const [previous, setPrevious] = useState({ html: form.html, request });
-	if (previous.html !== form.html || request && request !== previous.request) setPrevious({ html: form.html, request });
-	const shown = request ?? (previous.html === form.html ? previous.request : null);
+	const [displayed, setDisplayed] = useState<DisplayedFormQuestion>({
+		html: form.html,
+		toolCallId: form.toolCallId,
+		request,
+		step: 0,
+		submittedReqId: null,
+	});
+	if (displayed.html !== form.html || displayed.toolCallId !== form.toolCallId) {
+		setDisplayed({ html: form.html, toolCallId: form.toolCallId, request, step: 0, submittedReqId: null });
+	} else if (request && request.reqId !== displayed.request?.reqId) {
+		const previousRequest = displayed.request;
+		const advances = previousRequest !== null && (
+			displayed.submittedReqId === previousRequest.reqId || !sameQuestionShape(previousRequest, request)
+		);
+		setDisplayed({
+			html: form.html,
+			toolCallId: form.toolCallId,
+			request,
+			step: displayed.step + Number(advances),
+			submittedReqId: null,
+		});
+	} else if (request && request !== displayed.request) {
+		setDisplayed({ ...displayed, request });
+	}
+	const shown = request ?? (displayed.html === form.html ? displayed.request : null);
 	const claimed = useFormPresentation(context, shown?.reqId, form, owner);
 	const waiting = closing || !request;
+	const markStepSubmitted = useCallback((reqId: number) => {
+		setDisplayed(previous => previous.request?.reqId === reqId ? { ...previous, submittedReqId: reqId } : previous);
+	}, []);
 	const fieldsetRef = useRef<HTMLFieldSetElement>(null);
 	const formRef = useRef<HTMLDivElement>(null);
-	const measured = useRef({ html: form.html, card: 0, form: 0 });
+	const measured = useRef({ html: form.html, toolCallId: form.toolCallId, step: displayed.step, card: 0, form: 0 });
 	const [minimumHeight, setMinimumHeight] = useState({ card: 0, form: 0 });
+	const held = measured.current.html === form.html && measured.current.toolCallId === form.toolCallId
+		&& measured.current.step === displayed.step;
 	useLayoutEffect(() => {
 		const fieldset = fieldsetRef.current;
 		if (!fieldset) return;
@@ -78,9 +133,14 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 			const cardHeight = fieldset.getBoundingClientRect().height;
 			const formHeight = formRef.current?.getBoundingClientRect().height ?? cardHeight;
 			const previous = measured.current;
-			// Both the visible card and its surrounding fallback area retain their high-water marks.
-			const sameForm = previous.html === form.html;
-			const next = { html: form.html, card: sameForm ? Math.max(previous.card, cardHeight) : cardHeight, form: sameForm ? Math.max(previous.form, formHeight) : formHeight };
+			const sameStep = previous.html === form.html && previous.toolCallId === form.toolCallId && previous.step === displayed.step;
+			const next = {
+				html: form.html,
+				toolCallId: form.toolCallId,
+				step: displayed.step,
+				card: sameStep ? Math.max(previous.card, cardHeight) : cardHeight,
+				form: sameStep ? Math.max(previous.form, formHeight) : formHeight,
+			};
 			measured.current = next;
 			setMinimumHeight({ card: next.card, form: next.form });
 		};
@@ -89,20 +149,21 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 		observer.observe(fieldset);
 		if (formRef.current) observer.observe(formRef.current);
 		return () => observer.disconnect();
-	}, [form.html, shown, waiting]);
+	}, [form.html, form.toolCallId, displayed.step, shown, waiting]);
 	const guard = (event: SyntheticEvent) => {
 		if (!waiting && session.getSnapshot().guest?.uiRequest?.reqId === request?.reqId) return;
 		event.preventDefault(); event.stopPropagation();
 	};
 	if (!shown && context?.roots.length && !claimed) return <FormScreenAction session={session} standalone />;
-	return <div ref={formRef} data-form-question aria-busy={waiting} style={{ minHeight: measured.current.html === form.html ? minimumHeight.form : 0 }}>
+	return <div ref={formRef} data-form-question aria-busy={waiting} style={{ minHeight: held ? minimumHeight.form : 0 }}>
 		<fieldset ref={fieldsetRef} disabled={closing} aria-disabled={waiting || undefined} className="m-0 min-w-0 border-0 p-0"
 			onClickCapture={guard} onDoubleClickCapture={guard}
 			onKeyDownCapture={event => {
 				if (["Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) guard(event);
 			}}>
-			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting} steadyControls={questionPending}
-				minimumHeight={measured.current.html === form.html ? minimumHeight.card : 0}
+			{shown && <QuestionCard key={form.toolCallId} session={session} request={shown} presentation={false} disabled={waiting} steadyControls={questionPending}
+				minimumHeight={held ? minimumHeight.card : 0}
+				onStepSubmitted={markStepSubmitted}
 				formStatus={t(questionPending ? "question.messageCloses" : "question.formClosing")} />}
 		</fieldset>
 		{!claimed && !!context?.roots.length && <FormScreenAction session={session} />}
@@ -169,7 +230,17 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
-export function QuestionCard({ session, request, note, presentation = true, disabled = false, steadyControls = false, formStatus, minimumHeight }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; steadyControls?: boolean; formStatus?: string; minimumHeight?: number }): ReactNode {
+export function QuestionCard({ session, request, note, presentation = true, disabled = false, steadyControls = false, formStatus, minimumHeight, onStepSubmitted }: {
+	session: SessionController;
+	request: CollabUiRequest;
+	note?: string;
+	presentation?: boolean;
+	disabled?: boolean;
+	steadyControls?: boolean;
+	formStatus?: string;
+	minimumHeight?: number;
+	onStepSubmitted?: (reqId: number) => void;
+}): ReactNode {
 	const { t } = useTranslation("chat");
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
@@ -187,6 +258,10 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	}
 	const editorRef = useRef<HTMLTextAreaElement>(null);
 	const titleId = useId();
+	const answer = (value?: string) => {
+		onStepSubmitted?.(request.reqId);
+		session.answer(request.reqId, value);
+	};
 
 	// Native autofocus can scroll every ancestor when a form advances to its editor.
 	useLayoutEffect(() => {
@@ -199,8 +274,9 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 		const custom = pendingCustom.get(session);
 		if (custom === undefined) return;
 		pendingCustom.delete(session);
+		onStepSubmitted?.(request.reqId);
 		session.answer(request.reqId, custom);
-	}, [request, session]);
+	}, [request, session, onStepSubmitted]);
 
 	const noteLine = note && (
 		<p className="mb-3 flex items-start gap-2 text-sm text-fg-muted">
@@ -208,8 +284,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			{note}
 		</p>
 	);
-	// A form card keeps its tallest height between questions; its hint and buttons stay at the bottom of that height
-	// instead of leaving the extra space below them.
+	// The current step keeps its minimum through edits and request gaps.
 	const steadyCard = cn(cardClass, minimumHeight ? "flex flex-col" : undefined);
 	const statusText = formStatus ?? (pendingAsk(session.getSnapshot()) ? t("question.messageCloses") : undefined);
 	const statusLine = statusText && <p role={formStatus === undefined ? undefined : "status"} className={formStatus === undefined ? "mt-3 text-sm text-fg-muted" : "mt-3 grid text-sm text-fg-muted"}>
@@ -244,10 +319,10 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				<div className="mt-auto">
 					{statusLine}
 					<div className="mt-3 flex justify-end gap-2">
-						<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
+						<Button variant="ghost" onClick={() => answer()}>
 							{t("question.skip")}
 						</Button>
-						<Button variant="primary" onClick={() => session.answer(request.reqId, text)}>
+						<Button variant="primary" onClick={() => answer(text)}>
 							{t("question.send")}
 						</Button>
 					</div>
@@ -284,7 +359,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						<p className="mt-1 text-sm text-fg-muted">{t(labels.some(label => label.startsWith("Always ")) ? "question.approvalChoicesHelp" : "question.approvalSessionHelp")}</p>
 						<div className="mt-2 flex flex-wrap gap-2">
 							{labels.filter(label => label !== once && label !== "Deny").map(label => (
-								<Button key={label} variant="secondary" disabled={denying} className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => session.answer(request.reqId, label)}>
+								<Button key={label} variant="secondary" disabled={denying} className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => answer(label)}>
 									<ColorText text={label} inlineCode />
 								</Button>
 							))}
@@ -300,7 +375,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						</div>
 					)}
 					<div className="mt-3 flex flex-wrap justify-end gap-2">
-						<Button variant="secondary" disabled={denying} onClick={() => session.answer(request.reqId, "Deny")}>
+						<Button variant="secondary" disabled={denying} onClick={() => answer("Deny")}>
 							{t("question.deny")}
 						</Button>
 						<Button variant="secondary" disabled={denying || session.getSnapshot().strandedImages || (explaining && !other.trim())} onClick={() => {
@@ -314,7 +389,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						}}>
 							{t(explaining ? "question.denySend" : "question.denyExplain")}
 						</Button>
-						<Button variant="primary" disabled={denying} autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
+						<Button variant="primary" disabled={denying} autoFocus data-approval-once={once} onClick={() => answer(once ?? undefined)}>
 							{t(labels.length > 2 ? "question.allowOnce" : "question.allow")}
 						</Button>
 					</div>
@@ -326,10 +401,10 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	const submit = () => {
 		if (other.trim()) {
 			pendingCustom.set(session, other.trim());
-			session.answer(request.reqId, ASK_OTHER);
+			answer(ASK_OTHER);
 			return;
 		}
-		session.answer(request.reqId, labels[selected]);
+		answer(labels[selected]);
 	};
 
 	const activeIndex = other.trim() || selected >= choices.length ? -1 : selected;
@@ -360,7 +435,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						setOther("");
 					}
 				}}
-				onConfirm={index => session.answer(request.reqId, labels[index])}
+				onConfirm={index => multi ? session.answer(request.reqId, labels[index]) : answer(labels[index])}
 			/>
 			{hasOther && !multi && (
 				<input
@@ -378,16 +453,16 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				{statusLine}
 				<div className="mt-3 flex items-center gap-2">
 					{hasChat && (
-						<Button variant="ghost" icon={<ChatCircle />} onClick={() => session.answer(request.reqId, ASK_CHAT)}>
+						<Button variant="ghost" icon={<ChatCircle />} onClick={() => answer(ASK_CHAT)}>
 							{ASK_CHAT}
 						</Button>
 					)}
 					<div className="flex-1" />
-					<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
+					<Button variant="ghost" onClick={() => answer()}>
 						{t("question.skip")}
 					</Button>
 					{multi ? (
-						<Button variant="primary" disabled={!hasNext} onClick={() => session.answer(request.reqId, ASK_NEXT)}>
+						<Button variant="primary" disabled={!hasNext} onClick={() => answer(ASK_NEXT)}>
 							{t("question.done")}
 						</Button>
 					) : (
