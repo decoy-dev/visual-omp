@@ -99,6 +99,203 @@ afterEach(async () => {
 	element.remove(); window.vomp = originalVomp; vi.restoreAllMocks();
 });
 
+
+it("shows parsed context and option descriptions on the matching field step", async () => {
+	const html = [
+		"<form>",
+		"<p>These proposals are ready for the next preview.</p>",
+		"<h2>Proposals</h2>",
+		"<ol><li>Field context keeps each explanation beside its question.</li><li>Compact proposals keep the three choices together.</li><li>Reference links open the preview guide.</li></ol>",
+		"<fieldset><legend>Pick three to build</legend>",
+		"<p>Choose three proposals for this preview.</p>",
+		'<label><input type="checkbox" name="proposals" value="context"><strong>Field context</strong><br><small>Keep each explanation beside its question.</small></label>',
+		'<label><input type="checkbox" name="proposals" value="compact"><strong>Compact proposals</strong><br><small>Compare the three choices in one list.</small></label>',
+		'<label><input type="checkbox" name="proposals" value="links"><strong>Reference links</strong><br><small>Open the linked guide outside the app window.</small></label>',
+		"</fieldset>",
+		"<p>Add a note for the proposal review.</p>",
+		'<label>Review note <input type="text" name="note"></label>',
+		"</form>",
+	].join("\n");
+	const request: CollabUiRequest = {
+		reqId: 301,
+		kind: "select",
+		title: "Choose three proposals for this preview.",
+		options: [
+			"Field context\nKeep each explanation beside its question.",
+			"Compact proposals\nCompare the three choices in one list.",
+			"Reference links\nOpen the linked guide outside the app window.",
+			"Other (type your own)",
+			"Next →",
+		],
+		selectionMarker: "checkbox",
+		checkedIndices: [0],
+		markableCount: 4,
+		helpText: "Choose up to three proposals.",
+	};
+	await updateFormRequest(html, request);
+
+	const context = element.querySelector<HTMLElement>("[data-form-context]");
+	expect(context?.textContent).toContain("These proposals are ready for the next preview.");
+	expect([...context?.querySelectorAll("h2") ?? []].map(heading => heading.textContent)).toEqual(["Proposals", "Pick three to build"]);
+	expect(context?.querySelector("ol li")?.textContent).toContain("Field context");
+	expect(context?.textContent).not.toContain("Choose three proposals for this preview.");
+	const firstChoice = element.querySelector<HTMLButtonElement>('[data-choice="0"]');
+	expect(firstChoice?.querySelector(".text-md.font-medium")?.textContent).toBe("Field context");
+	expect(firstChoice?.querySelector(".text-sm.text-fg-muted")?.textContent).toBe("Keep each explanation beside its question.");
+
+	await updateRequest({ reqId: 302, kind: "editor", title: "Review note" });
+	const noteContext = element.querySelector<HTMLElement>("[data-form-context]");
+	expect(noteContext?.textContent).toBe("Add a note for the proposal review.");
+	expect(noteContext?.querySelector("ol")).toBeNull();
+});
+
+it("keeps duplicate form option names distinct and submits their original wire labels", async () => {
+	const html = '<form><fieldset><legend>Proposal options</legend><p>Choose two options.</p><label><input type="checkbox" name="choices" value="first">A</label><label><input type="checkbox" name="choices" value="second">A</label><label><input type="checkbox" name="choices" value="disabled" disabled>Unavailable</label></fieldset></form>';
+	const request: CollabUiRequest = {
+		reqId: 303,
+		kind: "select",
+		title: "Choose two options.",
+		options: ["A", "A (2)", "Other (type your own)", "Next →"],
+		selectionMarker: "checkbox",
+		markableCount: 3,
+	};
+	await updateFormRequest(html, request);
+
+	const choices = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
+	expect(choices.map(choice => choice.querySelector(".text-md.font-medium")?.textContent)).toEqual(["A", "A (2)", "Other (type your own)"]);
+	expect(element.textContent).not.toContain("Unavailable");
+	expect(element.querySelector('[data-choice="3"]')).toBeNull();
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	await act(async () => choices[1]!.click());
+	await act(async () => choices[2]!.click());
+	const sendChoices = [...element.querySelectorAll<HTMLButtonElement>("[data-question-card] button")]
+		.find(button => button.textContent?.trim() === "Send choices");
+	expect(sendChoices).not.toBeUndefined();
+	await act(async () => sendChoices!.click());
+	expect(answer).toHaveBeenNthCalledWith(1, request.reqId, "A (2)");
+	expect(answer).toHaveBeenNthCalledWith(2, request.reqId, "Other (type your own)");
+	expect(answer).toHaveBeenNthCalledWith(3, request.reqId, "Next →");
+});
+
+it("shows context from the second of two identical form questions after submission", async () => {
+	const html = [
+		"<form>",
+		"<fieldset><legend>First phase</legend>",
+		"<p>First field context.</p>",
+		"<p>Choose two proposals.</p>",
+		'<label><input type="checkbox" name="first" value="a">Option A</label>',
+		'<label><input type="checkbox" name="first" value="b">Option B</label>',
+		"</fieldset>",
+		"<fieldset><legend>Second phase</legend>",
+		"<p>Second field context.</p>",
+		"<p>Choose two proposals.</p>",
+		'<label><input type="checkbox" name="second" value="a">Option A</label>',
+		'<label><input type="checkbox" name="second" value="b">Option B</label>',
+		"</fieldset>",
+		"</form>",
+	].join("\n");
+	const firstQuestion: Extract<CollabUiRequest, { kind: "select" }> = {
+		reqId: 401,
+		kind: "select",
+		title: "Choose two proposals.",
+		options: ["Option A", "Option B", "Other (type your own)", "Next →"],
+		selectionMarker: "checkbox",
+		checkedIndices: [0],
+		markableCount: 3,
+	};
+	const secondQuestion = { ...firstQuestion, reqId: 402, checkedIndices: [0, 1] };
+	await updateFormRequest(html, firstQuestion);
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("First field context.");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("Second field context.");
+
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	const sendChoices = [...element.querySelectorAll<HTMLButtonElement>("[data-question-card] button")]
+		.find(button => button.textContent?.trim() === "Send choices");
+	expect(sendChoices).not.toBeUndefined();
+	await act(async () => sendChoices!.click());
+	await updateRequest(secondQuestion);
+
+	expect(element.querySelector("[data-question-card=\"402\"]")).not.toBeNull();
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Second field context.");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("First field context.");
+	expect(answer).toHaveBeenCalledExactlyOnceWith(firstQuestion.reqId, "Next →");
+});
+it("keeps field identity through Other and checkbox round trips", async () => {
+	const html = [
+		"<form>",
+		"<fieldset><legend>Source choices</legend>",
+		"<p>Choose the destination for this stage.</p>",
+		'<label><input type="checkbox" name="source" value="a">Option A</label>',
+		'<label><input type="checkbox" name="source" value="b">Option B</label>',
+		"</fieldset>",
+		"<fieldset><legend>Second destination</legend>",
+		"<p>Choose the destination for this stage.</p>",
+		'<label><input type="checkbox" name="second" value="a">Option A</label>',
+		'<label><input type="checkbox" name="second" value="b">Option B</label>',
+		"</fieldset>",
+		"<fieldset><legend>Third destination</legend>",
+		"<p>Choose the destination for this stage.</p>",
+		'<label><input type="checkbox" name="third" value="a">Option A</label>',
+		'<label><input type="checkbox" name="third" value="b">Option B</label>',
+		"</fieldset>",
+		"</form>",
+	].join("\n");
+	const firstQuestion: Extract<CollabUiRequest, { kind: "select" }> = {
+		reqId: 501,
+		kind: "select",
+		title: "Choose the destination for this stage.",
+		options: ["Option A", "Option B", "Other (type your own)", "Next →"],
+		selectionMarker: "checkbox",
+		checkedIndices: [0],
+		markableCount: 3,
+	};
+	const otherEditor: Extract<CollabUiRequest, { kind: "editor" }> = { reqId: 502, kind: "editor", title: firstQuestion.title };
+	const returnedFirstQuestion = { ...firstQuestion, reqId: 503, checkedIndices: [0, 1, 2] };
+	const secondQuestion = { ...firstQuestion, reqId: 504 };
+	const thirdQuestion = { ...firstQuestion, reqId: 505 };
+	await updateFormRequest(html, firstQuestion);
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Source choices");
+
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	await act(async () => element.querySelector<HTMLButtonElement>('[data-choice="2"]')!.click());
+	expect(answer).toHaveBeenCalledExactlyOnceWith(firstQuestion.reqId, "Other (type your own)");
+	await updateRequest(otherEditor);
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Source choices");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("Second destination");
+
+	const otherInput = element.querySelector<HTMLTextAreaElement>('[data-question-card="502"] textarea')!;
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(otherInput, "Custom source");
+		otherInput.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+	const editorButtons = element.querySelectorAll<HTMLButtonElement>('[data-question-card="502"] button');
+	await act(async () => editorButtons[editorButtons.length - 1]!.click());
+	expect(answer).toHaveBeenNthCalledWith(2, otherEditor.reqId, "Custom source");
+
+	await updateRequest(returnedFirstQuestion);
+	expect(element.querySelector("[data-question-card=\"503\"]")).not.toBeNull();
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Source choices");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("Second destination");
+
+	const sendChoices = async (reqId: number) => {
+		const send = [...element.querySelectorAll<HTMLButtonElement>(`[data-question-card="${reqId}"] button`)]
+			.find(button => button.textContent?.trim() === "Send choices");
+		expect(send).not.toBeUndefined();
+		await act(async () => send!.click());
+	};
+	await sendChoices(returnedFirstQuestion.reqId);
+	expect(answer).toHaveBeenNthCalledWith(3, returnedFirstQuestion.reqId, "Next →");
+	await updateRequest(secondQuestion);
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Second destination");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("Third destination");
+
+	await sendChoices(secondQuestion.reqId);
+	expect(answer).toHaveBeenNthCalledWith(4, secondQuestion.reqId, "Next →");
+	await updateRequest(thirdQuestion);
+	expect(element.querySelector(`[data-question-card="${thirdQuestion.reqId}"]`)).not.toBeNull();
+	expect(element.querySelector("[data-form-context]")?.textContent).toContain("Third destination");
+	expect(element.querySelector("[data-form-context]")?.textContent).not.toContain("Second destination");
+});
 it("retains a guarded visible card and one claim until the next field and its match arrive", async () => {
 	await updateRequest(null);
 	await vi.waitFor(() => expect(element.querySelector("[data-form-question]")?.getAttribute("aria-busy")).toBe("true"));

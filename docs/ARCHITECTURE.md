@@ -1120,6 +1120,17 @@ Pictures contribute accessible text only. Result details render `answers[]` ques
 pairs, including empty answers and timeout submissions. Saved `questions[]` calls retain
 their existing renderer and series replay.
 
+The renderer parses `form.html` in an inert template into safe paragraphs, headings, ordered and
+unordered lists, and inline runs for text, strong, emphasis, code and validated links. Ordered
+lists use decimal markers; unordered lists use bullets. It assigns text before a field to the
+next field, non-label fieldset text to its first field and trailing text to the last field. A
+fieldset legend that differs from the request title appears as a context heading at its position in document order; a legend
+used as the title is omitted. Context blocks matching the request title are also omitted. Only
+absolute HTTP, HTTPS and mailto links open through `app:openExternal`; clicks keep the app
+window on the chat. Scripts, styles, frames, images and SVG stay outside the context blocks,
+while the saved-card picture summary remains separate. The renderer presents option labels
+and descriptions separately. It matches the full normalized option label omp sends. The matched label retains `<br>` line breaks.
+
 The transcript renders omp 18.18.8 option labels and note text from `details.notes[]`
 below the answer with the same name and question. Malformed notes are ignored;
 results without notes keep their existing output. Native `omp.ask.note` content and

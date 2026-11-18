@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COLOR_FORM, RELEASE_FORM, bigMediaCommand, manyFilesCommand, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
+import { COLOR_FORM, FORM_CONTEXT_FORM, RELEASE_FORM, bigMediaCommand, manyFilesCommand, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
 
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -158,6 +158,7 @@ test("ask fixtures send an HTML form when omp's ask tool takes one", async () =>
   assert.equal(form, RELEASE_FORM);
   assert.match(form, /name="channel" value="stable" checked> Stable/);
   for (const control of ['type="radio"', 'type="checkbox"', 'type="text"', "<select"]) assert.ok(form.includes(control), control);
+  assert.equal((await ask("fixture form-context")).html, FORM_CONTEXT_FORM);
 });
 
 test("helper requests one fixture-backed helper with a deterministic reply", async () => {

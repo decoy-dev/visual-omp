@@ -22,6 +22,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Chats show the robot mark while omp waits for its helpers. When omp ended a turn until a helper's result could resume it, or its only running tool waited for helpers, the sidebar, Home and the project overview showed the spinner for omp's own work, and the robot appeared only after visual-omp reconnected to the chat.
 - A form question's card gets shorter when the next question in the form is shorter. It kept the height of the taller question before it, with empty space below the shorter one. Checking a box still keeps the card's height, and a chat scrolled to the bottom stays at the bottom when the card changes.
+- Question cards for omp's forms show the form's own explanations. Paragraphs, headings, numbered and bulleted lists and links that come before a question, and a group's name and text, appear above that question, and a description written under an option appears under its name. visual-omp showed only the question and the option names, so a form could list its choices without the proposals they referred to. Web links open in your browser and email links in your mail app.
 
 ## [0.8.2] - 2026-11-17
 

@@ -4,7 +4,7 @@
  */
 import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
-import { type ReactNode, type SyntheticEvent, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
 import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
@@ -13,11 +13,12 @@ import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, toolCallState, type RunningFormAsk } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { FormContext } from "./FormContext";
 import { useTsp } from "../../state/tsp/useTsp";
 import { usePresentationClaim, type PresentationTarget } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 import { ColorText } from "../../transcript/ColorText";
-import { isAskFormRequest } from "../../tool-render/tools/askForm";
+import { askFormFieldForRequest, isAskFormRequest, parseAskForm, type AskForm, type AskFormContextBlock, type AskFormField, type AskFormOption } from "../../tool-render/tools/askForm";
 import { isClaimable, TSP_ROLES } from "@shared/tsp/roles";
 import { walkNodes, type TspNodeTarget } from "@shared/tsp/view-state";
 import type { TspHostSnapshot } from "@shared/tsp-host";
@@ -77,7 +78,34 @@ interface DisplayedFormQuestion {
 	toolCallId: string;
 	request: CollabUiRequest | null;
 	step: number;
+	fieldIndex: number;
 	submittedReqId: number | null;
+	submittedValue: string | null;
+	otherEditorReqId: number | null;
+}
+
+function matchesFormFieldRequest(form: AskForm, request: CollabUiRequest, field: AskFormField, fieldIndex: number): boolean {
+	return askFormFieldForRequest(form, request, fieldIndex) === field
+		|| (request.kind === "editor" && field.kind === "choice" && field.other === true && request.title.startsWith(CUSTOM_ANSWER_PREFIX));
+}
+
+function isEnteringOtherEditor(form: AskForm, previous: CollabUiRequest | null, request: CollabUiRequest, fieldIndex: number, submittedValue: string | null): boolean {
+	const field = form.fields[fieldIndex];
+	return field?.kind === "choice" && field.other === true
+		&& previous?.kind === "select" && request.kind === "editor" && submittedValue === ASK_OTHER;
+}
+
+function nextAskFormFieldIndex(form: AskForm, previous: CollabUiRequest | null, request: CollabUiRequest, fieldIndex: number, submittedReqId: number | null, submittedValue: string | null, otherEditorReqId: number | null): number {
+	const currentField = form.fields[fieldIndex];
+	if (!currentField || !previous) return fieldIndex;
+	const previousMatches = matchesFormFieldRequest(form, previous, currentField, fieldIndex);
+	const requestMatches = matchesFormFieldRequest(form, request, currentField, fieldIndex);
+	const enteringOtherEditor = isEnteringOtherEditor(form, previous, request, fieldIndex, submittedValue);
+	const returnedToCheckboxField = previous.reqId === otherEditorReqId && currentField.kind === "choice" && currentField.multi && requestMatches;
+	const completedCurrent = previousMatches && submittedReqId === previous.reqId && !enteringOtherEditor && !returnedToCheckboxField;
+	if (enteringOtherEditor || (requestMatches && !completedCurrent)) return fieldIndex;
+	const next = askFormFieldForRequest(form, request, fieldIndex + Number(completedCurrent));
+	return next ? form.fields.indexOf(next) : fieldIndex;
 }
 
 function FormQuestionCard({ session, request, form, context, owner, closing, questionPending }: {
@@ -90,35 +118,47 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 	questionPending: boolean;
 }) {
 	const { t } = useTranslation("chat");
+	const parsedForm = useMemo(() => parseAskForm(form.html), [form.html]);
 	const [displayed, setDisplayed] = useState<DisplayedFormQuestion>({
 		html: form.html,
 		toolCallId: form.toolCallId,
 		request,
 		step: 0,
+		fieldIndex: 0,
 		submittedReqId: null,
+		submittedValue: null,
+		otherEditorReqId: null,
 	});
 	if (displayed.html !== form.html || displayed.toolCallId !== form.toolCallId) {
-		setDisplayed({ html: form.html, toolCallId: form.toolCallId, request, step: 0, submittedReqId: null });
+		setDisplayed({ html: form.html, toolCallId: form.toolCallId, request, step: 0, fieldIndex: 0, submittedReqId: null, submittedValue: null, otherEditorReqId: null });
 	} else if (request && request.reqId !== displayed.request?.reqId) {
 		const previousRequest = displayed.request;
 		const advances = previousRequest !== null && (
 			displayed.submittedReqId === previousRequest.reqId || !sameQuestionShape(previousRequest, request)
 		);
+		const enteringOtherEditor = isEnteringOtherEditor(parsedForm, previousRequest, request, displayed.fieldIndex, displayed.submittedValue);
+		const fieldIndex = nextAskFormFieldIndex(parsedForm, previousRequest, request, displayed.fieldIndex, displayed.submittedReqId, displayed.submittedValue, displayed.otherEditorReqId);
 		setDisplayed({
 			html: form.html,
 			toolCallId: form.toolCallId,
 			request,
 			step: displayed.step + Number(advances),
+			fieldIndex,
 			submittedReqId: null,
+			submittedValue: null,
+			otherEditorReqId: enteringOtherEditor ? request.reqId : null,
 		});
 	} else if (request && request !== displayed.request) {
 		setDisplayed({ ...displayed, request });
 	}
 	const shown = request ?? (displayed.html === form.html ? displayed.request : null);
+	const currentField = parsedForm.fields[displayed.fieldIndex];
+	const matchedField = shown ? askFormFieldForRequest(parsedForm, shown, displayed.fieldIndex)
+		?? (currentField && shown.kind === "editor" && currentField.kind === "choice" && currentField.other === true && shown.title.startsWith(CUSTOM_ANSWER_PREFIX) ? currentField : null) : null;
 	const claimed = useFormPresentation(context, shown?.reqId, form, owner);
 	const waiting = closing || !request;
-	const markStepSubmitted = useCallback((reqId: number) => {
-		setDisplayed(previous => previous.request?.reqId === reqId ? { ...previous, submittedReqId: reqId } : previous);
+	const markStepSubmitted = useCallback((reqId: number, value?: string) => {
+		setDisplayed(previous => previous.request?.reqId === reqId ? { ...previous, submittedReqId: reqId, submittedValue: value ?? null } : previous);
 	}, []);
 	const fieldsetRef = useRef<HTMLFieldSetElement>(null);
 	const formRef = useRef<HTMLDivElement>(null);
@@ -162,6 +202,7 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 				if (["Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) guard(event);
 			}}>
 			{shown && <QuestionCard key={form.toolCallId} session={session} request={shown} presentation={false} disabled={waiting} steadyControls={questionPending}
+				formContext={matchedField?.context} formOptions={matchedField?.options} formHasOther={matchedField?.other}
 				minimumHeight={held ? minimumHeight.card : 0}
 				onStepSubmitted={markStepSubmitted}
 				formStatus={t(questionPending ? "question.messageCloses" : "question.formClosing")} />}
@@ -230,7 +271,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
-export function QuestionCard({ session, request, note, presentation = true, disabled = false, steadyControls = false, formStatus, minimumHeight, onStepSubmitted }: {
+export function QuestionCard({ session, request, note, presentation = true, disabled = false, steadyControls = false, formStatus, minimumHeight, onStepSubmitted, formContext, formOptions, formHasOther }: {
 	session: SessionController;
 	request: CollabUiRequest;
 	note?: string;
@@ -239,7 +280,10 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	steadyControls?: boolean;
 	formStatus?: string;
 	minimumHeight?: number;
-	onStepSubmitted?: (reqId: number) => void;
+	onStepSubmitted?: (reqId: number, value?: string) => void;
+	formContext?: readonly AskFormContextBlock[];
+	formOptions?: readonly AskFormOption[];
+	formHasOther?: boolean;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
@@ -259,7 +303,13 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	const editorRef = useRef<HTMLTextAreaElement>(null);
 	const titleId = useId();
 	const answer = (value?: string) => {
-		onStepSubmitted?.(request.reqId);
+		onStepSubmitted?.(request.reqId, value);
+		session.answer(request.reqId, value);
+	};
+
+	const answerMultiChoice = (index: number) => {
+		const value = labels[index];
+		if (formHasOther && value === ASK_OTHER) onStepSubmitted?.(request.reqId, value);
 		session.answer(request.reqId, value);
 	};
 
@@ -274,7 +324,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 		const custom = pendingCustom.get(session);
 		if (custom === undefined) return;
 		pendingCustom.delete(session);
-		onStepSubmitted?.(request.reqId);
+		onStepSubmitted?.(request.reqId, custom);
 		session.answer(request.reqId, custom);
 	}, [request, session, onStepSubmitted]);
 
@@ -294,6 +344,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			<span data-form-status-text className="[grid-area:1/1]">{statusText}</span>
 		</>}
 	</p>;
+	const formContextLine = formContext && <FormContext blocks={formContext} question={request.title} />;
 
 	if (request.kind === "editor") {
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
@@ -301,6 +352,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
+				{formContextLine}
 				<Heading icon={<Question className="text-accent" />}>
 					<p id={titleId} className="selectable mb-3 text-base font-medium text-fg">
 						<ColorText text={request.title} inlineCode />
@@ -337,7 +389,16 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	const isApproval = once !== null && labels.at(-1) === "Deny";
 	const legacyOther = labels.includes(ASK_CHAT);
 	const markable = request.markableCount ?? labels.filter(label => label !== ASK_CHAT && label !== ASK_NEXT && (!legacyOther || label !== ASK_OTHER)).length;
-	const choices = labels.slice(0, markable).map((_, index) => labelOf(request, index));
+	const formChoiceOptions = formOptions?.filter(option => !option.disabled);
+	const choices = labels.slice(0, markable).map((_, index) => {
+		const choice = labelOf(request, index);
+		const option = formChoiceOptions?.[index];
+		if (!option) return choice;
+		const matchLabel = option.requestLabel ?? option.label;
+		const suffix = choice.label.startsWith(matchLabel) ? choice.label.slice(matchLabel.length) : "";
+		const disambiguation = /^\s+\(\d+\)$/.test(suffix) ? suffix : "";
+		return { ...choice, label: `${option.label}${disambiguation}`, description: option.description ?? choice.description };
+	});
 	const hasOther = legacyOther && labels.includes(ASK_OTHER);
 	const hasChat = labels.includes(ASK_CHAT);
 	const hasNext = labels.includes(ASK_NEXT);
@@ -349,6 +410,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
+				{formContextLine}
 				<Heading icon={<ShieldWarning className="text-warn" />}>
 					<p className="mb-2 text-base font-medium text-fg">{t("question.approval")}</p>
 					<pre className="selectable max-h-48 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg"><ColorText text={request.title} inlineCode /></pre>
@@ -414,6 +476,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 		<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 			{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 			{noteLine}
+			{formContextLine}
 			<Heading icon={<Question className="text-accent" />}>
 				<p id={titleId} className="selectable text-base font-medium text-fg">
 					<ColorText text={request.title} inlineCode />
@@ -429,13 +492,13 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				isOn={index => (multi ? checked.has(index) : selected === index && !other.trim())}
 				activeIndex={activeIndex}
 				onSelect={index => {
-					if (multi) session.answer(request.reqId, labels[index]);
+					if (multi) answerMultiChoice(index);
 					else {
 						setSelected(index);
 						setOther("");
 					}
 				}}
-				onConfirm={index => multi ? session.answer(request.reqId, labels[index]) : answer(labels[index])}
+				onConfirm={index => multi ? answerMultiChoice(index) : answer(labels[index])}
 			/>
 			{hasOther && !multi && (
 				<input

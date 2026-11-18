@@ -178,6 +178,26 @@ export const RELEASE_FORM = [
   "</form>",
 ].join("\n");
 
+export const FORM_CONTEXT_FORM = [
+  "<form>",
+  "<p>These proposals are ready for the next preview.</p>",
+  "<h2>Proposals</h2>",
+  "<ol>",
+  "<li><strong>Field context</strong> keeps each explanation beside its question.</li>",
+  "<li><strong>Compact proposals</strong> keep the three choices together.</li>",
+  '<li><strong>Reference links</strong> open <a href="https://example.com/preview-guide">the preview guide</a>.</li>',
+  "</ol>",
+  "<fieldset><legend>Pick three to build</legend>",
+  "<p>Choose three proposals for this preview.</p>",
+  '<label><input type="checkbox" name="proposals" value="context"><strong>Field context</strong><br><small>Keep each explanation beside its question.</small></label>',
+  '<label><input type="checkbox" name="proposals" value="compact"><strong>Compact proposals</strong><br><small>Compare the three choices in one list.</small></label>',
+  '<label><input type="checkbox" name="proposals" value="links"><strong>Reference links</strong><br><small>Open the linked guide outside the app window.</small></label>',
+  "</fieldset>",
+  "<p>Add a note for the proposal review.</p>",
+  '<label>Review note <input type="text" name="review-note"></label>',
+  "</form>",
+].join("\n");
+
 /**
  * Local files over the Files viewer's former caps: a 24-second 20 Mbit/s video (about 60 MB), a PNG padded past 20 MB
  * with a valid private chunk (a small raster, so decoding stays cheap), a PDF with a 104 MiB unused stream and a
@@ -322,7 +342,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-visualization|grep-patterns|plan-review|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-visualization|grep-patterns|plan-review|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form-context|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -450,6 +470,8 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
       ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
+      ] : fixture === "form-context" ? [
+        { name: "ask", args: askArgs(body, FORM_CONTEXT_FORM, { questions: [{ id: "proposals", question: "Pick three to build", options: [{ label: "Field context", description: "Keep each explanation beside its question." }, { label: "Compact proposals", description: "Compare the three choices in one list." }, { label: "Reference links", description: "Open the linked guide outside the app window." }] }] }), slow: false },
       ] : fixture === "form" ? [
         { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },
       ] : fixture === "helper" || fixture === "helpers" || fixture === "steps" ? !afterTool ? [
