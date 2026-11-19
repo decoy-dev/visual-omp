@@ -210,7 +210,7 @@ Each SessionHost:
    omp's local rules, which the app draws natively, and avoids the model judge calls of `auto` and
    `smart`, whose chart plans collab does not carry. `worktree.onStart: "off"` stays until omp exposes
    outer input readiness, because a startup worktree question could otherwise meet an early keystroke.
-   Interim `out://` replies, SVG, next-message predictions, idle recaps and worktree exit choices follow the user's omp settings and appear natively. Suggestions remain off by default, as in omp. The composer's Suggestions switch writes `composer.predictions` in omp's global config through the same service as Advanced; the app does not inject a prediction overlay or keep a separate preference. omp's own config watcher applies saved changes live in either presentation.
+   Interim `out://` replies, SVG, next-message predictions, idle recaps and worktree exit choices follow the user's omp settings and appear natively. Suggestions follow omp's default: off through omp 18 and on from omp 19.0.0, which sends one extra request after each finished turn. The composer's Suggestions switch writes `composer.predictions` in omp's global config through the same service as Advanced; the app does not inject a prediction overlay or keep a separate preference. omp's own config watcher applies saved changes live in either presentation.
    The overlay also carries a chat's own compaction point. Main stores these points by omp session id in
    `chat-compaction.json` in the app's profile (`services/chat-compaction.ts`). A host that resumes a session
    reads the session id from the file before launch and starts omp with that session's

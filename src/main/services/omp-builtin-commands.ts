@@ -345,7 +345,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 			{ name: "thinking", description: "Drop all thinking blocks" },
 		],
 	},
-	{ name: "handoff", description: "Summarize the session into a handoff document and compact in place", hint: "[focus instructions]" },
+	{ name: "handoff", description: "Compact the session with a handoff summary", hint: "[focus instructions]" },
 	{ name: "seance", description: "Consult a saved session without resuming it", hint: "[session id|path] [--model selector]", removedIn: "18.20.3" },
 	{ name: "resume", description: "Resume a different session", hint: "[session id|@claude|@codex]" },
 	{ name: "pin", description: "Pin or unpin a session at the top of the resume list", hint: "[session id]" },
