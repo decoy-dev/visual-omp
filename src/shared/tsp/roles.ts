@@ -65,6 +65,13 @@ export function isKnownAction(action: string): boolean { return knownActions.has
 /** Recorded actions without an app interaction path stay display-only. */
 // The BTW note controls (omp 18.21.0) stay omp's own: the app opens the side-question history with `/btw` instead.
 export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
+/**
+ * omp 19.0.0's ask card in the transcript opens a folded question (`open:<question>`) and picks a pill
+ * (`pick:<question>:<option>`). The app answers through collab's question requests, so these stay omp's own.
+ */
+export function isReadOnlyAction(action: string): boolean {
+	return Object.hasOwn(TSP_READ_ONLY_ACTIONS, action) || /^(?:open:\d+|pick:\d+:\d+)$/.test(action);
+}
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",
@@ -243,6 +250,12 @@ const knownRoles: ReadonlySet<string> = new Set([
 	// omp 18.21.0's side-answer note in the transcript; the BTW driver reads its question and opens the history.
 	"omp.btw.note.head", "omp.btw.note.status", "omp.btw.note.tag", "omp.btw.note.tool", "omp.btw.note.tools", "omp.btw.note.turn",
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",
+	// omp 19.0.0's ask card in the transcript (main region); questions still arrive as collab requests.
+	"omp.ask.card", "omp.ask.card.body", "omp.ask.card.head", "omp.ask.card.progress", "omp.ask.card.tag",
+	"omp.ask.fold", "omp.ask.fold.answer", "omp.ask.fold.head", "omp.ask.fold.mark", "omp.ask.fold.note", "omp.ask.fold.question", "omp.ask.fold.well",
+	"omp.ask.intro", "omp.ask.legend", "omp.ask.open", "omp.ask.pill", "omp.ask.pill.more", "omp.ask.pills", "omp.ask.group", "omp.ask.header", "omp.ask.preview", "omp.ask.skip",
+	// omp 19.0.0's composer line while a question waits: sending the draft would skip it.
+	"omp.composer.skip",
 ]);
 export function isKnownRole(role?: string): boolean {
 	return !role || knownRoles.has(role) || role.startsWith(`${TSP_ROLES.planToc}.`) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));

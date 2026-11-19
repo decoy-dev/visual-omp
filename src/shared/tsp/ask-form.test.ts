@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hookQuestions } from "./hook-questions";
 import { matchQuestions, type CollabQuestion } from "./question-match";
 import { QuestionArbitrator } from "./question-arbitrator";
-import { askFormPresentation, isAskFormAction, isClaimable, isKnownAction, isKnownRole, TSP_READ_ONLY_ACTIONS } from "./roles";
+import { askFormPresentation, isAskFormAction, isClaimable, isKnownAction, isKnownRole, isReadOnlyAction, TSP_READ_ONLY_ACTIONS } from "./roles";
 import { unclaimed, walkNodes } from "./view-state";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import evidence from "../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
@@ -91,5 +91,24 @@ describe("18.18.8 form option notes", () => {
 		const current = { ...scope, connection: 1, revision: 1, connected: true, requests: [stage.request as CollabQuestion] };
 		expect(matchQuestions(scope, current, dialogs)).toEqual(matchQuestions(scope, current, original));
 		expect(matchQuestions(scope, current, dialogs)[0]?.status).toBe("matched");
+	});
+});
+
+describe("omp 19.0.0 ask card", () => {
+	// Every role omp 19.0.0's ask card and question dialog emit (tui/src/native/ask-card.ts, html-form/dialog.ts, overlays/ask-dialog.ts).
+	const roles = [
+		"omp.ask.card", "omp.ask.card.body", "omp.ask.card.head", "omp.ask.card.progress", "omp.ask.card.tag",
+		"omp.ask.fold", "omp.ask.fold.answer", "omp.ask.fold.head", "omp.ask.fold.mark", "omp.ask.fold.note", "omp.ask.fold.question", "omp.ask.fold.well",
+		"omp.ask.intro", "omp.ask.legend", "omp.ask.open", "omp.ask.pill", "omp.ask.pill.more", "omp.ask.pills", "omp.ask.group", "omp.ask.header", "omp.ask.skip",
+		"omp.ask.error", "omp.ask.field", "omp.ask.label", "omp.ask.note", "omp.ask.options", "omp.ask.summary", "omp.ask.text", "omp.ask.preview", "omp.composer.skip",
+	];
+
+	it("recognizes the card's roles and keeps its fold and pill actions omp's own", () => {
+		expect(roles.filter(role => !isKnownRole(role))).toEqual([]);
+		for (const action of ["open:1", "pick:1:0", "pick:12:3"]) {
+			expect(isKnownAction(action)).toBe(false);
+			expect(isReadOnlyAction(action)).toBe(true);
+		}
+		for (const action of ["open:", "open:x", "pick:1", "pick:1:0:2"]) expect(isReadOnlyAction(action)).toBe(false);
 	});
 });

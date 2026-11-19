@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
-import { isKnownAction, isKnownRole, TSP_READ_ONLY_ACTIONS } from "../../../shared/tsp/roles";
+import { isKnownAction, isKnownRole, isReadOnlyAction } from "../../../shared/tsp/roles";
 import { TSP_KINDS } from "../../../shared/tsp";
 import { walkNodes } from "../../../shared/tsp/view-state";
 import { TspSession } from "./session";
@@ -41,7 +41,7 @@ it("recognizes every recorded role and explicitly classifies unsupported actions
 		const names = vocabulary(readFileSync(new URL(file, committed), "utf8"));
 		expect(names.roles.filter(role => !isKnownRole(role)), file).toEqual([]);
 		expect(names.kinds.filter(kind => !TSP_KINDS.includes(kind as typeof TSP_KINDS[number])), file).toEqual([]);
-		expect(names.actions.filter(action => !isKnownAction(action) && !Object.hasOwn(TSP_READ_ONLY_ACTIONS, action)), file).toEqual([]);
+		expect(names.actions.filter(action => !isKnownAction(action) && !isReadOnlyAction(action)), file).toEqual([]);
 	}
 });
 
@@ -58,7 +58,9 @@ it.skipIf(!live)("compares scratch no-model and scripted recordings with the com
 	expect(files).toEqual(expect.arrayContaining(["hotkeys.messages.jsonl", "jobs.messages.jsonl", "usage.messages.jsonl", "session.messages.jsonl", "changelog.messages.jsonl", "tools.messages.jsonl", "model-picker.messages.jsonl", "settings-screen.messages.jsonl", "hook-select.messages.jsonl", "hook-confirm.messages.jsonl", "hook-input.messages.jsonl", "hook-editor.messages.jsonl"]));
 	for (const file of files) {
 		const current = vocabulary(readFileSync(join(live!, file), "utf8"));
-		const baselineFile = [new URL(file, committed), new URL(`./fixtures/18.18.3/${file}`, import.meta.url)].find(file => existsSync(file));
+		// The 18.15.0 baseline first, then later reviewed comparison recordings (18.18.5 holds the form scenarios).
+		const reviewed = readdirSync(new URL("./fixtures/", import.meta.url), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^\d+\.\d+\.\d+/.test(entry.name)).map(entry => entry.name).sort();
+		const baselineFile = [new URL(file, committed), ...reviewed.map(dir => new URL(`./fixtures/${dir}/${file}`, import.meta.url))].find(file => existsSync(file));
 		expect(baselineFile, `No reviewed baseline exists for ${file}`).toBeDefined();
 		const baseline = vocabulary(readFileSync(baselineFile!, "utf8"));
 		if (JSON.stringify(current) !== JSON.stringify(baseline)) console.info(`TSP live vocabulary difference: ${file}`, {
@@ -69,6 +71,6 @@ it.skipIf(!live)("compares scratch no-model and scripted recordings with the com
 		});
 		expect(current.roles.filter(role => !isKnownRole(role)), file).toEqual([]);
 		expect(current.kinds.filter(kind => !TSP_KINDS.includes(kind as typeof TSP_KINDS[number])), file).toEqual([]);
-		expect(current.actions.filter(action => !isKnownAction(action) && !Object.hasOwn(TSP_READ_ONLY_ACTIONS, action)), file).toEqual([]);
+		expect(current.actions.filter(action => !isKnownAction(action) && !isReadOnlyAction(action)), file).toEqual([]);
 	}
 });
