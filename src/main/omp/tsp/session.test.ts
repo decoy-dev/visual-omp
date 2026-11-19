@@ -350,6 +350,18 @@ describe("TSP session", () => {
 		expect(h.session.availability(kind === "stale" ? () => false : undefined).reasonCode).toBeUndefined();
 	});
 
+	it("treats omp 19's waiting ask card like the ask editor, and only while nothing else holds focus", () => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }], ["add", "card", "main", null, { id: "card", k: "col", p: { role: "omp.ask.card" } }], ["focus", null]]);
+		expect(h.session.availability()).toMatchObject({ available: false, reasonCode: "ask-editor" });
+		h.frame(3, [["add", "viewing", "dock", null, { id: "viewing", k: "row", p: { role: "omp.composer.focus" } }]]);
+		expect(h.session.availability().reasonCode).toBeUndefined();
+		h.frame(4, [["del", "viewing"], ["focus", "editor"]]);
+		expect(h.session.availability()).toMatchObject({ available: true });
+		h.frame(5, [["del", "card"], ["focus", null]]);
+		expect(h.session.availability().reasonCode).toBeUndefined();
+	});
+
 	it("does not confuse missing, unnegotiated or send-unsupported surfaces with rich asks", () => {
 		const h = harness();
 		expect(h.session.availability().reasonCode).toBeUndefined();

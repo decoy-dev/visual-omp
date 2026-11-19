@@ -79,6 +79,19 @@ function askEditorOwnsDock(surfaces: readonly TspSurfaceSnapshot[]): boolean {
 	));
 }
 
+/**
+ * From omp 19.0.0 a question waits as a card in the transcript (`omp.ask.card`) instead of replacing the dock editor,
+ * and the session surface keeps no focused node while it does. Like the ask editor, it never grants input to other UI.
+ */
+function askCardWaits(surfaces: readonly TspSurfaceSnapshot[]): boolean {
+	const live = liveSurfaces(surfaces);
+	const main = live.filter(surface => surface.open.mode === "inline" && surface.open.role === TSP_ROLES.session);
+	if (live.length !== 1 || main.length !== 1 || main[0]!.focus !== null) return false;
+	const nodes = [...walkNodes(main[0]!.document)];
+	if (nodes.some(node => node.p?.role === TSP_ROLES.composerFocus)) return false;
+	return nodes.filter(node => node.p?.role === TSP_ROLES.askCard && !node.p?.hidden).length === 1;
+}
+
 export type TspUpdate = "hello" | "open" | "frame" | "close";
 
 /** A document or protocol transition refused input before any application bytes were written. */
@@ -556,7 +569,8 @@ export class TspSession {
 			if (planReview(surfaces)) return { available: false, reason: "Choose how to continue with the plan before sending a message." };
 			return { available: false, reason: "Close the open omp menu before sending a message." };
 		}
-		if (!this.hasHookDialog() && askEditorOwnsDock(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) {
+		const scoped = surfaces.filter(surface => surfaceAllowed(surface.open.id));
+		if (!this.hasHookDialog() && (askEditorOwnsDock(scoped) || askCardWaits(scoped))) {
 			return { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" };
 		}
 		if (!facts.editorId) return { available: false, reason: "Wait for omp to finish opening its main editor." };

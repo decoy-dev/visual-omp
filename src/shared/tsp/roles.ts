@@ -9,7 +9,7 @@ import { shellProps } from "./shell";
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
-	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden",
+	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden", askCard: "omp.ask.card",
 	askForm: "omp.ask.form", askSection: "omp.ask.section", askField: "omp.ask.field",
 	askText: "omp.ask.text", askHeading: "omp.ask.heading", askLabel: "omp.ask.label",
 	askOptions: "omp.ask.options", askOption: "omp.ask.option", askCheck: "omp.ask.check",
