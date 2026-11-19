@@ -1354,13 +1354,11 @@ Ownership: `main/omp/elsewhere.ts` reads omp 18.14's machine-global session-id l
 
 Forks: `main/omp/fork.ts` resolves the current continuation, starts a short-lived RPC process with `--resume`, calls `fork(entryId?)`, then reads that process's new session identity with `get_state`. It waits for confirmed process termination before handing the copy to the renderer, so the snapshot process has released its lease. Shutdown escalates after three seconds and refuses the handoff after five seconds if exit remains unconfirmed. The renderer opens the copied session without typing `/fork`, `/resume` or `/tree` into the source host. The isolated 18.14 fixture tests preserve the live source's bytes and nanosecond mtime for whole-session, user-message and assistant-message forks. The source keeps its original lease. Extensions, tools, skills, rules, context files and title generation are disabled in the snapshot process.
 
-Transcript file references use `fs:resolveRefs` (`main/services/fileRefs.ts`). Exact paths take precedence.
-A relative reference whose first component repeats a candidate parent's own name is tried in that parent
-without the repeated name, only after every exact candidate and never when the rest contains `..`. Only
-Windows splits that reference on backslashes.
-For an abbreviated final component containing U+2026, main lists only the existing candidate parents:
-folders named earlier in the reply, latest first, then the chat and output bases, or the single parent
-of an absolute or home-relative path. The first eligible folder with matches must contain exactly one
+Transcript file references use `fs:resolveRefs` (`main/services/fileRefs.ts`), which resolves exact paths directly and handles exact relative references in two tiers. The primary tier checks reply directories, the chat folder and matching Outputs from that turn; tool bases form the fallback tier when the primary tier finds no target. A primary ambiguity leaves the reference unresolved.
+Within each tier, the resolver checks exact candidates before trying a repeated leading folder name, and skips that form when the remaining path contains `..`. On Windows, the resolver splits the reference on backslashes.
+For an abbreviated final component containing U+2026, main lists existing candidate parents:
+folders named earlier in the reply, latest first, then the chat and output bases, followed by tool
+bases, or the single parent of an absolute or home-relative path. The first eligible folder with matches must contain exactly one
 matching regular file or folder. Bounded directory handles skip hidden entries and symlinks, discard
 oversized or incomplete listings, never recurse and never read file contents. `FILE_REF_LIMITS` caps
 folder entries and total directory reads. The renderer retains the abbreviated label and uses the

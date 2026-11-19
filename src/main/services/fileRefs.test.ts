@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ReplyRefCache, type ReplyRefs } from "../../renderer/src/chat/transcript/fileRefs";
 import { FILE_REF_LIMITS, resolveFileRefs } from "./fileRefs";
@@ -80,6 +80,177 @@ describe("resolveFileRefs", () => {
 		expect(await resolveFileRefs({ refs: ["FootLocker Return Chat v2.mp4"], bases: [folder], files: [file, file] }, dir)).toEqual([{ path: file, kind: "file" }]);
 	});
 
+	it("resolves a relative path below a folder reached by an earlier tool call", async () => {
+		const chat = join(dir, "chat");
+		const laptop = join(dir, "My Laptop");
+		const folder = join(laptop, "ReadyCloud Files", "Asset Retrieval Return Email");
+		const file = join(folder, "asset-retrieval-return-email.zip");
+		await mkdir(chat);
+		await mkdir(folder, { recursive: true });
+		await writeFile(file, "fixture");
+		expect(await resolveFileRefs({
+			refs: ["ReadyCloud Files/Asset Retrieval Return Email/asset-retrieval-return-email.zip"],
+			bases: [chat],
+			toolBases: [laptop],
+		}, dir)).toEqual([{ path: file, kind: "file" }]);
+	});
+
+	it("keeps earlier tool folders ambiguous and gives chat matches precedence", async () => {
+		const name = "ReadyCloud Files/Asset Retrieval Return Email/asset-retrieval-return-email.zip";
+		const [first, second] = [join(dir, "first"), join(dir, "second")];
+		for (const base of [first, second]) {
+			const folder = join(base, "ReadyCloud Files", "Asset Retrieval Return Email");
+			await mkdir(folder, { recursive: true });
+			await writeFile(join(folder, "asset-retrieval-return-email.zip"), "fixture");
+		}
+		const chat = join(dir, "chat");
+		await mkdir(chat);
+		expect(await resolveFileRefs({ refs: [name], bases: [chat], toolBases: [first, second] }, dir)).toEqual([null]);
+
+		const chatFile = join(chat, name);
+		await mkdir(dirname(chatFile), { recursive: true });
+		await writeFile(chatFile, "chat");
+		expect(await resolveFileRefs({ refs: [name], bases: [chat], toolBases: [first, second] }, dir)).toEqual([{ path: chatFile, kind: "file" }]);
+	});
+
+	it("does not use the home folder alone as a tool base", async () => {
+		await writeFile(join(dir, "at-home.md"), "fixture");
+		expect(await resolveFileRefs({ refs: ["at-home.md"], bases: [], toolBases: [dir] }, dir)).toEqual([null]);
+	});
+
+	it("keeps tool fallbacks inside their lexical and canonical folders", async () => {
+		const tool = join(dir, "tool");
+		const outside = join(dir, "outside");
+		await mkdir(tool);
+		await mkdir(outside);
+		await writeFile(join(dir, "outside.md"), "outside");
+		await writeFile(join(outside, "secret.md"), "secret");
+		await writeFile(join(outside, "report_secret.png"), "secret");
+		await symlink(outside, join(tool, "escape"), process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({ refs: ["../outside.md"], bases: [], toolBases: [tool] }, dir)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: ["escape/secret.md"], bases: [], toolBases: [tool] }, dir)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: ["escape/report_….png"], bases: [], toolBases: [tool] }, dir)).toEqual([null]);
+	});
+
+	it("keeps a promoted tool folder inside its original boundary", async () => {
+		const tool = join(dir, "tool");
+		const subdir = join(tool, "subdir");
+		const outside = join(dir, "outside");
+		await mkdir(subdir, { recursive: true });
+		await mkdir(outside);
+		await writeFile(join(dir, "outside.md"), "outside");
+		await writeFile(join(outside, "secret.md"), "secret");
+		await writeFile(join(outside, "report_secret.png"), "secret");
+		await symlink(outside, join(subdir, "escape"), process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({
+			refs: ["subdir/", "../../outside.md", "escape/secret.md", "escape/report_….png"],
+			bases: [],
+			toolBases: [tool],
+		}, dir)).toEqual([
+			{ path: subdir, kind: "folder" },
+			null,
+			null,
+			null,
+		]);
+	});
+
+	it("keeps explicit absolute reply directories unrestricted", async () => {
+		const explicit = join(dir, "explicit");
+		const tool = join(dir, "tool");
+		const outside = join(dir, "outside.md");
+		await mkdir(explicit);
+		await mkdir(tool);
+		await writeFile(outside, "fixture");
+		expect(await resolveFileRefs({ refs: [`${explicit}/`, "../outside.md"], bases: [], toolBases: [tool] }, dir)).toEqual([
+			{ path: explicit, kind: "folder" },
+			{ path: outside, kind: "file" },
+		]);
+	});
+
+	it("rejects a tool base whose symlink target is the home folder", async () => {
+		const alias = join(dir, "home-alias");
+		await writeFile(join(dir, "at-home.md"), "fixture");
+		await symlink(dir, alias, process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({ refs: ["at-home.md"], bases: [], toolBases: [alias] }, dir)).toEqual([null]);
+	});
+
+	it.skipIf(process.platform === "win32")("rejects a tool base whose symlink target is the filesystem root", async () => {
+		const alias = join(dir, "root-alias");
+		await symlink(parse(dir).root, alias, "dir");
+		expect(await resolveFileRefs({ refs: ["etc/passwd"], bases: [], toolBases: [alias] }, dir)).toEqual([null]);
+	});
+
+	it.skipIf(process.platform !== "win32")("ignores drive relative references and keeps absolute paths working", async () => {
+		const file = join(dir, "notes.md");
+		await writeFile(file, "fixture");
+		const drive = parse(dir).root[0];
+		expect(await resolveFileRefs({ refs: [`${drive}:notes.md`], bases: [dir] }, dir)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: [file], bases: [] }, dir)).toEqual([{ path: file, kind: "file" }]);
+	});
+
+	it("keeps reply directories and Outputs ahead of tool folders", async () => {
+		const chat = join(dir, "chat");
+		const firstTool = join(dir, "first-tool");
+		const secondTool = join(dir, "second-tool");
+		const named = join(firstTool, "Docs");
+		await mkdir(chat);
+		await mkdir(named, { recursive: true });
+		await mkdir(secondTool);
+		await writeFile(join(named, "report.md"), "reply directory");
+		await writeFile(join(secondTool, "report.md"), "tool folder");
+		expect(await resolveFileRefs({ refs: ["Docs/", "report.md"], bases: [chat], toolBases: [firstTool, secondTool] }, dir)).toEqual([
+			{ path: named, kind: "folder" },
+			{ path: join(named, "report.md"), kind: "file" },
+		]);
+
+		const output = join(dir, "outputs", "report.md");
+		const tool = join(dir, "other-tool");
+		await mkdir(dirname(output), { recursive: true });
+		await mkdir(tool);
+		await writeFile(output, "output");
+		await writeFile(join(tool, "report.md"), "tool");
+		expect(await resolveFileRefs({ refs: ["report.md"], bases: [], files: [output], toolBases: [tool] }, dir)).toEqual([{ path: output, kind: "file" }]);
+	});
+
+	it("does not use tool folders to resolve an ambiguous primary candidate set", async () => {
+		const [first, second, tool] = [join(dir, "first"), join(dir, "second"), join(dir, "tool")];
+		for (const folder of [first, second, tool]) {
+			await mkdir(folder);
+			await writeFile(join(folder, "report.md"), folder);
+		}
+		expect(await resolveFileRefs({ refs: ["report.md"], bases: [first, second], toolBases: [tool] }, dir)).toEqual([null]);
+	});
+
+	it("counts aliases of one canonical tool target once", async () => {
+		const real = join(dir, "real-tool");
+		const aliases = [join(dir, "tool-one"), join(dir, "tool-two")];
+		await mkdir(real);
+		const file = join(real, "report.md");
+		await writeFile(file, "fixture");
+		for (const alias of aliases) await symlink(real, alias, process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({ refs: ["report.md"], bases: [], toolBases: aliases }, dir)).toEqual([{ path: file, kind: "file" }]);
+	});
+
+	it("resolves exact and abbreviated children after promoting a symlinked tool folder", async () => {
+		const real = join(dir, "real-tool");
+		const alias = join(dir, "tool-alias");
+		const subdir = join(real, "subdir");
+		const exact = join(subdir, "report.md");
+		const abbreviated = join(subdir, "report_notes.png");
+		await mkdir(subdir, { recursive: true });
+		await writeFile(exact, "fixture");
+		await writeFile(abbreviated, "fixture");
+		await symlink(real, alias, process.platform === "win32" ? "junction" : "dir");
+		expect(await resolveFileRefs({ refs: ["subdir/", "report.md"], bases: [], toolBases: [alias] }, dir)).toEqual([
+			{ path: subdir, kind: "folder" },
+			{ path: exact, kind: "file" },
+		]);
+		expect(await resolveFileRefs({ refs: ["subdir/", "report_….png"], bases: [], toolBases: [alias] }, dir)).toEqual([
+			{ path: subdir, kind: "folder" },
+			{ path: abbreviated, kind: "file" },
+		]);
+	});
+
 	it("leaves ambiguous spaced names unresolved across named folders and known Outputs", async () => {
 		const name = "FootLocker Return Chat v2.mp4";
 		const folders = [join(dir, "one"), join(dir, "two")];
@@ -135,6 +306,19 @@ describe("resolveFileRefs", () => {
 		await writeFile(join(other, "sibling.md"), "");
 		const refs = ["DEEL Two Sheeter/ReadyCloud + Deel Partnership Overview.pdf", "Other/sibling.md", "DEEL Two Sheeter/../Other/sibling.md"];
 		expect(await resolveFileRefs({ refs, bases: [chat] }, dir)).toEqual([{ path: join(chat, "ReadyCloud + Deel Partnership Overview.pdf"), kind: "file" }, null, null]);
+	});
+
+	it("tries primary repeated names before exact tool folder candidates", async () => {
+		const chat = join(dir, "Chat");
+		const tool = join(dir, "tool");
+		await mkdir(chat);
+		await mkdir(join(tool, "Chat"), { recursive: true });
+		const primary = join(chat, "inner.md");
+		await writeFile(primary, "repeated primary");
+		await writeFile(join(tool, "Chat", "inner.md"), "exact tool path");
+		expect(await resolveFileRefs({ refs: ["Chat/inner.md"], bases: [chat], toolBases: [tool] }, dir)).toEqual([
+			{ path: primary, kind: "file" },
+		]);
 	});
 
 	it("prefers every exact candidate over dropping a repeated folder name", async () => {
@@ -206,6 +390,7 @@ describe("resolveFileRefs", () => {
 		const tooMany = Array.from({ length: FILE_REF_LIMITS.refs + 1 }, (_, n) => `f${n}.md`);
 		await expect(resolveFileRefs({ refs: tooMany, bases: [] }, dir)).rejects.toThrow("Invalid file references");
 		await expect(resolveFileRefs({ refs: [], bases: Array.from({ length: FILE_REF_LIMITS.bases + 1 }, () => dir) }, dir)).rejects.toThrow();
+		await expect(resolveFileRefs({ refs: [], bases: [dir], toolBases: Array.from({ length: FILE_REF_LIMITS.bases }, () => dir) }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs({ refs: ["a.md"], bases: ["relative/base"] }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs({ refs: ["a\0.md"], bases: [] }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs({ refs: ["x".repeat(FILE_REF_LIMITS.length + 1)], bases: [] }, dir)).rejects.toThrow();
@@ -372,6 +557,21 @@ describe("ReplyRefCache against the resolver", () => {
 		// Other text under the same key links nothing until it resolves.
 		void cache.load("chat\x001", "other", b, source([b]));
 		expect(cache.read("chat\x001", "other", b)).toBeNull();
+	});
+
+	it("reuses a stream result for its saved reply and invalidates changed tool bases", async () => {
+		const source = (toolBases: string[]) => () => ({ blocks: [["report.pdf"]], bases: [], toolBases });
+		await cache.load("chat\x00stream", "report.pdf", a, source([a]));
+		const streamed = cache.read("chat\x00stream", "report.pdf", a);
+		expect(paths(streamed)).toEqual([[join(a, "report.pdf")]]);
+		expect(cache.load("chat\x00stream", "report.pdf", a, source([a]))).toBeNull();
+		expect(cache.read("chat\x00stream", "report.pdf", a)).toBe(streamed);
+
+		const changed = cache.load("chat\x00stream", "report.pdf", b, source([b]));
+		expect(cache.read("chat\x00stream", "report.pdf", b)).toBeNull();
+		expect(cache.read("chat\x00stream", "report.pdf", a)).toBeNull();
+		await changed;
+		expect(paths(cache.read("chat\x00stream", "report.pdf", b))).toEqual([[join(b, "report.pdf")]]);
 	});
 
 	it("removes a unique link before a deferred new candidate set is found ambiguous", async () => {

@@ -49,7 +49,7 @@ import { useDisplayedEntries } from "../branch";
 import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
 import { useComposerDrafts } from "../composer/drafts";
 import { LinkedMarkdown, useFileRefs } from "./FileLinks";
-import { FileRefContext } from "./fileRefScope";
+import { FileRefContext, toolBasesByReply } from "./fileRefScope";
 import { MentionText } from "./MentionText";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
@@ -1048,12 +1048,13 @@ export function TranscriptBody({
 		openFileLink(event.target);
 	};
 
-	// Other lookup candidates belong to the reply itself: named directories and its turn's known Outputs.
+	// Reply directories and turn Outputs stay ahead of folders from earlier tool calls.
 	const home = useHomeDir();
 	const canonicalProjectPath = useCanonicalProjectPath(scope.projectPath);
+	const toolBases = useMemo(() => toolBasesByReply(entries, home, window.vomp.platform, stream?.timestamp), [entries, home, stream?.timestamp]);
 	const fileRefScope = useMemo(
-		() => ({ chat: scope.tabId, bases: [scope.projectPath], canonicalProjectPath }),
-		[scope.tabId, scope.projectPath, canonicalProjectPath],
+		() => ({ chat: scope.tabId, bases: [scope.projectPath], toolBasesByReply: toolBases, canonicalProjectPath }),
+		[scope.tabId, scope.projectPath, toolBases, canonicalProjectPath],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.

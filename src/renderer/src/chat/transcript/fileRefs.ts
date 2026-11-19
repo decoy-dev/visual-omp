@@ -72,6 +72,7 @@ export function textRefs(text: string): TextRef[] {
 /** Main's limits (`FILE_REF_LIMITS`): references and bases per request. */
 export const MAX_REFS = 100;
 export const MAX_BASES = 8;
+export const MAX_TOOL_BASES = MAX_BASES - 1;
 export const MAX_FILES = 100;
 
 /**
@@ -81,7 +82,7 @@ export const MAX_FILES = 100;
 export type ReplyRefs = readonly (readonly (FileRef | null)[])[];
 
 /** The occurrences of each text block of a reply and the bases to resolve them in, computed only when needed. */
-export type ReplyRefSource = () => { blocks: readonly (readonly string[])[]; bases: readonly string[]; files?: readonly string[] };
+export type ReplyRefSource = () => { blocks: readonly (readonly string[])[]; bases: readonly string[]; toolBases?: readonly string[]; files?: readonly string[] };
 
 interface CacheEntry {
 	texts: string;
@@ -139,10 +140,16 @@ export class ReplyRefCache {
 	}
 
 	async #lookup(source: ReplyRefSource): Promise<ReplyRefs> {
-		const { blocks, bases, files } = source();
+		const { blocks, bases, toolBases, files } = source();
 		// One request in document order across the reply's blocks, so a folder named in one block applies to the next.
 		const refs = blocks.flat().slice(0, MAX_REFS);
-		const results = refs.length > 0 ? await this.#resolve({ refs, bases: bases.slice(0, MAX_BASES), ...(files?.length ? { files: files.slice(0, MAX_FILES) } : {}) }) : [];
+		const requestToolBases = toolBases?.slice(0, Math.max(0, MAX_BASES - bases.length));
+		const results = refs.length > 0 ? await this.#resolve({
+			refs,
+			bases: bases.slice(0, MAX_BASES),
+			...(requestToolBases?.length ? { toolBases: requestToolBases } : {}),
+			...(files?.length ? { files: files.slice(0, MAX_FILES) } : {}),
+		}) : [];
 		let next = 0;
 		return blocks.map(block => block.map(() => results[next++] ?? null));
 	}

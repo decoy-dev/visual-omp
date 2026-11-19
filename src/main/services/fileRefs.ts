@@ -1,6 +1,6 @@
 import type { Dir } from "node:fs";
 import { opendir, realpath, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
 
 export interface FileRefLimits {
@@ -31,7 +31,7 @@ function isHomePath(path: string): boolean {
 
 function isRequest(value: unknown, limits: Readonly<FileRefLimits>): value is FileRefRequest {
 	if (typeof value !== "object" || value === null) return false;
-	const { refs, bases, files } = value as Record<string, unknown>;
+	const { refs, bases, toolBases, files } = value as Record<string, unknown>;
 	return (
 		Array.isArray(refs) &&
 		refs.length <= limits.refs &&
@@ -39,6 +39,7 @@ function isRequest(value: unknown, limits: Readonly<FileRefLimits>): value is Fi
 		Array.isArray(bases) &&
 		bases.length <= limits.bases &&
 		bases.every(base => isPathString(base, limits) && (isAbsolute(base) || isHomePath(base))) &&
+		(toolBases === undefined || Array.isArray(toolBases) && toolBases.length + bases.length <= limits.bases && toolBases.every(base => isPathString(base, limits) && (isAbsolute(base) || isHomePath(base)))) &&
 		(files === undefined || Array.isArray(files) && files.length <= limits.files && files.every(file => isPathString(file, limits) && (isAbsolute(file) || isHomePath(file))))
 	);
 }
@@ -126,32 +127,96 @@ function relativeCandidates(ref: string, parents: readonly string[], repeated = 
 	return shortened ? [...new Set(parents.filter(parent => basename(parent) === first).map(parent => resolve(parent, ...rest)))] : [];
 }
 
+interface ToolBase {
+	path: string;
+	realPath: string;
+}
+
+interface PathCandidate {
+	path: string;
+	toolBases?: readonly ToolBase[];
+}
+
+function isWithin(parent: string, candidate: string): boolean {
+	const fromParent = relative(parent, candidate);
+	return fromParent === "" || fromParent !== ".." && !fromParent.startsWith(`..${sep}`) && !isAbsolute(fromParent);
+}
+
+function samePath(left: string, right: string): boolean {
+	return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function disallowedToolBase(path: string, realPath: string, home: string, realHome: string): boolean {
+	return (
+		samePath(path, parse(path).root) ||
+		samePath(realPath, parse(realPath).root) ||
+		isWithin(path, home) ||
+		isWithin(realPath, realHome)
+	);
+}
+
 /**
- * Resolves reply references through bounded existence checks. Exact relative names must identify one canonical
- * target across named directories, chat bases and matching known Outputs paths. Directory spans are checked first
- * so a later span can provide context too. Abbreviations keep their existing bounded first-folder lookup.
+ * Resolves reply references through bounded existence checks. Exact relative names first check reply directories,
+ * chat bases and matching known Outputs paths. Tool bases are fallback candidates only when those sources have no
+ * matches. Abbreviations keep their existing bounded first-folder lookup.
  */
 export async function resolveFileRefs(request: unknown, home: string, limits: Readonly<FileRefLimits> = FILE_REF_LIMITS): Promise<(FileRef | null)[]> {
 	if (!isRequest(request, limits)) throw new Error("Invalid file references");
+	const homePath = resolve(home);
+	const realHomePath = await realpath(homePath).catch(() => homePath);
 	const bases = [...new Set(request.bases.map(base => resolve(isHomePath(base) ? join(home, base.slice(1)) : base)))];
 	const files = [...new Set((request.files ?? []).map(file => resolve(isHomePath(file) ? join(home, file.slice(1)) : file)))];
+	const chatParents: PathCandidate[] = bases.map(path => ({ path }));
+	const toolBases: ToolBase[] = [];
+	for (const requested of request.toolBases ?? []) {
+		const path = resolve(isHomePath(requested) ? join(home, requested.slice(1)) : requested);
+		if (disallowedToolBase(path, path, homePath, realHomePath) || toolBases.some(base => samePath(base.path, path))) continue;
+		const realPath = await realpath(path).catch(() => null);
+		if (realPath && !disallowedToolBase(path, realPath, homePath, realHomePath)) toolBases.push({ path, realPath });
+	}
+	const toolParents: PathCandidate[] = toolBases.map(base => ({ path: base.path, toolBases: [base] }));
 	const fileFolders = new Set(files.map(dirname));
 	const knownPaths = [...new Set([...files, ...fileFolders])];
-	const named: string[] = [];
+	const named: PathCandidate[] = [];
 	const checked = new Map<string, Promise<FileRef | null>>();
-	const exact = async (candidates: readonly string[]) => {
-		const matches = new Map<string, FileRef>();
-		for (const candidate of new Set(candidates)) {
-			let pending = checked.get(candidate);
-			if (!pending) { pending = check(candidate); checked.set(candidate, pending); }
+	const exact = async (candidates: readonly PathCandidate[]) => {
+		const matches = new Map<string, { ref: FileRef; toolBases?: ToolBase[] }>();
+		for (const candidate of candidates) {
+			const lexicalBases = candidate.toolBases?.filter(base => isWithin(base.path, candidate.path));
+			if (candidate.toolBases && (!lexicalBases || lexicalBases.length === 0)) continue;
+			let pending = checked.get(candidate.path);
+			if (!pending) { pending = check(candidate.path); checked.set(candidate.path, pending); }
 			const result = await pending;
-			if (result) matches.set(result.path, result);
+			if (!result) continue;
+			const resultBases = lexicalBases?.filter(base => isWithin(base.realPath, result.path));
+			if (candidate.toolBases && (!resultBases || resultBases.length === 0)) continue;
+			const previous = matches.get(result.path);
+			if (!previous) {
+				matches.set(result.path, { ref: result, ...(resultBases ? { toolBases: [...resultBases] } : {}) });
+			} else if (previous.toolBases === undefined || resultBases === undefined) {
+				previous.toolBases = undefined;
+			} else {
+				for (const base of resultBases) if (!previous.toolBases.includes(base)) previous.toolBases.push(base);
+			}
 		}
-		return { count: matches.size, ref: matches.size === 1 ? matches.values().next().value ?? null : null };
+		const unique = matches.size === 1 ? matches.values().next().value : undefined;
+		return { count: matches.size, ref: unique?.ref ?? null, toolBases: unique?.toolBases };
 	};
-	const candidatesFor = (ref: string, parents: readonly string[]): string[] => {
-		if (isHomePath(ref)) return [join(home, ref.slice(1))];
-		if (isAbsolute(ref)) return [resolve(ref)];
+	const candidatesFrom = (ref: string, parents: readonly PathCandidate[], repeated = false): PathCandidate[] => parents.flatMap(parent =>
+		relativeCandidates(ref, [parent.path], repeated).map(path => parent.toolBases ? { path, toolBases: parent.toolBases } : { path }),
+	);
+	const toolAbbreviationBases = async (candidate: PathCandidate): Promise<ToolBase[] | null> => {
+		if (!candidate.toolBases) return null;
+		const parent = dirname(candidate.path);
+		const bases = candidate.toolBases.filter(base => isWithin(base.path, parent));
+		if (bases.length === 0) return [];
+		const realParent = await realpath(parent).catch(() => null);
+		return realParent ? bases.filter(base => isWithin(base.realPath, realParent)) : [];
+	};
+	const candidatesFor = (ref: string, parents: readonly PathCandidate[]): PathCandidate[] => {
+		if (process.platform === "win32" && /^[A-Za-z]:(?![\\/])/.test(ref)) return [];
+		if (isHomePath(ref)) return [{ path: join(home, ref.slice(1)) }];
+		if (isAbsolute(ref)) return [{ path: resolve(ref) }];
 		const parts = ref.split(SEPARATORS).filter(part => part !== "" && part !== ".");
 		const suffix = parts.join(sep);
 		const key = process.platform === "win32" ? suffix.toLowerCase() : suffix;
@@ -160,43 +225,73 @@ export async function resolveFileRefs(request: unknown, home: string, limits: Re
 			const path = process.platform === "win32" ? file.toLowerCase() : file;
 			return path.endsWith(`${sep}${key}`);
 		});
-		return [...relativeCandidates(ref, parents), ...known];
+		return [...candidatesFrom(ref, parents), ...known.map(path => ({ path }))];
 	};
-	const lookup = async (ref: string, parents: readonly string[]) => {
+	const lookup = async (ref: string, parents: readonly PathCandidate[]) => {
 		const candidates = candidatesFor(ref, parents);
+		const driveRelative = process.platform === "win32" && /^[A-Za-z]:(?![\\/])/.test(ref);
+		const canUseRelative = !driveRelative && !isAbsolute(ref) && !isHomePath(ref);
 		let match = await exact(candidates);
-		if (match.count === 0 && !isAbsolute(ref) && !isHomePath(ref)) {
-			const repeated = relativeCandidates(ref, parents, true);
-			match = await exact(repeated);
+		if (match.count === 0 && canUseRelative) {
+			const repeated = candidatesFrom(ref, parents, true);
 			candidates.push(...repeated);
+			match = await exact(repeated);
+		}
+		if (match.count === 0 && canUseRelative && toolParents.length > 0) {
+			const toolCandidates = candidatesFrom(ref, toolParents);
+			candidates.push(...toolCandidates);
+			match = await exact(toolCandidates);
+			if (match.count === 0) {
+				const repeated = candidatesFrom(ref, toolParents, true);
+				candidates.push(...repeated);
+				match = await exact(repeated);
+			}
 		}
 		return { ...match, candidates };
 	};
-	const remember = (folder: string) => {
-		const at = named.indexOf(folder);
-		if (at >= 0) named.splice(at, 1);
-		named.unshift(folder);
+	const remember = (folder: string, toolBases?: readonly ToolBase[]) => {
+		const at = named.findIndex(candidate => samePath(candidate.path, folder));
+		let origins = toolBases?.map(base => ({ path: base.realPath, realPath: base.realPath }));
+		if (at >= 0) {
+			const previous = named.splice(at, 1)[0]!;
+			if (previous.toolBases === undefined || origins === undefined) origins = undefined;
+			else for (const base of previous.toolBases) if (!origins.some(origin => samePath(origin.path, base.path))) origins.push(base);
+		}
+		named.unshift(origins ? { path: folder, toolBases: origins } : { path: folder });
 		named.length = Math.min(named.length, limits.namedFolders);
 	};
 	for (const ref of request.refs) {
 		if (/^out:\/\//i.test(ref)) continue;
-		const found = await lookup(ref, bases);
-		if (found.ref?.kind === "folder") remember(found.ref.path);
+		const found = await lookup(ref, chatParents);
+		if (found.ref?.kind === "folder") remember(found.ref.path, found.toolBases);
 	}
 	const results: (FileRef | null)[] = [];
 	const budget = { remaining: limits.totalEntries };
 	for (const ref of request.refs) {
 		if (/^out:\/\//i.test(ref)) { results.push(null); continue; }
-		const match = await lookup(ref, [...named, ...bases]);
+		const match = await lookup(ref, [...named, ...chatParents]);
 		let found = match.ref;
+		let foundToolBases = match.toolBases;
 		if (match.count === 0 && basename(ref).includes("…")) {
 			for (const candidate of match.candidates) {
-				const result = await abbreviated(candidate, limits, budget);
-				if (result.matches > 0) { found = result.ref; break; }
+				const safeBases = await toolAbbreviationBases(candidate);
+				if (candidate.toolBases && safeBases?.length === 0) continue;
+				const result = await abbreviated(candidate.path, limits, budget);
+				if (result.matches > 0) {
+					const resolved = result.ref;
+					if (resolved && safeBases && !safeBases.some(base => isWithin(base.realPath, resolved.path))) {
+						found = null;
+						foundToolBases = undefined;
+						break;
+					}
+					found = resolved;
+					foundToolBases = safeBases ?? undefined;
+					break;
+				}
 			}
 		}
 		results.push(found);
-		if (found?.kind === "folder") remember(found.path);
+		if (found?.kind === "folder") remember(found.path, foundToolBases);
 	}
 	return results;
 }

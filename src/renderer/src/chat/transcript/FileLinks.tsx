@@ -25,10 +25,11 @@ export function useFileRefs(reply: number | string | null, texts: readonly strin
 	const [, rerender] = useReducer((count: number) => count + 1, 0);
 	const key = reply !== null && scope ? `${scope.chat}\0${reply}` : null;
 	const textKey = texts.join("\0");
-	const baseKey = `${scope?.bases.join("\0") ?? ""}\0\0${files}`;
+	const toolBases = typeof reply === "number" ? scope?.toolBasesByReply?.get(reply) ?? [] : [];
+	const baseKey = `${scope?.bases.join("\0") ?? ""}\0${toolBases.join("\0")}\0\0${files}`;
 	useEffect(() => {
 		if (!key || !scope) return;
-		const source = () => ({ blocks: texts.map(text => occurrences(parse(renderMarkdown(text))).map(occurrence => occurrence.ref)), bases: scope.bases, files: files ? files.split("\0") : [] });
+		const source = () => ({ blocks: texts.map(text => occurrences(parse(renderMarkdown(text))).map(occurrence => occurrence.ref)), bases: scope.bases, toolBases, files: files ? files.split("\0") : [] });
 		const pending = cache.load(key, textKey, baseKey, source);
 		if (!pending) return;
 		let live = true;
