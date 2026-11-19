@@ -12,6 +12,13 @@ import '../../i18n';
 
 const observed = vi.hoisted(() => {
 	Object.assign(window, { vomp: { platform: 'darwin', on: () => () => {}, invoke: async () => null } });
+	// The Web Animations spec marks a cancelled animation's finished promise as handled; happy-dom leaves it
+	// unhandled, so motion's cancelled exit animations would fail the run.
+	const cancel = window.Animation.prototype.cancel;
+	window.Animation.prototype.cancel = function (this: Animation) {
+		this.finished.catch(() => {});
+		cancel.call(this);
+	};
 	return { rows: new Map<string, number>() };
 });
 vi.mock('../../features/projects/folders/homeDir', () => ({ useHomeDir: () => null }));
@@ -112,6 +119,9 @@ describe('settled transcript memo boundaries', () => {
 		const log = container.querySelector<HTMLElement>('[role=log]')!;
 		let height = 1200;
 		Object.defineProperties(log, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, get: () => height } });
+		// Settle at the bottom with this geometry first, so the move to 400 reads as the reader scrolling up.
+		log.scrollTop = 1000;
+		await act(async () => log.dispatchEvent(new Event('scroll', { bubbles: true })));
 		log.scrollTop = 400;
 		await act(async () => log.dispatchEvent(new Event('scroll', { bubbles: true })));
 		height = 1600;
