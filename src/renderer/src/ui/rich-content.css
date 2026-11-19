@@ -141,13 +141,22 @@
 	text-decoration: none;
 }
 .tr-md .vomp-local-image-file[data-image-link] img { background: transparent; }
+/* The app's base styles make images blocks; reply pictures stay inline, so two on one line sit side by side. */
+.tr-md .vomp-local-image img,
+.tr-md .vomp-remote-image img,
+.tr-md img.vomp-reply-image {
+	display: inline-block;
+	vertical-align: middle;
+}
 .vomp-local-image-file:focus-visible,
 .vomp-iframe-link:focus-visible {
 	outline: 2px solid var(--ring);
 	outline-offset: 2px;
 }
-.vomp-iframe-link {
-	display: inline-flex;
+/* A page is a card on its own line, without the underline reply links get. */
+.tr-md .vomp-iframe-link {
+	display: flex;
+	width: fit-content;
 	align-items: center;
 	max-width: 100%;
 	margin-block: 4px;
@@ -160,4 +169,4 @@
 	overflow-wrap: anywhere;
 	vertical-align: middle;
 }
-.vomp-iframe-link:hover { background: var(--hover); }
+.tr-md .vomp-iframe-link:hover { background: var(--hover); }

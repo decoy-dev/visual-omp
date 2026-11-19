@@ -105,7 +105,7 @@ describe("Markdown upgrades", () => {
 
 	it("renders raster data URIs with safe width and height styles", () => {
 		const html = renderMarkdown('<img src="data:image/png;base64,YQ==" alt="Pixel" width="45%" height="16vh">');
-		expect(html).toContain('<img tabindex="0" src="data:image/png;base64,YQ==" alt="Pixel" style="max-width:100%;width:45%;height:16vh">');
+		expect(html).toContain('<img class="vomp-reply-image" tabindex="0" src="data:image/png;base64,YQ==" alt="Pixel" style="max-width:100%;width:45%;height:16vh">');
 		expect(renderMarkdown('<img src="data:image/webp;base64,YQ==" width="12ch">')).toContain('style="max-width:100%;width:12ch;height:auto"');
 	});
 

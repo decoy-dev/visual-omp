@@ -142,7 +142,7 @@ function renderRawImage(source: string, tag: RawTag): string {
 	if (url) return renderRemoteImage(url, attributes);
 	if (/^data:/i.test(path)) {
 		if (!RASTER_DATA_IMAGE.test(path)) return escapeHtml(unescapeHtml(raw));
-		return `<img tabindex="0" src="${escapeHtml(path)}" alt="${alt}"${title}${dimensions.style}>`;
+		return `<img class="vomp-reply-image" tabindex="0" src="${escapeHtml(path)}" alt="${alt}"${title}${dimensions.style}>`;
 	}
 	if (!localPathSource(path)) return alt || escapeHtml(unescapeHtml(raw));
 	const width = dimensions.width ? ` data-image-width="${escapeHtml(dimensions.width)}"` : "";
