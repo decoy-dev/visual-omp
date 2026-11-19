@@ -251,7 +251,7 @@ describe("recorded transcript times", () => {
 		const entries = [entry("one", first), entry("two", second)];
 		const layout = transcriptLayout(entries, { live: false, group: true, context: { cwd: "/repo", home: null } });
 		const plan = layout.entries.get("one")!.groups.get(0)!;
-		const work = { layout, openGroups: new Map([[plan.key, true]]), thoughts: new ThoughtChoices(), arriving: new Set<string>(), helpers: new Map(), pinned: new Set<string>(), recorded: new Map(), ompRunning: false, synchronizing: false, hold: () => {}, holdGroup: () => {} };
+		const work = { layout, openGroups: new Map([[plan.key, true]]), thoughts: new ThoughtChoices(), arriving: new Set<string>(), helpers: new Map(), pinned: new Set<string>(), recorded: new Map(), ompRunning: false, waitingAsks: new Set<string>(), synchronizing: false, hold: () => {}, holdGroup: () => {} };
 		const html = renderToStaticMarkup(createElement(AssistantBlocks, { message: first, mode: "normal", results: new Map(), active: new Map(), pending: false, layout: layout.entries.get("one"), work }));
 		expect(html.match(/<time /g)).toHaveLength(5);
 		expect(html.match(/class="invisible"/g)).toHaveLength(1);

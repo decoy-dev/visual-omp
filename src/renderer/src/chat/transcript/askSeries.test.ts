@@ -16,6 +16,7 @@ import {
 	type ReplayCursor,
 	type ReplayStep,
 	replayStep,
+	waitingAskCalls,
 } from "./askSeries";
 
 // ---------------- A copy of omp's guest ask (extension-ui-controller.ts #runGuestAskQuestion, v18.10.2) ----------------
@@ -353,6 +354,13 @@ describe("findSeriesAsk", () => {
 		expect(isAskRunning({ ...source, working: false }, "call-2")).toBe(false);
 		// Without the running tools, only the call itself in the mirror counts as evidence.
 		expect(isAskRunning(source, "call-from-another-room")).toBe(false);
+	});
+
+	it("lists the running turn's unanswered asks after a reload drops the running tools", () => {
+		const user = (id: string): SessionEntry => ({ type: "message", id, parentId: null, timestamp: "", message: { role: "user", content: "go", timestamp: 0 } }) as SessionEntry;
+		const entries = [assistant("earlier-turn", args), user("u1"), assistant("answered", args), result("answered"), assistant("waiting", args)];
+		expect([...waitingAskCalls(entries, true)]).toEqual(["waiting"]);
+		expect([...waitingAskCalls(entries, false)]).toEqual([]);
 	});
 
 	it("recognizes only exact live ask selects and their custom-answer editor", () => {

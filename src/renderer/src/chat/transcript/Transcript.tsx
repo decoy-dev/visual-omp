@@ -53,6 +53,7 @@ import { FileRefContext } from "./fileRefScope";
 import { MentionText } from "./MentionText";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
+import { waitingAskCalls } from "./askSeries";
 import { ReplyAnnouncer } from "./ReplyAnnouncer";
 import { helperRunsSummary, TaskRuns, taskRowContextEqual, taskRuns } from "../../tool-render/tools/task";
 import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
@@ -279,6 +280,8 @@ interface WorkView {
 	recorded: ReadonlyMap<string, HelperStatus>;
 	/** An omp process may still run this chat's helpers (`ompRunning`). */
 	ompRunning: boolean;
+	/** Ask calls still waiting for an answer in the turn omp is running, including after a reload drops the running tools. */
+	waitingAsks: ReadonlySet<string>;
 	/** Reply frames present during initial load or reconnect show without replaying their reveal. */
 	synchronizing: boolean;
 	/** Marks a step the reader is using (open, or focus inside it), so it stays a row instead of folding (`turns.ts`). */
@@ -321,7 +324,7 @@ function ToolStep({
 	const { t } = useTranslation("tools");
 	const live = active.get(block.id);
 	const result = results.get(block.id);
-	const running = !result && (live !== undefined || pending);
+	const running = !result && (live !== undefined || pending || (block.name === "ask" && work?.waitingAsks.has(block.id) === true));
 	const time = <TranscriptTime timestamp={timestamp} previous={previousTime} className="ml-auto" />;
 	const todo = work?.layout.todos.get(block.id);
 	if (todo?.role === "board") {
@@ -602,6 +605,7 @@ function toolInputsEqual(block: ContentBlock, prev: RowProps, next: RowProps): b
 	const live = next.active.get(block.id);
 	const result = next.results.get(block.id);
 	if (prev.results.get(block.id) !== result || prev.active.get(block.id) !== live) return false;
+	if (block.name === "ask" && prev.work.waitingAsks.has(block.id) !== next.work.waitingAsks.has(block.id)) return false;
 	if (block.name !== "task") return true;
 	if (prev.work.pinned !== next.work.pinned) return false;
 	const liveRuns = next.work.helpers.get(block.id);
@@ -1125,10 +1129,11 @@ export function TranscriptBody({
 	}, [live, grouped, start, workKeys]);
 	const liveThinking = useApp(state => state.prefs?.liveThinking ?? true);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
+	const waitingAsks = useMemo(() => waitingAskCalls(entries, working), [entries, working]);
 	const synchronizingReplies = !arrivals.armed || Boolean(phase && streamNeedsSync(phase, previousGuestPhase.current));
 	const work = useMemo(
-		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup, synchronizing: synchronizingReplies, onHelper }),
-		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup, synchronizingReplies, onHelper],
+		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, waitingAsks, hold, holdGroup, synchronizing: synchronizingReplies, onHelper }),
+		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, waitingAsks, hold, holdGroup, synchronizingReplies, onHelper],
 	);
 	const openFile = useCallback((path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId }), [scope.projectPath, scope.tabId]);
 

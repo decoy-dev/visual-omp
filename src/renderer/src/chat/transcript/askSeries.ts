@@ -273,6 +273,25 @@ export function isAskRunning(source: AskSource, toolCallId: string): boolean {
 	return source.activeTools.has(toolCallId) || (source.working && toolCallState(source, toolCallId) === "pending");
 }
 
+/**
+ * Ask calls of the turn omp is running that have no result yet. A reload drops the running tools, so the
+ * transcript reads these from the saved entries, as `isAskRunning` does for the question card.
+ */
+export function waitingAskCalls(entries: readonly SessionEntry[], working: boolean): ReadonlySet<string> {
+	const waiting = new Set<string>();
+	if (!working) return waiting;
+	const answered = new Set<string>();
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (entry?.type !== "message") continue;
+		const { message } = entry;
+		if (message.role === "user" && !message.synthetic) break;
+		if (message.role === "toolResult") answered.add(message.toolCallId);
+		for (const call of toolCalls(message)) if (call.name === "ask" && !answered.has(call.id)) waiting.add(call.id);
+	}
+	return waiting;
+}
+
 /** Find a running ask by its arguments, including a still-pending call restored after reconnect. */
 function findRunningAsk(source: AskSource, matches: (args: unknown) => AskQuestion[] | null): RunningAsk | null {
 	for (const tool of [...source.activeTools.values()].reverse()) {
