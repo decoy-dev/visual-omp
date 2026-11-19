@@ -285,6 +285,35 @@ print('Created Client Ads/08-card.png and notes.md.')
 PY`;
 }
 
+// Two small cards, a transparent dot and a page for `fixture embeds`, which answers with omp's <img> and <iframe> reply embeds (omp 18.21.0).
+function embedsCommand() {
+  return `python3 - <<'PY'
+from pathlib import Path
+import struct, zlib
+folder = Path('Tour Pictures')
+folder.mkdir(exist_ok=True)
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+for name, rgb in (('before.png', (25, 127, 134)), ('after.png', (219, 120, 62))):
+    pixels = (b'\\x00' + bytes(rgb) * 320) * 200
+    (folder / name).write_bytes(b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 320, 200, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
+rows = b''.join(b'\\x00' + b''.join(bytes((134, 141, 149, 255)) if (x - 64) ** 2 + (y - 64) ** 2 <= 48 * 48 else bytes(4) for x in range(128)) for y in range(128))
+(folder / 'grey-dot.png').write_bytes(b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 128, 128, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+(folder / 'page.html').write_text('<!doctype html><title>Fixture page</title><h1>Fixture page</h1><p>A local page from fixture embeds.</p>\\n')
+print('Created Tour Pictures/before.png, after.png, grey-dot.png and page.html in ' + str(folder.resolve()))
+PY`;
+}
+
+// A folder beside the chat's own, for `fixture earlier-folder`: omp reads a file there by its full path, then names it relative to that folder.
+function earlierFolderCommand() {
+  return [
+    "mkdir -p '../earlier-folder-files/Client Files/Return Email'",
+    "printf 'Subject: Your return label is ready\\n' > '../earlier-folder-files/Client Files/Return Email/return-email.txt'",
+    "cd ../earlier-folder-files",
+    "echo \"Earlier folder: $(pwd -P)\"",
+  ].join(" && ");
+}
+
 function textOf(message) {
   if (typeof message?.content === "string") return message.content;
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
@@ -342,7 +371,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-visualization|grep-patterns|plan-review|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form-context|form|bigmedia|many-files|link|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-visualization|grep-patterns|plan-review|bash-trace|timestamps|helper-reply|helper-work|helpers|steps|mentions|colors|form-context|form|bigmedia|many-files|link|embeds|earlier-folder|helper|notes|cache|process|cfg-save|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -452,6 +481,50 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.end("data: [DONE]\n\n");
         return;
       }
+      if (fixture === "earlier-folder" && afterTool) {
+        const read = turnMessages.some(message => (message.tool_calls ?? []).some(call => call.function?.name === "read"));
+        const folder = /^Earlier folder: (\/.+)$/m.exec(turnMessages.map(textOf).join("\n"))?.[1]?.trim();
+        if (!read && folder && !messages.at(-1).isError) {
+          const args = JSON.stringify({ path: `${folder}/Client Files/Return Email/return-email.txt` });
+          send({ tool_calls: [{ index: 0, id: `fixture-${id}-0`, type: "function", function: { name: "read", arguments: args } }] });
+          send({}, "tool_calls");
+        } else {
+          send({ role: "assistant", content: read
+            ? "The return email draft is in `Client Files/Return Email/return-email.txt`, and its subject line is Your return label is ready."
+            : "The fixture tool result did not name the earlier folder. Check the tool result before opening the file." });
+          send({}, "stop");
+        }
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      if (fixture === "embeds" && afterTool) {
+        const result = messages.at(-1);
+        const folder = /Created Tour Pictures\/before\.png, after\.png, grey-dot\.png and page\.html in (\/.+)$/m.exec(textOf(result))?.[1]?.trim();
+        send({ role: "assistant", content: !result.isError && folder
+          ? [
+            "Here are the two cards side by side, the first by its relative path and the second by its full path.",
+            "",
+            `<img src="Tour Pictures/before.png" alt="Before: the teal card" width="45%"> <img src="${folder}/after.png" alt="After: the orange card" width="45%">`,
+            "",
+            "A grey dot on a transparent background, as a picture and as a file:",
+            "",
+            '<img src="Tour Pictures/grey-dot.png" alt="A grey dot on a transparent background" width="96">',
+            "",
+            "`Tour Pictures/grey-dot.png`",
+            "",
+            "A web image waits until you load it:",
+            "",
+            '<img src="https://example.com/fixture-card.png" alt="A web image from example.com">',
+            "",
+            '<iframe src="Tour Pictures/page.html" title="Fixture page"></iframe>',
+            "",
+            '<iframe src="https://example.com/" title="Example Domain"></iframe>',
+          ].join("\n")
+          : "The fixture tool result did not confirm that the pictures were created. Check the tool result before opening them." });
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
       if (fixture === "plan-review" && planReviewCalls(turnMessages).length === 0) {
         send({ role: "assistant", content: "The plan review closed. The local fixture model has no further work for this plan." });
         send({}, "stop");
@@ -468,7 +541,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "plan-review" ? planReviewCalls(turnMessages) : fixture === "bash-visualization" ? bashVisualizationCalls() : fixture === "cfg-save" ? [
         // omp 18.18+ asks before a cfg:// write; the dialog's title quotes the setting path in Markdown code marks.
         { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
-      ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "embeds" ? [{ name: "bash", args: { i: "Creating reply pictures", command: embedsCommand(), timeout: 30 }, slow: false }] : fixture === "earlier-folder" ? [{ name: "bash", args: { i: "Preparing a folder beside this chat", command: earlierFolderCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
       ] : fixture === "form-context" ? [
         { name: "ask", args: askArgs(body, FORM_CONTEXT_FORM, { questions: [{ id: "proposals", question: "Pick three to build", options: [{ label: "Field context", description: "Keep each explanation beside its question." }, { label: "Compact proposals", description: "Compare the three choices in one list." }, { label: "Reference links", description: "Open the linked guide outside the app window." }] }] }), slow: false },

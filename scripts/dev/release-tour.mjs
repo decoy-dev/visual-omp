@@ -9,7 +9,7 @@ import { startFixture } from "../live-preview-fixture/server.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.8.3";
+export const defaultRelease = "0.8.4";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -64,7 +64,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
   // A chat may prepare its folder before omp starts there, such as a git repository with a change to review. The
   // fixture environment's SHELL is bash on every platform (Git Bash on Windows), so setup commands stay POSIX.
   if (chat.setup) execFileSync(env.SHELL, ["-c", chat.setup], { cwd, env, stdio: "ignore" });
-  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "write,bash,grep,ask,task,wait", "--model", chat.model ?? "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
+  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "read,write,bash,grep,ask,task,wait", "--model", chat.model ?? "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
   let stderr = "";
   let sequence = 0;
   let failure;

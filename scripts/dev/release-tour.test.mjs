@@ -19,13 +19,14 @@ import release080 from "./tours/0.8.0.mjs";
 import release081 from "./tours/0.8.1.mjs";
 import release082 from "./tours/0.8.2.mjs";
 import release083 from "./tours/0.8.3.mjs";
+import release084 from "./tours/0.8.4.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.8.3");
+  assert.equal(parseArguments([]).release, "0.8.4");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -171,8 +172,8 @@ test("0.8.2 remains available and checks compaction points and omp 18.22.0's mod
   assert.equal(tourLayout(release082.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
 
-test("0.8.3 is the default and checks the helpers mark, sidebar order, the project page, color themes, question height, the new-chat folder and diff wrapping", () => {
-  assert.equal(defaultRelease, "0.8.3");
+test("0.8.3 remains available and checks the helpers mark, sidebar order, the project page, color themes, question height, the new-chat folder and diff wrapping", () => {
+  assert.notEqual(defaultRelease, "0.8.3");
   assert.equal(release083.version, "0.8.3");
   assert.deepEqual(release083.chats.map(chat => chat.id), ["robot-mark", "busy-a", "busy-b", "project-page", "color-themes", "question-form", "new-chat-folder", "diff-wrap"]);
   assert.ok(release083.chats.every(chat => chat.prompts[0].split("\n")[0] === "fixture notes"));
@@ -188,6 +189,20 @@ test("0.8.3 is the default and checks the helpers mark, sidebar order, the proje
   assert.match(byId["question-form"].prompts[0], /fixture form/);
   assert.ok(release083.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release083.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 8);
+});
+
+test("0.8.4 is the default and checks the form series, pictures in replies, file links from an earlier folder and side questions with ?", () => {
+  assert.equal(defaultRelease, "0.8.4");
+  assert.equal(release084.version, "0.8.4");
+  assert.deepEqual(release084.chats.map(chat => chat.id), ["question-form", "reply-pictures", "earlier-folder", "side-question"]);
+  const byId = Object.fromEntries(release084.chats.map(chat => [chat.id, chat]));
+  assert.match(byId["question-form"].prompts[0], /fixture form/);
+  // These two chats are prepared by their fixtures, so the saved reply already shows what to check.
+  assert.equal(byId["reply-pictures"].prompts[0].split("\n")[0], "fixture embeds");
+  assert.equal(byId["earlier-folder"].prompts[0].split("\n")[0], "fixture earlier-folder");
+  assert.match(byId["side-question"].prompts[0], /\? fixture notes/);
+  assert.ok(release084.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release084.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
