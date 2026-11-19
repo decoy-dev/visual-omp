@@ -31,6 +31,7 @@ visual-omp 0.8.4 answers omp's forms one question at a time, shows the pictures 
 #### Fixed
 
 - With omp 19.0.0, a message that starts with `?` and has no attached images is a side question, as `/btw` is. visual-omp sends it to Side questions and says so under the message box while you type one. A lone `?` stays an ordinary message. The chat's queue used to wait for a reply to the side question that never came.
+- With omp 19.0.0, a message you send while a question waits closes the question, as its card says. visual-omp would not send the message until you answered, because omp 19 shows the question in its transcript instead of in place of its message box.
 - Chats show the robot mark while omp waits for its helpers with its `wait` tool. visual-omp looked for a tool that omp replaced before 18.15, so the chat kept the spinner while omp waited.
 - After visual-omp reloads, a question that still waits for your answer shows as waiting in the transcript instead of Result unavailable.
 - Bash cards list the saved output of a long command again with omp 19.0.0, which names that output differently.
