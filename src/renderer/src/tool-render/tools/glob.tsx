@@ -8,7 +8,10 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	const raw = args.path ?? args.paths;
 	if (raw !== undefined && typeof raw !== "string" && !Array.isArray(raw)) return <InvalidArg what="path" />;
 	const globs = scopePaths(args).map(shortenPath).join(", ");
-	return <span className="tv-pattern">{truncate(globs || "*", 120)}</span>;
+	// omp 19 can pass the pattern apart from the folder it searches.
+	const pattern = str(args.pattern)?.trim();
+	const text = pattern ? (globs ? `${pattern} in ${globs}` : pattern) : globs || "*";
+	return <span className="tv-pattern">{truncate(text, 120)}</span>;
 }
 
 function Body({ args, result }: ToolRenderProps): ReactNode {
