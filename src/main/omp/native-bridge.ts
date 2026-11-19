@@ -37,6 +37,8 @@ export class NativeBridge {
 	readonly #prompts = new Map<string, PromptWatch>();
 	readonly #forgottenPrompts = new Set<string>();
 	onPromptInput: ((id: string) => void) | undefined;
+	/** omp reported a new snapshot (its version included) for the bridge's current generation. */
+	onSnapshot: ((snapshot: NativeSnapshot) => void) | undefined;
 	#closed = false;
 	readonly #server: Server;
 	snapshot: NativeSnapshot = { modes: null, theme: null };
@@ -93,6 +95,7 @@ export class NativeBridge {
 						asyncJobsGeneration: this.#generation,
 					};
 					broadcast("native:changed", { hostId, snapshot: this.snapshot });
+					this.onSnapshot?.(this.snapshot);
 				} else if (route.startsWith("/prompt/")) {
 					const id = decodeURIComponent(route.slice("/prompt/".length));
 					const result = z.object({ state: z.enum(["armed", "input", "error"]), epoch: z.string(), sessionId: z.string(), emptyResume: z.boolean().optional(), error: z.string().optional() }).parse(parsed);
@@ -304,6 +307,7 @@ export class NativeBridge {
 		this.#closed = true;
 		this.#clearPrompts("omp stopped before observing the prompt.");
 		this.onPromptInput = undefined;
+		this.onSnapshot = undefined;
 		this.#clearAsyncWork("omp stopped before reporting its background work.");
 		this.#clearAccounts("omp stopped before reporting its accounts.");
 		this.#clearComposer("omp stopped before reporting its composer choices.");

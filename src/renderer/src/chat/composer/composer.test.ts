@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionController } from "../../state/session";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
-import { applyMode, deliver, imageMessageBytes, tspComposerReason } from "./send";
+import { applyMode, btwShortcut, deliver, imageMessageBytes, tspComposerReason } from "./send";
 
 describe("mentionAtCaret", () => {
 	it("opens for an @ at omp's boundaries and excludes email addresses", () => {
@@ -65,6 +65,17 @@ describe("applyMode", () => {
 		// `$HOME` is prose to omp, so Python mode still needs its own sigil.
 		expect(applyMode("$HOME", "python")).toBe("$ $HOME");
 		expect(applyMode("hello", null)).toBe("hello");
+	});
+});
+
+describe("btwShortcut", () => {
+	it("turns a ? draft into /btw from omp 19.0.0, as omp's editor does", () => {
+		expect(btwShortcut("  ? why did the build fail ", "19.0.0")).toBe("/btw why did the build fail");
+		expect(btwShortcut("?why", "19.1.0")).toBe("/btw why");
+		expect(btwShortcut("?", "19.0.0")).toBeNull();
+		expect(btwShortcut("why?", "19.0.0")).toBeNull();
+		expect(btwShortcut("? why", "18.22.2")).toBeNull();
+		expect(btwShortcut("? why", null)).toBeNull();
 	});
 });
 

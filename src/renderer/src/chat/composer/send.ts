@@ -10,6 +10,7 @@
  *   images queues like any other.
  */
 import type { HostState } from "@shared/ipc";
+import { compareSemver } from "@shared/semver";
 import { tspAllowsAskPrompt } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
 import type { Attachment, ComposerMode } from "./drafts";
@@ -33,6 +34,19 @@ export function applyMode(text: string, mode: ComposerMode | null): string {
 	if (!mode || !trimmed) return trimmed;
 	if (mode === "shell") return trimmed.startsWith("!") ? trimmed : `!${trimmed}`;
 	return /^\$\$?(\s|$)/.test(trimmed) ? trimmed : `$ ${trimmed}`;
+}
+
+/**
+ * From omp 19.0.0 a draft that starts with `?` is the `/btw` shortcut: omp runs `/btw <question>` instead of
+ * sending a message (input-controller.ts `parseBtwShortcutInput`). The app routes it the same way, so the side
+ * question opens where `/btw` does. A lone `?` stays a message, as in omp.
+ */
+export function btwShortcut(text: string, ompVersion: string | null | undefined): string | null {
+	if (!ompVersion || compareSemver(ompVersion, "19.0.0") < 0) return null;
+	const trimmed = text.trim();
+	if (!trimmed.startsWith("?")) return null;
+	const question = trimmed.slice(1).trim();
+	return question ? `/btw ${question}` : null;
 }
 
 /** The bracketed paste that attaches `paths` in omp's editor. */

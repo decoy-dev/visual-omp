@@ -261,6 +261,98 @@ describe("Continue editor action", () => {
 		await vi.waitFor(() => expect(invoked.filter(([channel]) => channel === "host:submit")).toHaveLength(2));
 	});
 });
+describe("omp 19's ? side-question shortcut", () => {
+	const tsp = (ompVersion?: string) => host({ link: "L1", transport: "tsp", tspAvailability: { available: true, reason: null }, ...(ompVersion ? { ompVersion } : {}) });
+	const slashed = () => {
+		const slash = vi.fn(async () => undefined);
+		setSlashDelivery(slash);
+		return slash;
+	};
+	const open = (working: boolean, ompVersion = "19.0.0") => {
+		const session = new SessionController({ tabId: "btw-shortcut", projectPath: "/p", sessionFile: null });
+		const slash = slashed();
+		session.attach(tsp(ompVersion));
+		fakes.guests[0]!.emit("live", [u1, a1], working);
+		invoked = [];
+		return { session, guest: fakes.guests[0]!, slash };
+	};
+	const messages = () => invoked.filter(([channel]) => channel === "host:submit").map(([, , text]) => text);
+	const lines = (slash: ReturnType<typeof vi.fn>) => slash.mock.calls.map(call => call[1]);
+	const queued = (session: SessionController) => session.getSnapshot().queue.map(row => row.text);
+
+	it("opens the side question instead of sending a message omp would never acknowledge", async () => {
+		const { session, slash } = open(false);
+		await session.send("  ? why did the build fail ");
+		await session.steer("? and now");
+		expect(lines(slash)).toEqual(["/btw why did the build fail", "/btw and now"]);
+		expect(messages()).toEqual([]);
+		await session.dispose();
+	});
+
+	it("queues it while omp works and routes it when the queue drains", async () => {
+		const { session, guest, slash } = open(true);
+		await session.send("? why");
+		expect(queued(session)).toEqual(["/btw why"]);
+		expect(slash).not.toHaveBeenCalled();
+		guest.emit("live", [u1, a1], false);
+		await vi.waitFor(() => expect(lines(slash)).toEqual(["/btw why"]));
+		expect(messages()).toEqual([]);
+		await session.dispose();
+	});
+
+	it("routes a queued message edited into a question, sent now or kept after a failed send", async () => {
+		const { session, guest, slash } = open(true);
+		await session.send("hello");
+		const [row] = session.getSnapshot().queue;
+		session.editQueued(row!.id, "? why");
+		await session.sendNow(row!.id);
+		expect(lines(slash)).toEqual(["/btw why"]);
+		session.preserveFailedMessage("? and this", []);
+		expect(queued(session)).toEqual(["? and this"]);
+		guest.emit("live", [u1, a1], false);
+		await vi.waitFor(() => expect(lines(slash)).toEqual(["/btw why", "/btw and this"]));
+		expect(messages()).toEqual([]);
+		await session.dispose();
+	});
+
+	it.each(["send", "steer"] as const)("starts omp for a question sent (%s) before it runs, then routes it by the omp that started", async how => {
+		const slash = slashed();
+		respond = channel => channel === "host:start" ? Promise.resolve(tsp("19.0.0")) : undefined;
+		const session = new SessionController({ tabId: `btw-start-${how}`, projectPath: "/p", sessionFile: null });
+		const sending = session[how]("? why");
+		if (how === "send") expect(queued(session)).toEqual(["? why"]);
+		await vi.waitFor(() => expect(fakes.guests).toHaveLength(1));
+		fakes.guests[0]!.emit("live", [u1, a1], false);
+		await sending;
+		await vi.waitFor(() => expect(lines(slash)).toEqual(["/btw why"]));
+		expect(messages()).toEqual([]);
+		await session.dispose();
+	});
+
+	it("follows the omp the chat runs and updates when omp reports its version", async () => {
+		const { session, slash } = open(false, "18.22.2");
+		expect(session.btwLine("? why")).toBeNull();
+		await session.send("? why");
+		expect(slash).not.toHaveBeenCalled();
+		expect(messages()).toEqual(["? why"]);
+		sendHost({ link: "L1", transport: "tsp", tspAvailability: { available: true, reason: null }, ompVersion: "19.0.0" });
+		expect(session.btwLine("? why")).toBe("/btw why");
+		await session.dispose();
+	});
+
+	it("leaves a lone ?, a message with images and an unknown version as messages", async () => {
+		const { session, slash } = open(false);
+		expect(session.btwLine("?")).toBeNull();
+		expect(session.btwLine("? why", [{ path: "/p/shot.png" }])).toBeNull();
+		await session.send("?");
+		expect(slash).not.toHaveBeenCalled();
+		expect(messages()).toEqual(["?"]);
+		sendHost({ link: "L1", transport: "tsp", tspAvailability: { available: true, reason: null } });
+		expect(session.btwLine("? why")).toBeNull();
+		await session.dispose();
+	});
+});
+
 it("reports a failed helper Stop instead of silently ignoring a closed guest", async () => {
 	const session = new SessionController({ tabId: "helper-stop", projectPath: "/p", sessionFile: null });
 	session.attach(host({ link: "ws://localhost/r/room.key", transport: "tsp" }));

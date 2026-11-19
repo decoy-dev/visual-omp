@@ -44,6 +44,7 @@ const pty = vi.hoisted(() => ({
 	watchPrompt: vi.fn(async (_request: NativePromptWatch) => ({ emptyResume: false })),
 	forgetPrompt: vi.fn((_id: string) => {}),
 	onPromptInput: null as ((id: string) => void) | null,
+	onSnapshot: null as ((snapshot: { modes: null; theme: null; ompVersion?: string; asyncJobsGeneration?: number }) => void) | null,
 	confirm: vi.fn(async (_options?: MessageBoxOptions) => ({ response: 0 })),
 	writes: vi.fn(),
 	kill: vi.fn(),
@@ -96,7 +97,7 @@ vi.mock("./relay", () => ({
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; values = pty.values; keys = pty.keys; close() {} } }));
 // `app.getPath` names a missing profile, so no chat has a saved compaction point.
 vi.mock("electron", () => ({ app: { getPath: () => "/nonexistent/visual-omp-host-test-profile" }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
-vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, watchPrompt: pty.watchPrompt, forgetPrompt: pty.forgetPrompt, set onPromptInput(callback: typeof pty.onPromptInput) { pty.onPromptInput = callback; }, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
+vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, watchPrompt: pty.watchPrompt, forgetPrompt: pty.forgetPrompt, set onPromptInput(callback: typeof pty.onPromptInput) { pty.onPromptInput = callback; }, set onSnapshot(callback: typeof pty.onSnapshot) { pty.onSnapshot = callback; }, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown, options?: { signal?: AbortSignal }) => {
 	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
@@ -209,6 +210,16 @@ describe("host overlay", () => {
 				hostId: host.id, cols: 120, rows: 36, border: "╭── custom status ──╮",
 			});
 		} finally { warn.mockRestore(); }
+	});
+});
+
+describe("running omp version", () => {
+	it("publishes the version omp's extension reports for the host's current generation", async () => {
+		await connect();
+		pty.onSnapshot?.({ modes: null, theme: null, ompVersion: "18.22.2", asyncJobsGeneration: host.state.generation - 1 });
+		expect(host.state.ompVersion).toBeUndefined();
+		pty.onSnapshot?.({ modes: null, theme: null, ompVersion: "19.0.0", asyncJobsGeneration: host.state.generation });
+		expect(host.state.ompVersion).toBe("19.0.0");
 	});
 });
 

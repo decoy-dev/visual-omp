@@ -11,6 +11,7 @@ import type * as ToastModule from "../../ui/toast";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { useComposerDrafts } from "./drafts";
 import { Composer } from "./Composer";
+import { btwShortcut } from "./send";
 import "../../i18n";
 
 vi.hoisted(() => {
@@ -51,7 +52,7 @@ async function publish(patch: Partial<SessionView>) {
 	});
 }
 // These tests mount Composer itself; only unrelated data sources and auxiliary tools are replaced.
-const session = { tabId: "availability", projectPath: "/tmp", subscribe: (listener: () => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; }, getSnapshot: () => view, send: vi.fn(), steer: vi.fn(), preserveFailedMessage: vi.fn() } as unknown as SessionController;
+const session = { tabId: "availability", projectPath: "/tmp", subscribe: (listener: () => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; }, getSnapshot: () => view, send: vi.fn(), steer: vi.fn(), preserveFailedMessage: vi.fn(), btwLine: (text: string, images: readonly unknown[] = []) => images.length > 0 ? null : btwShortcut(text, view.host?.ompVersion) } as unknown as SessionController;
 const host = (transport: HostState["transport"], tspAvailability: HostState["tspAvailability"]): HostState => ({ hostId: "host", generation: 1, transport, tspAvailability }) as HostState;
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -118,6 +119,19 @@ it("leaves the side-question explanation and Done action to the chat layer", asy
 		await publish({ host: { ...view.host!, tspAvailability: { available: true, reason: null } } });
 		expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 	} finally { window.vomp.invoke = original; }
+});
+
+it("routes a ? question the /btw way and explains it once the running omp reports 19", async () => {
+	useComposerDrafts.getState().setDraft("availability", "? why did it fail");
+	view = { ...view, host: { ...host("tsp", { available: true, reason: null }), ompVersion: "18.22.2" } };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	await publish({ host: { ...view.host!, ompVersion: "19.0.0" } });
+	expect(element.querySelector('[role="status"]')?.textContent).toBe("A message that starts with ? goes to omp as a side question.");
+	vi.mocked(routeSlash).mockResolvedValueOnce(true);
+	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+	expect(routeSlash).toHaveBeenCalledWith(session, "/btw why did it fail");
+	expect(session.send).not.toHaveBeenCalled();
 });
 
 

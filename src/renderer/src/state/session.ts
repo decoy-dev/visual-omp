@@ -11,7 +11,7 @@ import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
 import { isTspInputError, tspAllowsAskPrompt, TSP_CLASSIC_ACTION_UNAVAILABLE, type TspEditorRestore } from "@shared/tsp-host";
 import { useComposerDrafts, type Attachment } from "../chat/composer/drafts";
-import { imagePathsText } from "../chat/composer/send";
+import { btwShortcut, imagePathsText } from "../chat/composer/send";
 import { findRunningFormAsk, isAskRequest } from "../chat/transcript/askSeries";
 import { contentText } from "../chat/transcript/notices";
 import { expandedPromptTextMatches } from "@shared/prompt-input";
@@ -877,12 +877,15 @@ export class SessionController {
 	}
 
 	async #send(text: string, images: readonly Attachment[], explicitRetry: boolean): Promise<SendOwnership> {
-		const message = { text: text.trim(), images: [...images], ...(explicitRetry ? { explicitRetry: true as const } : {}) };
-		if (!message.text && message.images.length === 0) return { kind: "empty" };
+		const typed = { text: text.trim(), images: [...images], ...(explicitRetry ? { explicitRetry: true as const } : {}) };
+		if (!typed.text && typed.images.length === 0) return { kind: "empty" };
+		// omp 19 answers `? question` as a side question, not a message: it takes the `/btw` route.
+		const side = this.btwLine(typed.text, typed.images);
+		const message = side ? { ...typed, text: side } : typed;
 		this.#assertTspApproval(message.text);
 		// Capture ask intent before any await or listener can change the pending request.
-		const askTarget = this.#askPromptTarget(message.text);
-		const approval = this.#view.host?.transport === "tsp" && (this.#view.host.tspComposer?.blockedBy === "approval" || (this.#view.guest?.uiRequest && isApprovalRequest(this.#view.guest.uiRequest)));
+		const askTarget = side ? undefined : this.#askPromptTarget(message.text);
+		const approval = !side && this.#view.host?.transport === "tsp" && (this.#view.host.tspComposer?.blockedBy === "approval" || (this.#view.guest?.uiRequest && isApprovalRequest(this.#view.guest.uiRequest)));
 		if ((askTarget || approval) && !this.#view.strandedImages) {
 			this.markInput();
 			this.noteSent();
@@ -905,6 +908,10 @@ export class SessionController {
 			this.#resumeQueue();
 			return { kind: "queued", id: item.id };
 		}
+		if (side) {
+			await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message }, 0, false, false);
+			return { kind: "submitted" };
+		}
 		return this.#deliverDirect(message);
 	}
 
@@ -916,8 +923,9 @@ export class SessionController {
 		if (this.#view.strandedImages) return this.send(text, images);
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
-		this.#assertTspApproval(message.text);
-		const askTarget = this.#askPromptTarget(message.text);
+		const known = this.btwLine(message.text, message.images);
+		this.#assertTspApproval(known ?? message.text);
+		const askTarget = known ? undefined : this.#askPromptTarget(message.text);
 		this.markInput();
 		this.noteSent();
 		try { await this.whenLive(message); }
@@ -925,7 +933,10 @@ export class SessionController {
 			if (error instanceof ResumeDeclinedError && error.transferredMessage === message) return;
 			throw error;
 		}
-		await this.#deliverDirect(message, askTarget);
+		// A chat without a running omp learns its version only once omp starts, so decide again now.
+		const side = this.btwLine(message.text, message.images);
+		if (side) await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message, text: side }, 0, false, false);
+		else await this.#deliverDirect(message, askTarget);
 	}
 
 	get canContinue(): boolean {
@@ -978,8 +989,9 @@ export class SessionController {
 	 */
 	async sendNow(id: string): Promise<void> {
 		const index = this.#view.queue.findIndex(entry => entry.id === id);
-		const item = this.#view.queue[index];
-		if (!item) return;
+		const queued = this.#view.queue[index];
+		if (!queued) return;
+		const item = this.#asShortcut(queued);
 		this.#assertTspApproval(item.text);
 		if (this.#view.strandedImages) throw new StrandedImagesError();
 		const askTarget = this.#askPromptTarget(item.text);
@@ -1000,6 +1012,20 @@ export class SessionController {
 
 	editQueued(id: string, text: string): void {
 		this.#set({ queue: this.#view.queue.map(entry => (entry.id === id ? { ...entry, text } : entry)) });
+	}
+
+	/**
+	 * omp 19's `? question` shortcut as the `/btw` line the app routes, for the omp this chat runs (`HostState.ompVersion`,
+	 * see `btwShortcut`). A message with images stays a message.
+	 */
+	btwLine(text: string, images: readonly unknown[] = []): string | null {
+		return images.length > 0 ? null : btwShortcut(text, this.#view.host?.ompVersion);
+	}
+
+	/** A queued `? question` leaves as `/btw` too, decided by the omp running when it leaves the queue. */
+	#asShortcut(item: QueuedMessage): QueuedMessage {
+		const side = this.btwLine(item.text, item.images);
+		return side ? { ...item, text: side } : item;
 	}
 
 	removeQueued(id: string): void {
@@ -1505,9 +1531,10 @@ export class SessionController {
 	}
 
 	#drainOne(): void {
-		const [next, ...rest] = this.#view.queue;
-		if (!next) return;
+		const [first, ...rest] = this.#view.queue;
+		if (!first) return;
 		this.#set({ queue: rest });
+		const next = this.#asShortcut(first);
 		if (this.#isSlash(next)) {
 			// Not typed: it goes back first in line. A hold (omp's screen), the next send or a turn end brings it back.
 			this.#deliverSlash(next, 0, true).catch(() => undefined);

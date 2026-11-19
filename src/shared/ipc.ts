@@ -155,6 +155,12 @@ export interface HostState {
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */
 	generation: number;
+	/**
+	 * The omp version this host runs, as omp's own native extension reports it for the current generation.
+	 * Absent until the extension first reports and for terminal-follow views; a restarted omp keeps the
+	 * earlier value until it reports again.
+	 */
+	ompVersion?: string;
 	/** Epoch ms when the omp instance behind the current collab link registered; jobs started earlier ran in an omp process that has ended. */
 	processStartedAt?: number | null;
 	sessionId: string | null;

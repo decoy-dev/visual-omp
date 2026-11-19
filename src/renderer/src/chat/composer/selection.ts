@@ -19,6 +19,8 @@ export function composerSelection(view: SessionView) {
 		hostId: host?.hostId ?? null,
 		generation: host?.generation ?? 0,
 		transport: host?.transport,
+		/** Decides whether a `? question` draft goes to omp as a side question (`SessionController.btwLine`). */
+		ompVersion: host?.ompVersion,
 		tspAvailability: host?.tspAvailability,
 		tspComposer: host?.tspComposer,
 		tspEditorRestore: host?.tspEditorRestore,

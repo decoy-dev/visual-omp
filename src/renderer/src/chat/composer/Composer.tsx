@@ -277,6 +277,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	const drawerOpen = useApp(state => !!state.btwDrawers[tabId]);
 	const tspReason = drawerOpen || view.tspAvailability?.reasonCode === "btw" ? t("panes:btw.composerBlocked")
 		: tspComposerReason(view, t("question.answerBeforeSending"), askWaiting ? view.uiRequest?.reqId : undefined);
+	const btwDraft = !mode && session.btwLine(draft, attachments) !== null;
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
@@ -406,6 +407,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 		const images = [...attachments];
 		historyCursor.current.reset();
 		if (!text && images.length === 0) return;
+		const line = !mode ? session.btwLine(text, images) ?? text : text;
 		notifyComposerAction(tabId);
 		const store = useComposerDrafts.getState();
 		store.setDraft(tabId, "");
@@ -416,10 +418,10 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 		setTagClosed(true);
 		// A slash command without attachments opens the app's own UI when there is one, else omp runs it.
 		const sending =
-			!mode && images.length === 0 && text.startsWith("/")
-				? routeSlash(session, text).then(handled => {
-					if (handled) session.recordInput(text);
-					else return sendSlashCommand(session, text, { now });
+			!mode && images.length === 0 && line.startsWith("/")
+				? routeSlash(session, line).then(handled => {
+					if (handled) session.recordInput(line);
+					else return sendSlashCommand(session, line, { now });
 				})
 				: deliver(session, text, images, now);
 		sending.catch((error: unknown) => {
@@ -996,6 +998,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 				</div>
 			</div>
 			{tspReason && !formQuestionBlocked && view.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
+			{btwDraft && !tspReason && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{t("btwShortcut")}</div>}
 			{/* Padding leaves the offset focus outlines inside the horizontal scroll viewport. */}
 			<div className="flex items-center gap-toolbar overflow-x-auto scroll-px-1 whitespace-nowrap px-1 pt-2 pb-1" data-composer-settings onFocusCapture={event => {
 				if (event.currentTarget.contains(event.target)) event.target.scrollIntoView({ block: "nearest", inline: "nearest" });

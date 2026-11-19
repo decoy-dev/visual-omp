@@ -265,6 +265,12 @@ export class SessionHost {
 				else submission.inputBeforeWrite = true;
 				this.#queuePromptRejectionCheck();
 			};
+			// The version omp's own extension reports. A restarted omp keeps the earlier value until it reports.
+			this.#nativeBridge.onSnapshot = snapshot => {
+				if (snapshot.ompVersion && snapshot.asyncJobsGeneration === this.state.generation && snapshot.ompVersion !== this.state.ompVersion) {
+					this.#update({ ompVersion: snapshot.ompVersion });
+				}
+			};
 			const overlay = join(this.#privateDir, "overlay.yml");
 			this.#overlayPath = overlay;
 			this.#useTsp = useTsp;
