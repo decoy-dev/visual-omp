@@ -9,8 +9,8 @@ import { detailsRecord, display, isRecord, normalizeWs, num, resultTextOf, str, 
 /** Values safe to show unquoted in a `NAME=value` shell prefix. */
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
 
-/** Footer appended by the bash tool when long output was spilled to an artifact. */
-const ARTIFACT_NOTICE = /\[raw output: artifact:\/\/([\w-]+)\]/;
+/** Footer appended by the bash tool when long output was spilled: `artifact://N` before omp 19, `local://N.log` from 19.0. */
+const ARTIFACT_NOTICE = /\[raw output: (?:artifact:\/\/([\w-]+)|local:\/\/([\w-]+)\.log)\]/;
 
 function envPrefix(env: Record<string, unknown>): string {
 	const parts: string[] = [];
@@ -63,7 +63,8 @@ function Body({ args, result, host }: ToolRenderProps): ReactNode {
 	const requestedTimeoutSeconds = num(details?.requestedTimeoutSeconds);
 	const job = asyncDetailsOf(details);
 	const minimized = minimizedDetailsOf(details);
-	const artifactId = ARTIFACT_NOTICE.exec(resultTextOf(result))?.[1] ?? null;
+	const notice = ARTIFACT_NOTICE.exec(resultTextOf(result));
+	const artifactId = notice?.[1] ?? notice?.[2] ?? null;
 
 	const stats: string[] = [];
 	if (wallTimeMs !== null) {

@@ -94,4 +94,10 @@ describe("bash minimized output metadata", () => {
 		expect(html).not.toContain("<a");
 		expect(html).not.toContain("<button");
 	});
+
+	it("reads omp 19's local:// raw-output footer", () => {
+		const html = renderDetails(undefined, "Full output\n[raw output: local://7.log]");
+		expect(html).toContain("Artifact 7");
+		expect(html).not.toContain("<a");
+	});
 });
