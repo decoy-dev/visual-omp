@@ -17,7 +17,7 @@ vi.mock("../collab/lib/socket", () => ({
 }));
 vi.mock("../collab/lib/link", () => ({ COLLAB_PROTO: 3, encodeBase64Url: () => "token", parseCollabLink: () => ({ wsUrl: "ws://localhost/r/fixture", key: new Uint8Array(32) }) }));
 vi.mock("../collab/lib/codec", () => ({ importRoomKey: () => ({}) }));
-vi.mock("../chat/composer/send", () => ({ imagePathsText: () => "" }));
+vi.mock("../chat/composer/send", () => ({ imagePathsText: () => "", btwShortcut: () => null }));
 vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTabId: null, openTerminal: () => undefined }) } }));
 const recordings = import.meta.glob<string>("../collab/lib/fixtures/completion-*.jsonl", { query: "?raw", import: "default", eager: true });
 
