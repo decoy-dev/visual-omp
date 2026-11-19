@@ -5,6 +5,7 @@
  */
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
+import { parseAskForm } from "../tool-render/tools/askForm";
 import { detailsRecord, isAskClosedByMessage, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
 
 /** `neutral` is an unknown outcome or one that is neither success nor failure, such as a stopped helper. */
@@ -207,6 +208,24 @@ function evalSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
 	return { key: `eval.${/^(js|javascript|ts)$/i.test(language) ? "js" : "py"}.${status}`, values: {}, status };
 }
 
+/** omp's ask results for a cancel from the question card and for a turn stopped while the ask waited. */
+const ASK_CANCELLED = /^Ask (?:tool was cancelled by the user|input was cancelled)\b/;
+
+/** Question counts of cancelled ask forms, by form HTML; only cancelled asks are parsed. */
+const cancelledFormFields = new Map<string, number>();
+
+/** True for a cancelled ask whose form has more than one question, so the cancel stopped the whole form rather than one question. */
+function isCancelledForm(args: Record<string, unknown>, result: ToolResultLike | undefined): boolean {
+	if (typeof args.html !== "string" || !ASK_CANCELLED.test(resultTextOf(result).trim())) return false;
+	let count = cancelledFormFields.get(args.html);
+	if (count === undefined) {
+		count = parseAskForm(args.html).fields.length;
+		if (cancelledFormFields.size >= 32) cancelledFormFields.delete(cancelledFormFields.keys().next().value!);
+		cancelledFormFields.set(args.html, count);
+	}
+	return count > 1;
+}
+
 /** Plain-language summary of one resolved tool call (see `resolveToolCall`). Unknown tools fall back to "Used <name>". */
 export function friendlySummary(call: ToolCallView): FriendlySummary {
 	const status = statusOf(call);
@@ -259,6 +278,7 @@ export function friendlySummary(call: ToolCallView): FriendlySummary {
 			return { key: `lsp.${status}`, values: { action: str(args.action) ?? "" }, status };
 		case "ask":
 			if (!call.running && isAskClosedByMessage(call.result)) return { key: "ask.closed", values: {}, status: "neutral", statusLabel: "ask.closedLabel" };
+			if (status === "error" && isCancelledForm(args, call.result)) return { key: "ask.formCancelled", values: {}, status };
 			return { key: `ask.${status}`, values: {}, status };
 		case "github":
 			return { key: `github.${status}`, values: {}, status };
