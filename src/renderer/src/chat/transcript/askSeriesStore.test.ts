@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import type { CollabUiRequest, CollabUiRequestDraft, SessionEntry } from "@oh-my-pi/pi-wire";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -26,6 +27,24 @@ const FIRST: CollabUiRequestDraft = {
 	markableCount: 2,
 };
 
+const FORM_ARGS = {
+	html: `<form>
+		<fieldset><legend>Release channel</legend>
+			<label><input type="radio" name="channel" value="stable" checked>Stable</label>
+			<label><input type="radio" name="channel" value="preview">Preview</label>
+		</fieldset>
+		<label>Release note<textarea name="note">Keep compatibility</textarea></label>
+	</form>`,
+};
+const FORM_FIRST: CollabUiRequestDraft = {
+	kind: "select",
+	title: "Release channel",
+	options: ["Stable", "Preview", ASK_OTHER],
+	initialIndex: 0,
+	selectionMarker: "radio",
+};
+const FORM_NOTE: CollabUiRequestDraft = { kind: "editor", title: "Release note", prefill: "Keep compatibility" };
+
 const langSelect = (checked: number[]): CollabUiRequestDraft => ({
 	kind: "select",
 	title: "Which languages?",
@@ -43,7 +62,6 @@ const askResult = {
 	message: { role: "toolResult", toolCallId: "call-1", toolName: "ask", content: [], isError: false, timestamp: 0 },
 } as SessionEntry;
 
-const runningAsk = () => new Map([["call-1", { toolCallId: "call-1", toolName: "ask", args: ARGS, startedAt: 0 }]]);
 
 /** A step of omp's script: the next request, the last request again (same id), or the end of the ask. */
 type Frame = CollabUiRequestDraft | "repeat";
@@ -59,12 +77,13 @@ class FakeChat implements AskSeriesSession {
 	#listeners = new Set<() => void>();
 	#inbox: Partial<GuestSnapshot>[] = [];
 	#reqId = 1;
-	#last: CollabUiRequest = { ...FIRST, reqId: 1 };
+	#last: CollabUiRequest;
 	#script: Frame[];
 
-	constructor(script: Frame[]) {
+	constructor(script: Frame[], args: unknown = ARGS, first: CollabUiRequestDraft = FIRST) {
 		this.#script = script;
-		const guest = { phase: "live", entries: [], stream: null, working: true, readOnly: false, loading: null, activeTools: runningAsk(), uiRequest: this.#last } as unknown as GuestSnapshot;
+		this.#last = { ...first, reqId: 1 } as CollabUiRequest;
+		const guest = { phase: "live", entries: [], stream: null, working: true, readOnly: false, loading: null, activeTools: new Map([["call-1", { toolCallId: "call-1", toolName: "ask", args, startedAt: 0 }]]), uiRequest: this.#last } as unknown as GuestSnapshot;
 		this.view = { mode: "live", readOnly: false, host: { hostId: "h1", generation: 1, phase: "live" }, guest } as SessionView;
 	}
 
@@ -202,6 +221,32 @@ describe("AskSeriesDriver", () => {
 		expect(stale.sent).toEqual([]);
 		expect(other.getSnapshot()?.phase).toBe("fallback");
 	});
+	it("rejects a replacement replay request after reconnect when question titles repeat", async () => {
+		const repeatedArgs = {
+			questions: [
+				{ id: "first", question: "Which choice?", options: [{ label: "Alpha" }, { label: "Beta" }], recommended: 0 },
+				{ id: "second", question: "Which choice?", options: [{ label: "Alpha" }, { label: "Beta" }], recommended: 1 },
+			],
+		};
+		const firstRequest: CollabUiRequestDraft = {
+			kind: "select",
+			title: "Which choice?",
+			options: ["Alpha", "Beta", ASK_OTHER, ASK_CHAT],
+			initialIndex: 0,
+			selectionMarker: "radio",
+		};
+		const chat = new FakeChat([], repeatedArgs, firstRequest);
+		const driver = new AskSeriesDriver(chat);
+		driver.setAnswer(0, { selected: [1], custom: "" });
+		driver.submit();
+		chat.update({ phase: "reconnecting", uiRequest: null });
+		await settle();
+		chat.update({ phase: "live", uiRequest: { ...firstRequest, reqId: 2 } as CollabUiRequest });
+		await settle();
+		expect(chat.sent).toEqual([]);
+		expect(driver.getSnapshot()).toMatchObject({ phase: "fallback", fallbackWhileSending: true });
+	});
+
 
 	it("does not answer a request again when omp repeats it", async () => {
 		const chat = new FakeChat([langSelect([]), "repeat"]);
@@ -253,6 +298,51 @@ describe("AskSeriesDriver", () => {
 		await settle();
 		expect(sending.sent).toEqual([]);
 		expect(other.getSnapshot()).toBeNull();
+	});
+
+	it("keeps HTML form answers while navigating, skips to defaults and replays in order", async () => {
+		const chat = new FakeChat([FORM_NOTE], FORM_ARGS, FORM_FIRST);
+		const driver = new AskSeriesDriver(chat);
+		expect(driver.getSnapshot()).toMatchObject({
+			toolCallId: "call-1",
+			heldReqId: 1,
+			formHtml: FORM_ARGS.html,
+			phase: "editing",
+			answers: [{ selected: [0] }, { text: "Keep compatibility" }],
+		});
+		driver.setAnswer(0, { selected: [1], custom: "", text: "" });
+		driver.show(1);
+		driver.setAnswer(1, { selected: [], custom: "", text: "Updated note" });
+		driver.show(0);
+		expect(driver.getSnapshot()?.answers[1]?.text).toBe("Updated note");
+
+		driver.skipQuestion();
+		expect(driver.getSnapshot()).toMatchObject({ index: 1, answers: [{ selected: [0] }, { text: "Updated note" }] });
+		driver.submit();
+		await chat.run();
+		expect(chat.sent).toEqual([[1, "Stable"], [2, "Updated note"]]);
+		expect(driver.getSnapshot()).toBeNull();
+	});
+
+	it("cancels the held HTML form request without submitting its defaults", () => {
+		const chat = new FakeChat([], FORM_ARGS, FORM_FIRST);
+		const driver = new AskSeriesDriver(chat);
+		driver.cancelForm();
+		expect(chat.sent).toEqual([[1, undefined]]);
+		expect(driver.getSnapshot()).toBeNull();
+	});
+
+	it("hands a re-ask after the last answer to the live card without answering it", async () => {
+		const reask: CollabUiRequestDraft = { kind: "editor", title: "Release note (Please fill out this field.)", prefill: "" };
+		const chat = new FakeChat([FORM_NOTE, reask], FORM_ARGS, FORM_FIRST);
+		const driver = new AskSeriesDriver(chat);
+		driver.show(1);
+		driver.setAnswer(1, { selected: [], custom: "", text: "" });
+		driver.submit();
+		await chat.run();
+		expect(chat.sent).toEqual([[1, "Stable"], [2, ""]]);
+		expect(driver.getSnapshot()).toMatchObject({ phase: "fallback", fallbackWhileSending: true });
+		expect(driver.getSnapshot()?.fallbackReason).toContain("asked again after the last answer");
 	});
 
 	it.each([

@@ -124,6 +124,8 @@ class ChromePage {
 		while (!await this.evaluate(expression)) { if (Date.now() > deadline) throw new Error(`Chrome timed out: ${expression}\n${await this.evaluate("document.body.innerText.slice(0, 1600)")}\n${this.errors.join("\n")}`); await delay(25); }
 	}
 	async clickElement(expression: string, scroll = true): Promise<void> {
+		// A form series slides the next question in after the progress label changes, so wait for the target to mount.
+		await this.until(`!!(${expression})`);
 		const point = await this.evaluate<{ x: number; y: number }>(`(() => { const element = ${expression}; if (!element) throw new Error('Missing Chrome input target'); ${scroll ? "element.scrollIntoView({block:'center',inline:'nearest'});" : ""} const box = element.getBoundingClientRect(); if (${!scroll} && (box.top < 0 || box.bottom > innerHeight || box.left < 0 || box.right > innerWidth)) throw new Error('Layout gate input must already be visible'); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
 		await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
 		await this.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
@@ -794,61 +796,67 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.until("window.gate.claims().length === 1 && !document.querySelector('.tsp-screen')");
 	}, 30_000);
 
-	it.each([["light", false], ["dark", false], ["light", true], ["dark", true]] as const)("answers the recorded HTML form once in %s (classic=%s)", async (theme, classic) => {
+	it.each([["light", false], ["dark", false], ["light", true], ["dark", true]] as const)("answers the recorded HTML form as a series in %s (classic=%s)", async (theme, classic) => {
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
-		const entries = askFormEvidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line));
-		const calls = entries.flatMap(entry => entry.message?.content ?? []);
-		const call = calls.find(part => part.type === "toolCall");
-		const result = entries.find(entry => entry.message?.role === "toolResult").message;
-		expect(entries.filter(entry => entry.message?.role === "toolResult" && entry.message.toolCallId === call.id)).toHaveLength(1);
-		const replies = ["Other (type your own)", "Canary", "Tests", "Other (type your own)", "Accessibility", "Next →", "Reviewed once"];
-		let index = 0;
-		for (const stage of askFormEvidence.stages) {
-			const surfaces = (stage.surfaces as unknown as TspSurfaceSnapshot[]).map(surface => ({ ...surface, documentGeneration: 1 }));
-			const scope = { hostId: "gate", generation: 1, epoch: 1 };
-			const request = stage.request as CollabQuestion | null;
-			const snapshot: TspHostSnapshot = { ...recorded("hook-select-open"), ...scope, revision: ++planRevision, surfaces, questionMatches: matchQuestions(scope, { ...scope, revision: 1, connection: 1, connected: true, requests: request ? [request] : [] }, hookQuestions(surfaces, 1)) };
-			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(snapshot)},${JSON.stringify(request)},${JSON.stringify(call.arguments)},${request ? "undefined" : JSON.stringify(result)},${classic});`);
-			await page.until(request ? `!!document.querySelector('[data-question-card="${request.reqId}"]')` : "!document.querySelector('[data-question-card]') && document.body.textContent.includes('Other: Canary')");
-			if (request && !classic) await page.until("window.gate.claims().length === 1");
-			expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
-			if (request?.kind === "select") expect(await page.evaluate("document.querySelector('[data-question-card]').textContent")).toContain("Enter");
-			if (!classic && index === 0 && request) {
-				await page.evaluate("window.gate.showQuestion(false)");
-				await page.until("window.gate.claims().length === 0 && !document.querySelector('.tsp-screen')");
-				await page.evaluate("window.gate.showQuestion(true)");
-				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
-				const uncertain = { ...snapshot, revision: ++planRevision, questionMatches: snapshot.questionMatches?.map(match => ({ ...match, status: "ambiguous" as const, reqId: undefined })) };
-				await page.evaluate(`window.gate.update(${JSON.stringify(uncertain)})`);
-				await page.until("window.gate.claims().length === 0 && !document.querySelector('.tsp-screen')");
-				await page.clickElement("[...document.querySelectorAll('section[aria-label=\"Ask form\"] button')].find(button => button.textContent.trim() === 'View question in omp screen')");
-				await page.until("!!document.querySelector('.tsp-screen')");
-				await page.clickElement("document.querySelector('.vo-sheet button[aria-label=Close]')");
-				await page.until("!document.querySelector('.tsp-screen')");
-				await page.evaluate(`window.gate.update(${JSON.stringify({ ...snapshot, revision: ++planRevision })})`);
-				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
-			}
-			if (index === 0 || !request) {
-				await page.evaluate("document.fonts.ready.then(() => true)");
-				const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-				await writeFile(join(shots, `ask-${classic ? "classic-" : ""}${request ? "pending" : "answered"}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
-			}
-			if (!request) continue;
-			const reply = replies[index++]!;
-			if (request.kind === "editor") {
-				await page.clickElement("document.querySelector('[data-question-card] textarea')");
-				await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
-				await page.send("Input.insertText", { text: reply });
-				await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send answer')");
-			} else if (reply === "Next →") {
-				await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send choices')");
-			} else {
-				await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(reply)})`);
-				if (stage.request?.selectionMarker !== "checkbox") await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send answer')");
-			}
-			expect(await page.evaluate("window.gate.calls")).toEqual([{ channel: "collab:ui-response", args: [request.reqId, reply] }]);
+		const { entries, call, result } = askTranscript(formGuest185 as AskEvidence);
+		const stages = (formGuest185 as AskEvidence).stages.filter(stage => stage.request);
+		const replaySnapshot = askSnapshots();
+		const snapshot = (stage: AskEvidence["stages"][number], requests = stage.request ? [stage.request] : []) => ({
+			...replaySnapshot(stage, requests),
+			availability: requests.length ? { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: requests[0]!.reqId } : { available: true, reason: null },
+		});
+		const first = stages[0]!;
+		const request = first.request!;
+		const initial = snapshot(first);
+		await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(initial)},${JSON.stringify(request)},${JSON.stringify(call.arguments)},undefined,${classic},${JSON.stringify(entries)})`);
+		await page.until("!!document.querySelector('[data-question-card=\"series\"]')");
+		if (!classic) await page.until("window.gate.claims().length === 1");
+		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+		expect(await page.evaluate("document.querySelector('[data-question-card=\"series\"]').textContent")).not.toContain("↑/↓ navigate");
+		await page.evaluate("document.fonts.ready.then(() => true)");
+		const pendingScreenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+		await writeFile(join(shots, `ask-series-pending-${classic ? "classic-" : ""}${theme}.png`), Buffer.from(pendingScreenshot.data, "base64"));
+
+		const choice = (index: number) => `document.querySelector('[data-question-card="series"] [data-choice="${index}"]')`;
+		const button = (label: string) => `[...document.querySelectorAll('[data-question-card="series"] button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+		const fill = async (selector: string, text: string) => {
+			await page.clickElement(selector);
+			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+			await page.send("Input.insertText", { text });
+		};
+		await page.clickElement(choice(1));
+		await page.clickElement(button("Next question"));
+		await page.until("document.querySelector('[data-question-card=\"series\"]').textContent.includes('Question 2 of 4')");
+		await page.clickElement(choice(2));
+		await page.clickElement(button("Next question"));
+		await page.until("document.querySelector('[data-question-card=\"series\"]').textContent.includes('Question 3 of 4')");
+		await fill("document.querySelector('[data-question-card=\"series\"] textarea, [data-question-card=\"series\"] input[aria-labelledby]')", "Release fixture headline");
+		await page.clickElement(button("Next question"));
+		await page.until("document.querySelector('[data-question-card=\"series\"]').textContent.includes('Question 4 of 4')");
+		await page.clickElement(choice(1));
+		await page.evaluate("window.gate.beginFormUpdates()");
+		await page.clickElement(button("Send answers"));
+
+		const replies = ["Beta", "Linux", "Next →", "Release fixture headline", "Full"];
+		await page.until("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === 1");
+		for (const [index, stage] of stages.slice(1).entries()) {
+			const next = stage.request!;
+			const settling = snapshot(stages[index]!, []);
+			settling.questionMatches = settling.questionMatches?.map(match => ({ ...match, status: "settling" }));
+			await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(settling)})`);
+			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next)}); window.gate.update(${JSON.stringify(snapshot(stage))})`);
+			await page.until(`window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === ${index + 2}`);
 		}
-		expect(index).toBe(7);
+		const calls = await page.evaluate("window.gate.calls");
+		expect(calls).toEqual(stages.map((stage, index) => ({ channel: "collab:ui-response", args: [(stage.request as CollabQuestion).reqId, replies[index]] })));
+		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+		if (!classic) expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+		const departure = snapshot((formGuest185 as AskEvidence).stages.at(-1)!, []);
+		expect(hookQuestions(departure.surfaces, 1)).toEqual([]);
+		await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)},false); window.gate.update(${JSON.stringify(departure)})`);
+		await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
+		const answeredScreenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+		await writeFile(join(shots, `ask-series-answered-${classic ? "classic-" : ""}${theme}.png`), Buffer.from(answeredScreenshot.data, "base64"));
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 60_000);
 
@@ -860,22 +868,9 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
 		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
 	}
-	async function answerForm(request: CollabUiRequest, reply: string): Promise<void> {
-		await page.until(`!!document.querySelector('[data-question-card="${request.reqId}"]')`);
-		if (request.kind === "editor") {
-			await page.clickElement("document.querySelector('[data-question-card] textarea')");
-			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
-			await page.send("Input.insertText", { text: reply });
-		} else if (reply !== "Next →") {
-			await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(reply)})`);
-		}
-		if (request.kind === "editor" || request.selectionMarker !== "checkbox" || reply === "Next →") {
-			await page.clickElement(`[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === ${JSON.stringify(reply === "Next →" ? "Send choices" : "Send answer")})`);
-		}
-	}
 	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each(
 		(["reduced", "full"] as const).flatMap(motion => (["short", "overflowing"] as const).flatMap(history => (["idle", "continues", "finishes"] as const).map(reply => ({ motion, history, reply })))),
-	)("records form layout at owner dimensions with $motion motion, $history history and $reply reply", async ({ motion, history, reply }) => {
+	)("records form series layout at owner dimensions with $motion motion, $history history and $reply reply", async ({ motion, history, reply }) => {
 		const baseline = process.env.TSP_FORM_LAYOUT_BASELINE === "1";
 		const closeBaseline = process.env.TSP_FORM_CLOSE_BASELINE === "1";
 		const directory = process.env.TSP_FORM_LAYOUT_EVIDENCE ?? join(homedir(), "vomp-checks/form-jump", baseline ? "before" : "after");
@@ -887,20 +882,22 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const { entries, call, result } = askTranscript(evidence);
 		const historyEntries: SessionEntry[] = [];
 		if (history === "overflowing") {
-			// Public synthetic history exercises the production scroll follower without owner session data.
 			for (let index = 0; index < 12; index++) {
 				historyEntries.push({ id: `layout-prompt-${index}`, parentId: null, type: "message", timestamp: new Date(index * 2000).toISOString(), message: { role: "user", content: `Review fixture release step ${index + 1}. Keep the release questions available in the chat.`, timestamp: index * 2000 } });
 				historyEntries.push({ id: `layout-reply-${index}`, parentId: null, type: "message", timestamp: new Date(index * 2000 + 1000).toISOString(), message: { role: "assistant", content: [{ type: "text", text: `Fixture release step ${index + 1} is ready for review.\\n\\nThe form checks release channel, supported platforms, a release note headline and review depth. All answers use the collab request sequence.` }], model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "stop", timestamp: index * 2000 + 1000 } });
 			}
 		}
 		const requests = evidence.stages.filter(stage => stage.request);
+		expect(requests).toHaveLength(5);
 		const replaySnapshot = askSnapshots();
-		const snapshot = (stage: AskEvidence["stages"][number], requests = stage.request ? [stage.request] : []) => ({
-			...replaySnapshot(stage, requests),
-			availability: stage.request ? { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: stage.request.reqId } : { available: true, reason: null },
+		const snapshot = (stage: AskEvidence["stages"][number], openRequests = stage.request ? [stage.request] : []) => ({
+			...replaySnapshot(stage, openRequests),
+			availability: openRequests.length ? { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: openRequests[0]!.reqId } : { available: true, reason: null },
 		});
-		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; document.documentElement.dataset.theme='light'; window.gate.showFormLayout(${JSON.stringify(snapshot(requests[0]!))},${JSON.stringify(requests[0]!.request)},${JSON.stringify(call.arguments)},${JSON.stringify([...historyEntries, ...entries])})`);
-		await page.until("!!document.querySelector('[data-form-layout] [role=\"log\"]') && !!document.querySelector('[data-gate-composer] textarea') && window.gate.claims().length === 1");
+		const firstStage = requests[0]!;
+		const firstRequest = firstStage.request!;
+		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; document.documentElement.dataset.theme='light'; window.gate.showFormLayout(${JSON.stringify(snapshot(firstStage))},${JSON.stringify(firstRequest)},${JSON.stringify(call.arguments)},${JSON.stringify([...historyEntries, ...entries])})`);
+		await page.until("!!document.querySelector('[data-form-layout] [role=\"log\"]') && !!document.querySelector('[data-gate-composer] textarea') && !!document.querySelector('[data-question-card=\"series\"]') && window.gate.claims().length === 1");
 		await page.evaluate("document.fonts.ready.then(() => true)");
 		await delay(1200);
 		await page.evaluate("window.gate.beginFormUpdates(); window.gate.startLayoutEvidence()");
@@ -908,176 +905,125 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await page.evaluate(`window.gate.markLayoutEvidence(${JSON.stringify(phase)})`);
 			await delay(settle);
 		};
-		const choice = (label: string) => `[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
-		const send = () => `[...document.querySelectorAll('[data-question-card] button')].find(button => /^(Send answer|Send choices)$/.test(button.textContent.trim()))`;
+		const choice = (label: string) => `[...document.querySelectorAll('[data-question-card="series"] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+		const cardButton = (label: string) => `[...document.querySelectorAll('[data-question-card="series"] button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+		const fill = async (selector: string, text: string) => {
+			await page.clickElement(selector, false);
+			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+			await page.send("Input.insertText", { text });
+		};
 		let captured: FormLayoutEvidence;
 		let stabilityEnd = 0;
 		try {
 			await mark("ready");
-			for (const [index, stage] of requests.entries()) {
-				const request = stage.request!;
-				await page.until(`!!document.querySelector('[data-question-card="${request.reqId}"]')`);
-				await mark(`request-${request.reqId}-before-click`, 50);
-				if (request.kind === "editor") {
-					await page.clickElement("document.querySelector('[data-question-card] textarea')", false);
-					await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
-					await page.send("Input.insertText", { text: "Release fixture headline" });
-					await mark(`request-${request.reqId}-text-input`);
-					await page.clickElement(send(), false);
-				} else if (index === 2) {
-					await page.clickElement(send(), false);
-				} else {
-					await page.clickElement(choice(index === 0 ? "Beta" : index === 1 ? "Linux" : "Full"), false);
-					if (request.selectionMarker === "radio") {
-						await mark(`request-${request.reqId}-radio-selected`);
-						expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index);
-						await page.key("ArrowUp"); await mark(`request-${request.reqId}-arrow-up`, 80);
-						await page.key("ArrowDown"); await mark(`request-${request.reqId}-arrow-down`, 80);
-						await page.clickElement(send(), false);
-					}
-				}
-				await page.until("window.gate.view().guest.uiRequest === null");
-				await mark(`request-${request.reqId}-retired-gap`);
-				await page.clickElement(send(), false);
-				await mark(`request-${request.reqId}-disabled-repeat`, 60);
-				expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index + 1);
-				const settling = snapshot(stage, []);
+			expect(await page.evaluate("document.querySelector('[data-question-card=\"series\"]').textContent")).not.toContain("↑/↓ navigate");
+			await mark("field-1-before-choice", 50);
+			await page.clickElement(choice("Beta"), false);
+			await mark("field-1-selected");
+			await page.clickElement(cardButton("Next question"), false);
+			await mark("field-2-before-choice", 450);
+			const linuxSelected = await page.evaluate<boolean>(`(() => { const button = ${choice("Linux")}; return button?.getAttribute('aria-checked') === 'true'; })()`);
+			if (!linuxSelected) await page.clickElement(choice("Linux"), false);
+			await mark("field-2-selected");
+			await page.clickElement(cardButton("Next question"), false);
+			await mark("field-3-before-text", 450);
+			await fill("document.querySelector('[data-question-card=\"series\"] textarea, [data-question-card=\"series\"] input[aria-labelledby]')", "Release fixture headline");
+			await mark("field-3-text");
+			await page.clickElement(cardButton("Next question"), false);
+			await mark("field-4-before-choice", 450);
+			await page.clickElement(choice("Full"), false);
+			await mark("field-4-selected");
+			await page.clickElement(cardButton("Send answers"), false);
+			await page.until("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === 1 && window.gate.view().guest.uiRequest === null");
+			await mark("replay-first-request-gap", 50);
+
+			for (const [index, stage] of requests.slice(1).entries()) {
+				const previous = requests[index]!;
+				const nextRequest = stage.request!;
+				const settling = snapshot(previous, []);
 				settling.questionMatches = settling.questionMatches?.map(match => ({ ...match, status: "settling" }));
 				await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(settling)})`);
-				await mark(`request-${request.reqId}-end-before-next`);
-				const next = requests[index + 1];
-				if (next) {
-					await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)})`);
-					await mark(`request-${next.request!.reqId}-before-main-match`);
-					await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))})`);
-					await mark(`request-${next.request!.reqId}-matched`, 450);
-				}
+				await mark(`replay-${previous.request!.reqId}-gap`, 50);
+				await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(nextRequest)}); window.gate.update(${JSON.stringify(snapshot(stage))})`);
+				await page.until(`window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === ${index + 2}`);
+				await mark(`replay-${nextRequest.reqId}-answered`, 100);
 			}
 			stabilityEnd = await page.evaluate<number>("performance.now()");
 			await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)},${reply !== "idle"})`);
 			await mark("result-before-native-departure");
 			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
-			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(evidence.stages.at(-1)!, []))})`);
-			await mark("native-departed", reply === "finishes" ? 100 : 450);
+			await page.evaluate(`window.gate.markLayoutEvidence("native-departed"); window.gate.update(${JSON.stringify(snapshot(evidence.stages.at(-1)!, []))})`);
+			await delay(reply === "finishes" ? 100 : 450);
 			if (reply === "finishes") { await page.evaluate("window.gate.finishWorking()"); await mark("reply-finished", 350); }
 			await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
 		} finally {
 			captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
 			const calls = await page.evaluate("window.gate.calls");
 			const events = await page.evaluate("window.gate.formPresentationEvents");
-			await writeFile(join(directory, `${outputName}.json`), JSON.stringify({ baseline: baseline ? "e88bd9d" : closeBaseline ? "e557710" : null, fixture: `${engine}/ask-fixture-form-guest`, reply, seam: "Production TranscriptBody, usePendingQuestion, WorkingStatus and Composer; recorded requests and native matches; captured collab answer transport", stabilityEnd, ...captured, calls, events }, null, 2));
+			await writeFile(join(directory, `${outputName}.json`), JSON.stringify({ baseline: baseline ? "e88bd9d" : closeBaseline ? "e557710" : null, fixture: `${engine}/ask-fixture-form-guest`, reply, seam: "Production TranscriptBody, usePendingQuestion, WorkingStatus and Composer; recorded form fields and native matches; captured collab answer transport", stabilityEnd, ...captured, calls, events }, null, 2));
 		}
 		const frames = captured.frames.filter(frame => frame.time <= stabilityEnd);
 		expect(frames.length).toBeGreaterThan(30);
 		expect(captured.viewport).toEqual({ width: 1568, height: 1002 });
 		expect(captured.layoutShiftSupported).toBe(true);
 		expect(captured.motion).toBe(motion);
-		for (const stage of requests) {
-			expect(frames.some(frame => frame.phase === `request-${stage.request!.reqId}-retired-gap` && frame.requestId === null && frame.busy === "true"), "every submitted field records its request-retirement gap").toBe(true);
-		}
-		expect(frames.some(frame => frame.phase === "request-4-before-main-match"), "the text-field transition includes delayed main matching").toBe(true);
 		expect(frames.every(frame => frame.card && frame.form && frame.transcript && frame.composer && frame.composerInput)).toBe(true);
+		expect(frames.some(frame => frame.questionText.seriesProgress === "Question 1 of 4")).toBe(true);
+		expect(frames.some(frame => frame.questionText.seriesProgress === "Question 4 of 4")).toBe(true);
 		expect(frames.some(frame => frame.transcript!.scrollHeight > frame.transcript!.clientHeight + 1)).toBe(history === "overflowing");
 		expect(captured.frames.some(frame => frame.screen), "the form must never auto-open the omp screen").toBe(false);
 		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)"), "even a brief screen open must be reported").toEqual([]);
-		expect(frames.every(frame => frame.claims === 1), "native ownership persists through every measured request gap").toBe(true);
+		expect(frames.every(frame => frame.claims === 1), "native ownership persists through every recorded series step").toBe(true);
 		const range = (values: number[]) => Math.max(...values) - Math.min(...values);
-		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), cardBottom: range(frames.map(frame => frame.card!.bottom)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), transcriptBottom: range(frames.map(frame => frame.transcript!.scrollHeight - frame.transcript!.clientHeight - frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
-		const completion = captured.frames.filter(frame => frame.time > stabilityEnd);
-		const visibleClosing = completion.filter(frame => frame.card && (frame.cardOpacity ?? 1) > 0.05);
-		const previous = frames.at(-1)!;
+		const movement = {
+			composerTop: range(frames.map(frame => frame.composer!.top)),
+			composerInputTop: range(frames.map(frame => frame.composerInput!.top)),
+			scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)),
+			transcriptBottom: range(frames.map(frame => frame.transcript!.scrollHeight - frame.transcript!.clientHeight - frame.transcript!.scrollTop)),
+			documentScroll: range(frames.map(frame => frame.documentScroll)),
+		};
+		for (const frame of frames.filter(sample => sample.buttons.card.length > 0)) {
+			const footerGap = frame.card!.bottom - Math.max(...frame.buttons.card.map(button => button.box.bottom));
+			expect(footerGap, `buttons stay inside the card during ${frame.phase}`).toBeGreaterThanOrEqual(-1);
+			expect(footerGap, `buttons stay inside the card during ${frame.phase}`).toBeLessThanOrEqual(20);
+		}
+		if (history === "overflowing") {
+			expect(Math.max(...frames.map(sample => Math.abs(sample.transcript!.scrollHeight - sample.transcript!.clientHeight - sample.transcript!.scrollTop))), "the overflowing transcript stays within its 48px pin threshold").toBeLessThanOrEqual(48);
+		} else {
+			expect(movement.scrollTop, "the short transcript stays at its current position").toBeLessThanOrEqual(1);
+		}
+		expect(movement.composerTop, "composer top stays fixed while the person edits the series").toBeLessThanOrEqual(1);
+		expect(movement.composerInputTop, "composer input stays fixed while the person edits the series").toBeLessThanOrEqual(1);
+		expect(movement.documentScroll).toBe(0);
+		const resultFrames = captured.frames.filter(frame => frame.phase === "result-before-native-departure");
+		const departureFrames = captured.frames.filter(frame => frame.phase === "native-departed");
+		expect(resultFrames.length).toBeGreaterThan(0);
+		expect(departureFrames.length).toBeGreaterThan(0);
+		expect(resultFrames.every(frame => frame.card && frame.form && frame.claims === 1), "the same presenter stays mounted while the native form remains").toBe(true);
+		const stableFrame = frames.at(-1)!;
+		expect(Math.max(...resultFrames.map(frame => Math.abs(frame.card!.top - stableFrame.card!.top))), "result arrival does not drift the card before native departure").toBeLessThanOrEqual(1);
+		expect(departureFrames.some(frame => !frame.card && !frame.form && frame.claims === 0), "native departure removes the card and releases its claim").toBe(true);
+		const closingFrames = captured.frames.filter(frame => frame.time > stabilityEnd);
+		expect(closingFrames.every(frame => frame.cardOpacity === null || frame.cardOpacity === 1), "departure resolves without a question-card exit fade").toBe(true);
+		const visibleClosing = closingFrames.filter(frame => frame.card && (frame.cardOpacity ?? 1) > 0.05);
 		const travelExcess = (values: number[]) => values.slice(1).reduce((sum, value, index) => sum + Math.abs(value - values[index]!), 0) - Math.abs(values.at(-1)! - values[0]!);
 		const departure = {
-			cardDip: Math.max(0, ...visibleClosing.map(frame => frame.card!.top - previous.card!.top)),
-			cardDrift: Math.max(0, ...visibleClosing.map(frame => Math.abs(frame.card!.top - previous.card!.top))),
-			footerReversal: travelExcess([previous.composer!.top, ...completion.map(frame => frame.composer!.top)]),
-			scrollReversal: travelExcess([previous.transcript!.scrollTop, ...completion.map(frame => frame.transcript!.scrollTop)]),
+			cardDip: Math.max(0, ...visibleClosing.map(frame => frame.card!.top - stableFrame.card!.top)),
+			cardDrift: Math.max(0, ...visibleClosing.map(frame => Math.abs(frame.card!.top - stableFrame.card!.top))),
+			footerReversal: travelExcess([stableFrame.composer!.top, ...closingFrames.map(frame => frame.composer!.top)]),
+			scrollReversal: travelExcess([stableFrame.transcript!.scrollTop, ...closingFrames.map(frame => frame.transcript!.scrollTop)]),
 		};
-		await writeFile(join(directory, `${outputName}-summary.json`), JSON.stringify({ baseline, closeBaseline, engine, history, motion, reply, frames: frames.length, movement, departure, shifts: captured.shifts }, null, 2));
-		if (!baseline) {
-			const frame = (phase: string) => frames.find(candidate => candidate.phase === phase)!;
-			const radio = frame("request-1-before-click");
-			const radioGap = frame("request-1-retired-gap");
-			const checkbox = frame("request-2-before-click");
-			const checkboxGap = frame("request-2-retired-gap");
-			const checkboxUpdate = frame("request-3-matched");
-			const checkboxBeforeMatch = frame("request-3-before-main-match");
-			const text = frame("request-4-matched");
-			const responseValues = ["Beta", "Linux", "Next →", "Release fixture headline", "Full"];
-			const sameQuestion = (left: CollabUiRequest, right: CollabUiRequest) => {
-				if (left.kind !== right.kind || left.title !== right.title) return false;
-				if (left.kind === "editor" && right.kind === "editor") return true;
-				if (left.kind !== "select" || right.kind !== "select" || left.selectionMarker !== right.selectionMarker || left.options.length !== right.options.length) return false;
-				return left.options.every((option, index) => {
-					const next = right.options[index]!;
-					return (typeof option === "string" ? option : option.label) === (typeof next === "string" ? next : next.label);
-				});
-			};
-			const stepByRequest = new Map<number, number>();
-			let step = 0;
-			let previousRequest: CollabUiRequest | null = null;
-			for (const [index, stage] of requests.entries()) {
-				const current = stage.request!;
-				const previousWasSubmitted = previousRequest !== null && (
-					previousRequest.kind !== "select" || previousRequest.selectionMarker !== "checkbox" || responseValues[index - 1] === "Next →"
-				);
-				if (!previousRequest || previousWasSubmitted || !sameQuestion(previousRequest, current)) step++;
-				stepByRequest.set(current.reqId, step);
-				previousRequest = current;
-			}
-			const stepFrames = new Map<number, typeof frames>();
-			for (const sample of frames) {
-				const requestId = sample.requestId ?? Number(sample.phase.match(/^request-(\d+)-/)?.[1] ?? requests[0]!.request!.reqId);
-				const questionStep = stepByRequest.get(requestId);
-				if (questionStep === undefined) continue;
-				const interval = stepFrames.get(questionStep);
-				if (interval) interval.push(sample);
-				else stepFrames.set(questionStep, [sample]);
-			}
-			for (const [questionStep, interval] of stepFrames) {
-				let tallestCard = 0;
-				let tallestForm = 0;
-				for (const sample of interval) {
-					expect(sample.card!.height + 1, `card height must not decrease within question step ${questionStep} at ${sample.phase}`).toBeGreaterThanOrEqual(tallestCard);
-					expect(sample.form!.height + 1, `form height must not decrease within question step ${questionStep} at ${sample.phase}`).toBeGreaterThanOrEqual(tallestForm);
-					tallestCard = Math.max(tallestCard, sample.card!.height);
-					tallestForm = Math.max(tallestForm, sample.form!.height);
-				}
-				expect(range(interval.map(sample => sample.card!.top)), `card top stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
-				expect(range(interval.map(sample => sample.form!.top)), `form top stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
-				const footerGaps = interval.map(sample => sample.card!.bottom - Math.max(...sample.buttons.card.map(button => button.box.bottom)));
-				expect(range(footerGaps), `footer position stays stable within question step ${questionStep}`).toBeLessThanOrEqual(1);
-				expect(footerGaps.every(gap => gap >= 0 && gap <= 18), `footer stays inside question step ${questionStep}`).toBe(true);
-			}
-			const footerGap = (sample: typeof text) => sample.card!.bottom - Math.max(...sample.buttons.card.map(button => button.box.bottom));
-			expect(Math.abs(radioGap.card!.height - radio.card!.height)).toBeLessThanOrEqual(1);
-			expect(Math.abs(checkboxGap.card!.height - checkbox.card!.height)).toBeLessThanOrEqual(1);
-			expect(Math.abs(checkboxBeforeMatch.card!.height - checkbox.card!.height)).toBeLessThanOrEqual(1);
-			expect(checkboxUpdate.card!.height + 1).toBeGreaterThanOrEqual(checkbox.card!.height);
-			expect(checkboxUpdate.form!.height + 1).toBeGreaterThanOrEqual(checkbox.form!.height);
-			expect(text.card!.height, "a shorter question uses its own card height").toBeLessThan(checkboxUpdate.card!.height - 1);
-			expect(text.form!.height, "a shorter question uses its own form height").toBeLessThan(checkboxUpdate.form!.height - 1);
-			expect(footerGap(text), "the shorter question keeps its buttons within the card").toBeLessThanOrEqual(18);
-			expect(footerGap(text), "the buttons stay inside the card").toBeGreaterThanOrEqual(0);
-			if (history === "overflowing") {
-				const bottomDistance = frames.map(sample => Math.abs(sample.transcript!.scrollHeight - sample.transcript!.clientHeight - sample.transcript!.scrollTop));
-				expect(Math.max(...bottomDistance), "the overflowing transcript stays within its 48px pin threshold in every frame").toBeLessThanOrEqual(48);
-			} else {
-				expect(movement.scrollTop, "answering or focusing must not scroll the short transcript").toBeLessThanOrEqual(1);
-			}
-			expect(movement.composerTop, "composer top must remain stable through request retirement").toBeLessThanOrEqual(1);
-			expect(movement.composerInputTop, "composer input must not move when a blocked reason changes").toBeLessThanOrEqual(1);
-			expect(movement.documentScroll).toBe(0);
+		expect(departure.cardDip, "a completed form must not dip before it leaves").toBeLessThanOrEqual(1);
+		expect(departure.cardDrift, "the held form stays fixed until native departure").toBeLessThanOrEqual(1);
+		expect(departure.footerReversal, "the footer closes in one direction").toBeLessThanOrEqual(1);
+		expect(departure.scrollReversal, "form departure never scrolls away and back").toBeLessThanOrEqual(1);
+		if (history === "overflowing") {
+			expect(Math.max(...closingFrames.map(frame => Math.abs(frame.transcript!.scrollHeight - frame.transcript!.clientHeight - frame.transcript!.scrollTop))), "pinned transcript geometry stays within its 48px threshold through departure").toBeLessThanOrEqual(48);
+		} else {
+			expect(range(closingFrames.map(frame => frame.transcript!.scrollTop)), "short transcript scroll position has no departure drift").toBeLessThanOrEqual(1);
 		}
-		if (!baseline && !closeBaseline) {
-			expect(departure.cardDip, "a completed form must not dip before it leaves").toBeLessThanOrEqual(1);
-			expect(departure.cardDrift, "the held form stays fixed until native departure").toBeLessThanOrEqual(1);
-			expect(departure.footerReversal, "the footer closes in one direction").toBeLessThanOrEqual(1);
-			expect(departure.scrollReversal, "form departure never scrolls away and back").toBeLessThanOrEqual(1);
-			const last = completion.at(-1)!;
-			expect(Math.abs(last.transcript!.scrollHeight - last.transcript!.clientHeight - last.transcript!.scrollTop)).toBeLessThanOrEqual(1);
-		}
-		if (baseline) expect(Math.max(movement.cardTop, movement.composerTop, movement.composerInputTop, movement.scrollTop), "the original production modules must reproduce the reported movement").toBeGreaterThan(1);
+		const firstDeparted = departureFrames.find(frame => !frame.form && !frame.card)!;
+		expect(closingFrames.filter(frame => frame.time >= firstDeparted.time).every(frame => !frame.card && !frame.form && frame.claims === 0), "the departed card does not return as the reply finishes").toBe(true);
 		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 60_000);
@@ -1087,15 +1033,19 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 1568, height: 1002, deviceScaleFactor: 1, mobile: false });
 		const evidence = formGuest185 as AskEvidence;
 		const { entries, call } = askTranscript(evidence);
-		const stages = evidence.stages.filter(stage => stage.request?.kind === "select" && stage.request.selectionMarker === "checkbox");
+		const scenarioCallId = `checkbox-${motion}-${draft}`;
+		const scenarioEntries = entries.map(entry => entry.type !== "message" || entry.message.role !== "assistant" ? entry : {
+			...entry,
+			message: { ...entry.message, content: entry.message.content.map(part => part.type === "toolCall" && part.id === call.id ? { ...part, id: scenarioCallId } : part) },
+		});
 		const firstStage = evidence.stages.find(stage => stage.request)!;
+		const firstRequest = firstStage.request!;
 		const snapshot = askSnapshots();
-		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; window.gate.showFormLayout(${JSON.stringify(snapshot(firstStage))},${JSON.stringify(firstStage.request)},${JSON.stringify(call.arguments)},${JSON.stringify(entries)})`);
-		await page.until("window.gate.claims().length === 1 && !!document.querySelector('[data-gate-header] [role=status]')");
-		await page.evaluate("window.gate.beginFormUpdates()");
-		await answerForm(firstStage.request!, "Beta");
-		await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(stages[0]!.request)}); window.gate.update(${JSON.stringify(snapshot(stages[0]!))})`);
-		await page.until("!!document.querySelector('[data-question-card=\"2\"]') && window.gate.claims().length === 1");
+		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; window.gate.showFormLayout(${JSON.stringify(snapshot(firstStage))},${JSON.stringify(firstRequest)},${JSON.stringify(call.arguments)},${JSON.stringify(scenarioEntries)})`);
+		await page.until(`window.gate.claims().length === 1 && !!document.querySelector('[data-gate-header] [role=status]') && !!document.querySelector('[data-question-card="series"]')`);
+		await page.clickElement("[...document.querySelectorAll('[data-question-card=\"series\"] button')].find(button => button.getAttribute('aria-keyshortcuts') === 'Alt+ArrowRight')", false);
+		await page.until("document.querySelector('[data-question-card=\"series\"]').textContent.includes('Question 2 of 4') && !!document.querySelector('[data-question-card=\"series\"] [role=\"checkbox\"]')");
+		await delay(450);
 		await page.clickElement("document.querySelector('[data-gate-composer] textarea')", false);
 		await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
 		await page.key("Backspace");
@@ -1103,19 +1053,9 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await delay(500);
 		await page.evaluate("window.gate.startLayoutEvidence(); window.gate.markLayoutEvidence('before-toggle')");
 		await delay(80);
-		// Select, then deselect, using the recording's two checked-state shapes with fresh wire ids.
 		for (let index = 0; index < 2; index++) {
-			await page.clickElement("[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === 'Linux')", false);
-			await page.until("window.gate.view().guest.uiRequest === null");
-			await page.evaluate(`window.gate.markLayoutEvidence('toggle-${index}-retired')`);
-			await delay(180);
-			await page.evaluate("document.querySelector('[data-question-card] > div:last-child button:last-child').click()");
-			expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index + 2);
-			const source = stages[(index + 1) % 2]!;
-			const next = { ...source, request: { ...source.request!, reqId: index + 3 } as CollabUiRequest };
-			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)}); window.gate.markLayoutEvidence('toggle-${index}-before-match')`);
-			await delay(100);
-			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))}); window.gate.markLayoutEvidence('toggle-${index}-matched')`);
+			await page.clickElement("document.querySelector('[data-question-card=\"series\"] [data-choice=\"2\"]')", false);
+			await page.evaluate(`window.gate.markLayoutEvidence('toggle-${index}')`);
 			await delay(180);
 		}
 		const captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
@@ -1123,14 +1063,16 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(captured.viewport).toEqual({ width: 1568, height: 1002 });
 		const first = captured.frames[0]!.questionText;
 		expect(first.header).toBe("Waiting for your answer");
-		expect(first.cardHint).toContain("Sending a message closes this question");
-		for (const key of ["header", "placeholder", "composerHint", "cardHint", "working"] as const) {
+		expect(first.seriesProgress).toBe("Question 2 of 4");
+		expect(await page.evaluate("document.querySelector('[data-question-card=\"series\"]').textContent")).toContain("Sending a message closes this question without stopping the reply.");
+		for (const key of ["header", "placeholder", "composerHint", "cardHint", "working", "seriesProgress"] as const) {
 			const values = [...new Set(captured.frames.map(frame => frame.questionText[key]))];
-			expect(values, `${key} remains identical through both toggles`).toEqual([first[key]]);
+			expect(values, `${key} remains identical through both series toggles`).toEqual([first[key]]);
 		}
 		const firstButtons = captured.frames[0]!.buttons;
-		expect(firstButtons.card.map(button => button.text)).toContain("Skip question");
-		expect(firstButtons.card.map(button => button.text)).toContain("Send choices");
+		expect(firstButtons.card.map(button => button.text)).toContain("Skip this question");
+		expect(firstButtons.card.map(button => button.text)).toContain("Cancel form and stop reply");
+		expect(firstButtons.card.map(button => button.text)).toContain("Next question");
 		expect(firstButtons.composer.some(button => button.label === "Send message")).toBe(true);
 		for (const frame of captured.frames) for (const section of ["card", "composer"] as const) {
 			expect(frame.buttons[section].length, `${section} button count at ${frame.phase}`).toBe(firstButtons[section].length);
@@ -1141,44 +1083,65 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 				for (const key of ["top", "left", "width", "height", "bottom"] as const) expect(Math.abs(box[key] - firstBox[key]), `${section} button ${index} ${key} at ${frame.phase}`).toBeLessThanOrEqual(0.5);
 			}
 		}
-		expect(captured.frames.some(frame => frame.requestId === null)).toBe(true);
+		expect(captured.frames.every(frame => frame.requestId === firstRequest.reqId)).toBe(true);
 		expect(captured.frames.every(frame => frame.claims === 1 && !frame.screen)).toBe(true);
-		expect(await page.evaluate("window.gate.calls")).toEqual([{ channel: "collab:ui-response", args: [1, "Beta"] }, { channel: "collab:ui-response", args: [2, "Linux"] }, { channel: "collab:ui-response", args: [3, "Linux"] }]);
+		expect(await page.evaluate("window.gate.calls")).toEqual([]);
+		// This gate reuses one session, so end the form before the next parameterized scenario.
+		await page.clickElement("[...document.querySelectorAll('[data-question-card=\"series\"] button')].find(button => button.textContent.trim() === 'Cancel form and stop reply')", false);
+		await page.until("window.gate.calls.length === 1 && !document.querySelector('[data-question-card=\"series\"]')");
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 30_000);
-	it.each(askCases185.filter(item => ["ask-fixture-form-guest", "ask-fixture-colors"].includes(item.name)))("answers recorded 18.18.5 $name through collab with native t0 unchanged", async ({ name, evidence }) => {
+	it.each(askCases185.filter(item => ["ask-fixture-form-guest", "ask-fixture-colors"].includes(item.name)))("answers recorded 18.18.5 $name through the form series", async ({ name, evidence }) => {
 		const { entries, call, result } = askTranscript(evidence);
 		const snapshot = askSnapshots();
 		const pending = evidence.stages.filter(stage => stage.request);
-		const first = pending[0]!;
+		const requests = pending.filter((stage, index) => index === 0 || stage.request!.reqId !== pending[index - 1]!.request!.reqId);
+		const first = requests[0]!;
 		await page.evaluate(`document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(snapshot(first))},${JSON.stringify(first.request)},${JSON.stringify(call.arguments)},undefined,false,${JSON.stringify(entries)})`);
-		await page.until("window.gate.claims().length === 1");
+		await page.until("window.gate.claims().length === 1 && !!document.querySelector('[data-question-card=\"series\"]')");
 		await page.evaluate("window.gate.beginFormUpdates()");
+		const choice = (index: number) => `document.querySelector('[data-question-card="series"] [data-choice="${index}"]')`;
+		const button = (label: string) => `[...document.querySelectorAll('[data-question-card="series"] button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+		const fill = async (selector: string, value: string) => {
+			await page.clickElement(selector);
+			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+			await page.send("Input.insertText", { text: value });
+		};
+		if (name === "ask-fixture-colors") {
+			await page.clickElement(choice(0));
+			await page.clickElement(button("Send answers"));
+		} else {
+			await page.clickElement(choice(1));
+			await page.clickElement(button("Next question"));
+			await page.clickElement(choice(2));
+			await page.clickElement(button("Next question"));
+			await fill("document.querySelector('[data-question-card=\"series\"] textarea, [data-question-card=\"series\"] input[aria-labelledby]')", "Release fixture headline");
+			await page.clickElement(button("Next question"));
+			await page.clickElement(choice(1));
+			await page.clickElement(button("Send answers"));
+		}
+		await page.until("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === 1");
 		const phases: unknown[] = [];
 		const replies = name === "ask-fixture-colors" ? ["#2B72E5 (opaque blue)"] : ["Beta", "Linux", "Next →", "Release fixture headline", "Full"];
-		// Color Hide/Show captures retain the same guest request. Each request is answered once.
-		const requests = pending.filter((stage, index) => index === 0 || stage.request!.reqId !== pending[index - 1]!.request!.reqId);
-		expect(requests).toHaveLength(replies.length);
 		for (let index = 0; index < requests.length; index++) {
 			const stage = requests[index]!;
 			const request = stage.request!;
-			await answerForm(request, replies[index]!);
-			await page.until("window.gate.view().guest.uiRequest === null");
+			if (index > 0) {
+				const previous = requests[index - 1]!;
+				const settling = snapshot(previous, []);
+				settling.questionMatches = settling.questionMatches?.map(match => ({ ...match, status: "settling" }));
+				await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(settling)})`);
+				await noAskScreen();
+				await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(request)})`);
+				await noAskScreen();
+				await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(stage))})`);
+			}
+			await page.until(`window.gate.calls.filter(call => call.channel === 'collab:ui-response').length === ${index + 1}`);
 			await noAskScreen();
 			expect(await page.evaluate("document.querySelector('[data-form-question]')?.getAttribute('aria-busy')")).toBe("true");
 			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
-			phases.push(await page.evaluate(`({phase:'request-gap',requestId:${request.reqId},claims:window.gate.claims()})`));
-			await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(snapshot(stage, []))})`);
-			const next = requests[index + 1];
-			if (next) {
-				// Collab publishes the next field before main has its new match.
-				await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)})`);
-				await noAskScreen();
-				await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))})`);
-				await page.until(`!!document.querySelector('[data-question-card="${next.request!.reqId}"]') && window.gate.claims().length === 1`);
-			}
+			phases.push(await page.evaluate(`({phase:'series-replay',requestId:${request.reqId},claims:window.gate.claims()})`));
 		}
-		// Delay native departure after the real saved whole-form result arrives.
 		await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)})`);
 		await noAskScreen();
 		await page.until("window.gate.claims().length === 1");
@@ -1191,7 +1154,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.evaluate(`window.gate.update(${JSON.stringify(departure)})`);
 		await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
 		await noAskScreen();
-		await writeFile(join(shots, `${name}-guest-trace.json`), JSON.stringify({ seam: "Production pending selector and cards; recorded collab and native documents; preload answer transport captured", phases, calls: await page.evaluate("window.gate.calls"), result }, null, 2));
+		await writeFile(join(shots, `${name}-series-trace.json`), JSON.stringify({ seam: "Production series presenter, recorded collab and native documents, and captured answer transport", phases, calls: await page.evaluate("window.gate.calls"), result }, null, 2));
 	}, 60_000);
 	it.each(askCases185)("retains established 18.18.5 $name ownership through recorded native views and result arrival", async ({ name, evidence }) => {
 		const { entries, call, result } = askTranscript(evidence);

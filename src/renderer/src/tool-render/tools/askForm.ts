@@ -20,8 +20,10 @@ export interface AskFormOption {
 export interface AskFormField {
 	name: string;
 	kind: "choice" | "text";
+	control: "radio" | "checkbox" | "select" | "text" | "textarea";
 	question: string;
 	multi: boolean;
+	required: boolean;
 	options: AskFormOption[];
 	context: AskFormContextBlock[];
 	value?: string;
@@ -33,6 +35,7 @@ export interface AskFormRequest {
 	kind: "select" | "editor";
 	title: string;
 	options?: readonly (string | { label: string })[];
+	prefill?: string;
 }
 
 interface LocatedContextBlock {
@@ -296,10 +299,10 @@ export function parseAskForm(html: string): AskForm {
 			const key = `${type}:${name}`;
 			let field = groups.get(key);
 			if (!field) {
-				field = { name, kind: "choice", question, multi: type === "checkbox", options: [], context: [] };
+				field = { name, kind: "choice", control: type as "radio" | "checkbox", question, multi: type === "checkbox", required: control.hasAttribute("required"), options: [], context: [] };
 				groups.set(key, field);
 				fields.push(field);
-			}
+			} else field.required ||= control.hasAttribute("required");
 			if (type === "radio" && control.hasAttribute("checked")) for (const option of field.options) option.selected = false;
 			const choiceLabel = labelNode(control);
 			const rawLabel = label(control) || control.getAttribute("value") || name;
@@ -316,15 +319,15 @@ export function parseAskForm(html: string): AskForm {
 		} else if (control.localName === "select") {
 			const options = [...control.querySelectorAll("option")].map(option => ({ label: plain(option) || option.getAttribute("value") || "", selected: option.hasAttribute("selected"), ...(option.hasAttribute("disabled") ? { disabled: true } : {}) }));
 			const multi = control.hasAttribute("multiple");
-			if (!multi && !options.some(option => option.selected)) {
+			if (!multi && !options.some(option => option.selected && !option.disabled)) {
 				const first = options.find(option => !option.disabled);
 				if (first) first.selected = true;
 			}
-			const field: AskFormField = { name, kind: "choice", question, multi, options, context: [] };
+			const field: AskFormField = { name, kind: "choice", control: "select", question, multi, required: control.hasAttribute("required"), options, context: [] };
 			fields.push(field);
 			rememberControl(field, control);
 		} else {
-			const field: AskFormField = { name, kind: "text", question, multi: false, options: [], context: [], value: control.localName === "textarea" ? control.textContent ?? "" : control.getAttribute("value") ?? "" };
+			const field: AskFormField = { name, kind: "text", control: control.localName === "textarea" ? "textarea" : "text", question, multi: false, required: control.hasAttribute("required"), options: [], context: [], value: control.localName === "textarea" ? control.textContent ?? "" : control.getAttribute("value") ?? "" };
 			fields.push(field);
 			rememberControl(field, control);
 		}
@@ -352,8 +355,18 @@ export function parseAskForm(html: string): AskForm {
 }
 
 function matchesAskFormField(field: AskFormField, request: AskFormRequest): boolean {
-	if (request.title !== field.question && !(request.kind === "editor" && field.kind === "text" && request.title.startsWith(`${field.question} (`))) return false;
-	if (request.kind === "editor") return field.kind === "text" || field.other === true;
+	if (request.kind === "editor") {
+		const titleMatches = request.title === field.question
+			|| (field.kind === "text" && request.title.startsWith(`${field.question} (`));
+		if (!titleMatches) return false;
+		if (field.kind === "text") {
+			const validationReask = request.title.startsWith(`${field.question} (`);
+			return validationReask || request.prefill === undefined || request.prefill === (field.value ?? "");
+		}
+		return field.other === true;
+	}
+	if (request.title !== field.question) return false;
+	if (request.kind !== "select" || field.kind !== "choice") return false;
 	const taken = new Set(["Other (type your own)", "Next →"]);
 	const labels = field.options.filter(option => !option.disabled).map(option => {
 		const sourceLabel = option.requestLabel ?? option.label;
@@ -365,14 +378,24 @@ function matchesAskFormField(field: AskFormField, request: AskFormRequest): bool
 	if (field.other) labels.push("Other (type your own)");
 	const actual = request.options?.map(option => typeof option === "string" ? option : option.label) ?? [];
 	if (field.multi && actual.at(-1) === "Next →") actual.pop();
-	return labels.length > 0 && labels.length === actual.length && labels.every((label, index) => label === actual[index]);
+	if (labels.length === 0 || labels.length !== actual.length || !labels.every((label, index) => label === actual[index])) return false;
+	return true;
 }
 
-/** Start at the current form field and search forward so repeated questions keep their identity. */
+/** Start at the current form field and search backward only for a matching text validation re-ask. */
 export function askFormFieldForRequest(form: AskForm, request: AskFormRequest, fieldIndex = 0): AskFormField | null {
-	for (let index = Math.max(0, fieldIndex); index < form.fields.length; index++) {
+	const start = Math.max(0, fieldIndex);
+	for (let index = start; index < form.fields.length; index++) {
 		const field = form.fields[index]!;
 		if (matchesAskFormField(field, request)) return field;
+	}
+	const validationReask = request.kind === "editor"
+		&& form.fields.some(field => field.kind === "text" && request.title.startsWith(`${field.question} (`));
+	if (validationReask) {
+		for (let index = Math.min(start, form.fields.length) - 1; index >= 0; index--) {
+			const field = form.fields[index]!;
+			if (matchesAskFormField(field, request)) return field;
+		}
 	}
 	return null;
 }

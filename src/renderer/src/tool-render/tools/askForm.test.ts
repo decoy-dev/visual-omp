@@ -3,7 +3,7 @@ import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { parseAskForm, isAskFormRequest } from "./askForm";
+import { askFormFieldForRequest, parseAskForm, isAskFormRequest } from "./askForm";
 import { askRenderer } from "./ask";
 import { isAskRequest, parseAskQuestions } from "../../chat/transcript/askSeries";
 import evidence from "../../../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
@@ -21,6 +21,30 @@ describe("HTML ask transcript", () => {
 		expect(form.fields[0]?.options).toEqual([{ label: "Stable", selected: true }, { label: "Preview", selected: false }]);
 		expect(form.fields[1]?.multi).toBe(true);
 		expect(form.fields[2]?.value).toBe("Keep compatibility");
+	});
+	it("records required fields, multiline text, disabled options and select defaults", () => {
+		const form = parseAskForm(`<form>
+			<label><input type="radio" name="channel" required checked>Stable</label>
+			<label><input type="radio" name="channel" disabled>Disabled</label>
+			<select name="region" required><option disabled>Choose</option><option>West</option><option>East</option></select>
+			<label><input type="checkbox" name="platforms" required checked>Linux</label>
+			<label><input type="checkbox" name="platforms">Windows</label>
+			<label><input type="checkbox" name="unavailable" disabled>Unavailable</label>
+			<textarea name="note" required>First line
+Second line</textarea>
+			<input name="empty" required value="">
+		</form>`);
+		expect(form.fields.map(field => [field.name, field.control, field.required])).toEqual([
+			["channel", "radio", true],
+			["region", "select", true],
+			["platforms", "checkbox", true],
+			["unavailable", "checkbox", false],
+			["note", "textarea", true],
+			["empty", "text", true],
+		]);
+		expect(form.fields[1]?.options.map(option => [option.label, option.selected])).toEqual([["Choose", false], ["West", true], ["East", false]]);
+		expect(form.fields[2]?.options.map(option => option.selected)).toEqual([true, false]);
+		expect(form.fields[4]?.value).toBe("First line\nSecond line");
 	});
 	it("handles selects, detached and ARIA labels, textareas and pictures in an inert template", () => {
 		const form = parseAskForm('<script>throw Error("executed")</script><form><legend>Options &amp; notes</legend><label for="size">Size</label><select name="size" id="size"><option>Small</option><option selected>Large</option></select><textarea name="note" aria-label="Notes">hello &amp; goodbye</textarea><input name="secret" type="hidden" value="hidden"><img src="https://example.invalid/no-request" alt="Plan picture"><svg aria-label="Plan diagram"><text>ignored markup</text></svg><button>Submit</button></form>');
@@ -40,6 +64,17 @@ describe("HTML ask transcript", () => {
 		expect(isAskFormRequest('<form><label><input type="radio" name="c">Stable</label><label><input type="radio" name="c" disabled>Other option</label></form>', { kind: "editor", title: "c" })).toBe(false);
 		expect(isAskFormRequest('<form><select name="empty"></select></form>', { kind: "editor", title: "empty" })).toBe(false);
 	});
+	it("recognizes validation re-asks and distinguishes repeated text defaults", () => {
+		const html = `<form>
+			<label>Release note<input name="first" value="First default"></label>
+			<label>Release note<input name="second" value="Second default"></label>
+		</form>`;
+		const form = parseAskForm(html);
+		const validation = { kind: "editor", title: "Release note (too short)", prefill: "Too short" } as const;
+		expect(isAskFormRequest(html, validation)).toBe(true);
+		expect(askFormFieldForRequest(form, { kind: "editor", title: "Release note", prefill: "Second default" }, 1)).toBe(form.fields[1]);
+	});
+
 	it("renders pending fields and recorded question-answer pairs, empty answers and timeouts", () => {
 		const pending = renderToStaticMarkup(createElement(askRenderer.Body!, { name: "ask", args: call.arguments }));
 		expect(pending).toContain("Choose the release settings.");

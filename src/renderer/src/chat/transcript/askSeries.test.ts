@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import type { CollabUiRequest, CollabUiRequestDraft, CollabUiSelectItem, SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,10 +8,13 @@ import {
 	type AskAnswer,
 	type AskQuestion,
 	defaultAnswer,
+	displayLabels,
 	findSeriesAsk,
+	formSkipReason,
 	isAskRunning,
 	isAskRequest,
 	isSeriesStart,
+	parseAskFormQuestions,
 	parseAskQuestions,
 	REPLAY_START,
 	type ReplayCursor,
@@ -330,6 +334,121 @@ describe("defaultAnswer and parseAskQuestions", () => {
 				questions: [{ id: "a", question: "Q?", options: [{ label: "x", description: "  why  " }, { label: 3 }, null], multi: true, recommended: 1.5 }, 7],
 			}),
 		).toEqual([{ id: "a", question: "Q?", options: [{ label: "x", description: "why" }, { label: "" }], multi: true }]);
+	});
+});
+
+describe("HTML form series rules", () => {
+	it("builds questions with field defaults, enabled options, descriptions and multiline values", () => {
+		const questions = parseAskFormQuestions(`<form>
+			<fieldset><legend>Channel</legend>
+				<label><input type="radio" name="channel" value="stable" checked>Stable<br><small>Use the tested channel.</small></label>
+				<label><input type="radio" name="channel" value="preview" disabled>Preview</label>
+			</fieldset>
+			<label>Region<select name="region"><option disabled>Choose</option><option>West</option><option>East</option></select></label>
+			<fieldset><legend>Platforms</legend>
+				<label><input type="checkbox" name="platforms" value="linux" checked>Linux</label>
+				<label><input type="checkbox" name="platforms" value="windows">Windows</label>
+			</fieldset>
+			<label>Release note<textarea name="note">Keep compatibility</textarea></label>
+		</form>`);
+		expect(questions?.map(question => [question.formField?.name, question.question])).toEqual([
+			["channel", "Channel"],
+			["region", "Region"],
+			["platforms", "Platforms"],
+			["note", "Release note"],
+		]);
+		expect(questions?.[0]?.options.map(option => option.label)).toEqual(["Stable"]);
+		expect(questions?.[0]?.options[0]?.description).toBe("Use the tested channel.");
+		expect(defaultAnswer(questions![0]!).selected).toEqual([0]);
+		expect(defaultAnswer(questions![1]!).selected).toEqual([0]);
+		expect(defaultAnswer(questions![2]!).selected).toEqual([0]);
+		expect(defaultAnswer(questions![3]!).text).toBe("Keep compatibility");
+		expect(formSkipReason(questions![0]!)).toBeNull();
+		expect(formSkipReason(questions![1]!)).toBeNull();
+	});
+
+	it("skips fields with no request and reports defaults a field cannot accept", () => {
+		const questions = parseAskFormQuestions(`<form>
+			<fieldset><legend>Radio</legend><label><input type="radio" name="radio">One</label><label><input type="radio" name="radio">Two</label></fieldset>
+			<fieldset><legend>Required checks</legend><label><input type="checkbox" name="checks" required>One</label><label><input type="checkbox" name="checks" required>Two</label></fieldset>
+			<label>Required text<input name="required" required></label>
+			<fieldset><legend>Optional checks</legend><label><input type="checkbox" name="optional">One</label><label><input type="checkbox" name="optional">Two</label></fieldset>
+			<label>Default select<select name="select"><option disabled>Choose</option><option>First</option><option>Second</option></select></label>
+			<label><input type="checkbox" name="unavailable" disabled>Unavailable</label>
+			<fieldset><legend>Other only</legend><label><input type="radio" name="other" disabled>First</label><label><input type="radio" name="other" disabled>Second</label></fieldset>
+		</form>`);
+		expect(questions?.map(question => question.formField?.name)).toEqual(["radio", "checks", "required", "optional", "select", "other"]);
+		expect(formSkipReason(questions![0]!)).toBe("single");
+		expect(formSkipReason(questions![1]!)).toBe("checkbox");
+		expect(formSkipReason(questions![2]!)).toBe("text");
+		expect(formSkipReason(questions![3]!)).toBeNull();
+		expect(defaultAnswer(questions![4]!).selected).toEqual([0]);
+		expect(questions![5]?.options).toEqual([]);
+		expect(formSkipReason(questions![5]!)).toBe("text");
+	});
+
+	it("replays single choices by disambiguated wire label and sends Other through its editor", () => {
+		const questions = parseAskFormQuestions(`<form><fieldset><legend>Flavor</legend>
+			<label><input type="radio" name="flavor" value="first">Echo</label>
+			<label><input type="radio" name="flavor" value="second" checked>Echo</label>
+		</fieldset></form>`)!;
+		const question = questions[0]!;
+		expect(question.options.map(option => option.label)).toEqual(["Echo", "Echo (2)"]);
+		expect(displayLabels(question)).toEqual(["Echo", "Echo (2)"]);
+		const request: CollabUiRequest = { reqId: 1, kind: "select", title: question.question, options: ["Echo", "Echo (2)", ASK_OTHER], initialIndex: 1, selectionMarker: "radio" };
+		expect(isSeriesStart(questions, request)).toBe(true);
+		expect(replayStep(questions, [defaultAnswer(question)], REPLAY_START, request)).toMatchObject({ kind: "answer", value: "Echo (2)", done: true });
+
+		const customAnswer: AskAnswer = { selected: [], custom: "Custom flavor", text: "" };
+		const otherStep = replayStep(questions, [customAnswer], REPLAY_START, request);
+		expect(otherStep).toMatchObject({ kind: "answer", value: ASK_OTHER, cursor: { question: 0, awaiting: "editor" } });
+		if (otherStep.kind !== "answer") throw new Error("Expected the Other option");
+		expect(replayStep(questions, [customAnswer], otherStep.cursor, { reqId: 2, kind: "editor", title: question.question })).toMatchObject({ kind: "answer", value: "Custom flavor", done: true });
+	});
+
+	it("replays checkbox defaults, toggles to the saved set, and returns to Next after Other", () => {
+		const questions = parseAskFormQuestions(`<form><fieldset><legend>Platforms</legend>
+			<label><input type="checkbox" name="platforms" value="linux" checked>Linux</label>
+			<label><input type="checkbox" name="platforms" value="windows">Windows</label>
+		</fieldset></form>`)!;
+		const question = questions[0]!;
+		const request = (reqId: number, checkedIndices: number[]): CollabUiRequest => ({
+			reqId, kind: "select", title: question.question,
+			options: [ ...displayLabels(question), ASK_OTHER, ...(checkedIndices.length > 0 ? [ASK_NEXT] : []) ],
+			selectionMarker: "checkbox", checkedIndices, markableCount: 3,
+		});
+		const answers = [{ selected: [1], custom: "", text: "" }];
+		const first = replayStep(questions, answers, REPLAY_START, request(1, [0]));
+		expect(first).toMatchObject({ kind: "answer", value: "Windows" });
+		if (first.kind !== "answer") throw new Error("Expected a checkbox toggle");
+		const second = replayStep(questions, answers, first.cursor, request(2, [0, 1]));
+		expect(second).toMatchObject({ kind: "answer", value: "Linux" });
+		if (second.kind !== "answer") throw new Error("Expected a checkbox toggle");
+		expect(replayStep(questions, answers, second.cursor, request(3, [1]))).toMatchObject({ kind: "answer", value: ASK_NEXT, done: true });
+
+		const customAnswer = [{ selected: [0], custom: "Other platform", text: "" }];
+		const otherStep = replayStep(questions, customAnswer, REPLAY_START, request(4, [0]));
+		expect(otherStep).toMatchObject({ kind: "answer", value: ASK_OTHER, cursor: { question: 0, awaiting: "editor" } });
+		if (otherStep.kind !== "answer") throw new Error("Expected the Other option");
+		const editorStep = replayStep(questions, customAnswer, otherStep.cursor, { reqId: 5, kind: "editor", title: question.question });
+		expect(editorStep).toMatchObject({ kind: "answer", value: "Other platform", cursor: { question: 0, awaiting: "select" } });
+		if (editorStep.kind !== "answer") throw new Error("Expected the Other editor answer");
+		expect(replayStep(questions, customAnswer, editorStep.cursor, request(6, [0, 2]))).toMatchObject({ kind: "answer", value: ASK_NEXT, done: true });
+	});
+
+	it("replays text fields and stops on a validation re-ask title", () => {
+		const questions = parseAskFormQuestions(`<form>
+			<label>Release note<textarea name="note" required>Keep compatibility</textarea></label>
+			<label>Channel<select name="channel"><option>Stable</option><option>Preview</option></select></label>
+		</form>`)!;
+		const question = questions[0]!;
+		const answers = [{ selected: [], custom: "", text: "Too short" }, defaultAnswer(questions[1]!)];
+		const request: CollabUiRequest = { reqId: 1, kind: "editor", title: question.question, prefill: "Keep compatibility" };
+		expect(isSeriesStart(questions, request)).toBe(true);
+		const step = replayStep(questions, answers, REPLAY_START, request);
+		expect(step).toMatchObject({ kind: "answer", value: "Too short", cursor: { question: 1 } });
+		if (step.kind !== "answer") throw new Error("Expected the text answer");
+		expect(replayStep(questions, answers, step.cursor, { reqId: 2, kind: "editor", title: `${question.question} (minimum length)` })).toMatchObject({ kind: "mismatch", reason: expect.stringContaining("validation") });
 	});
 });
 

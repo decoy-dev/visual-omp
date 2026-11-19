@@ -13,7 +13,7 @@ export interface FormLayoutFrame {
 	composerInput: LayoutBox | null;
 	focus: { tag: string; label: string | null; text: string; questionId: string | null } | null;
 	status: string[];
-	questionText: { header: string; placeholder: string; composerHint: string; cardHint: string; working: string };
+	questionText: { header: string; placeholder: string; composerHint: string; cardHint: string; working: string; seriesProgress: string };
 	buttons: { card: FormButtonEvidence[]; composer: FormButtonEvidence[] };
 	busy: string | null;
 	claims: number;

@@ -6,13 +6,13 @@ import { ArrowLeft, ArrowRight, ChatCircle, Question } from "@phosphor-icons/rea
 import { type KeyboardEvent, type ReactNode, useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionController } from "../../state/session";
-import { Button, cn, PresenceSwap, Spinner } from "../../ui";
-import { ASK_CHAT, ASK_OTHER, isComplete } from "./askSeries";
+import { Button, cn, PresenceSwap, Spinner, Textarea } from "../../ui";
+import { ASK_CHAT, ASK_OTHER, formSkipReason, isComplete } from "./askSeries";
 import { askSeriesFor, type AskSeriesState } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { FormContext } from "./FormContext";
 import { ColorText } from "../../transcript/ColorText";
-
-export function AskSeriesCard({ session, series }: { session: SessionController; series: AskSeriesState }): ReactNode {
+export function AskSeriesCard({ session, series, closing = false }: { session: SessionController; series: AskSeriesState; closing?: boolean }): ReactNode {
 	const { t } = useTranslation("chat");
 	const driver = askSeriesFor(session);
 	const titleId = useId();
@@ -23,25 +23,32 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 	const focusOnArrival = useCallback((node: HTMLDivElement | null) => {
 		if (!node || !moved.current) return;
 		moved.current = false;
-		(node.querySelector<HTMLElement>('[data-choice][tabindex="0"]') ?? node.querySelector<HTMLElement>("input"))?.focus({ preventScroll: true });
+		(node.querySelector<HTMLElement>('[data-choice][tabindex="0"]') ?? node.querySelector<HTMLElement>("textarea, input"))?.focus({ preventScroll: true });
 	}, []);
 	const { questions, answers, index, phase } = series;
 	const question = questions[index];
 	const answer = answers[index];
-	const sending = phase !== "editing";
+	const sending = closing || phase !== "editing";
+	const isForm = series.formHtml !== undefined;
 	const canEnd = !sending && driver.pendingRequest() !== null;
 
 	if (!question || !answer) return null;
 	const last = index === questions.length - 1;
 	const complete = isComplete(question, answer);
 	const custom = answer.custom;
+	const savedText = answer.text === undefined ? {} : { text: answer.text };
+	const field = question.formField;
+	const formText = field?.kind === "text";
+	const allowOther = field ? field.kind === "choice" && field.other === true : true;
+	const skipReason = isForm ? formSkipReason(question) : null;
+	const skipReasonText = skipReason ? t(`question.series.skipUnavailable.${skipReason}`) : undefined;
 	const activeIndex = question.multi || custom.trim() || answer.selected.length === 0 ? -1 : (answer.selected[0] ?? -1);
 
-	const go = (to: number) => {
+	const go = (to: number, advance: () => void = () => driver.show(to)) => {
 		if (sending || to < 0 || to >= questions.length) return;
 		setDirection(to > index ? 1 : -1);
 		moved.current = true;
-		driver.show(to);
+		advance();
 	};
 	const next = () => {
 		if (sending || !complete) return;
@@ -51,11 +58,16 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 	const select = (option: number) => {
 		if (sending) return;
 		if (!question.multi) {
-			driver.setAnswer(index, { selected: [option], custom: "" });
+			driver.setAnswer(index, { selected: [option], custom: "", ...savedText });
 			return;
 		}
 		const selected = answer.selected.includes(option) ? answer.selected.filter(at => at !== option) : [...answer.selected, option].sort((a, b) => a - b);
-		driver.setAnswer(index, { selected, custom });
+		driver.setAnswer(index, { selected, custom, ...savedText });
+	};
+	const skip = () => {
+		if (!isForm) driver.skip();
+		else if (last) driver.skipQuestion();
+		else go(index + 1, () => driver.skipQuestion());
 	};
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		// Alt+Left moves the caret by word in a text field, so the shortcuts apply outside one.
@@ -72,54 +84,85 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 
 	return (
 		<div data-question-card="series" data-ask-series={series.toolCallId} className={cn(cardClass, "relative")} onKeyDown={onKeyDown}>
-			{/* Outside the sliding content, so the progress stays put and is announced once per question. */}
-			<span id={progressId} role="status" aria-live="polite" className="absolute top-4 right-4 mt-0.5 text-sm whitespace-nowrap text-fg-muted tabular-nums">
-				{t("question.series.progress", { current: index + 1, total: questions.length })}
-			</span>
+			{questions.length > 1 && (
+				<span id={progressId} role="status" aria-live="polite" className="absolute top-4 right-4 mt-0.5 text-sm whitespace-nowrap text-fg-muted tabular-nums">
+					{t("question.series.progress", { current: index + 1, total: questions.length })}
+				</span>
+			)}
 			<PresenceSwap swapKey={index} variant="slide" direction={direction}>
 				<div ref={focusOnArrival}>
+					{/* The right padding keeps the first context line clear of the progress label, as the title's does. */}
+					{field?.context.length ? <div className={cn(questions.length > 1 && "pr-28")}><FormContext blocks={field.context} question={question.question} /></div> : null}
 					<Heading icon={<Question className="text-accent" />}>
-						{/* The right padding keeps a long title clear of the progress label. */}
-						<p id={titleId} className="selectable pr-28 text-base font-medium wrap-anywhere text-fg">
+						<p id={titleId} className={cn("selectable text-base font-medium wrap-anywhere text-fg", questions.length > 1 && "pr-28")}>
 							<ColorText text={question.question} inlineCode />
 						</p>
 						{question.multi && <p className="mt-0.5 text-sm text-fg-muted">{t("question.chooseMany")}</p>}
 					</Heading>
-					<ChoiceGrid
-						choices={question.options}
-						multi={question.multi}
-						labelledBy={titleId}
-						inlineCode
-						describedBy={progressId}
-						isOn={option => answer.selected.includes(option) && (question.multi || !custom.trim())}
-						activeIndex={activeIndex}
-						onSelect={select}
-						onConfirm={option => {
-							select(option);
-							if (last) driver.submit();
-							else go(index + 1);
-						}}
-						disabled={sending}
-					/>
-					<input
-						value={custom}
-						onChange={event => driver.setAnswer(index, { selected: answer.selected, custom: event.target.value })}
-						onKeyDown={event => {
-							if (event.key === "Enter") next();
-						}}
-						disabled={sending}
-						placeholder={t("question.placeholder")}
-						aria-label={ASK_OTHER}
-						className={otherInputClass}
-					/>
+					{formText ? field?.control === "textarea" ? (
+						<Textarea
+							value={answer.text ?? ""}
+							onChange={event => driver.setAnswer(index, { selected: [], custom: "", text: event.target.value })}
+							placeholder={t("question.placeholder")}
+							aria-labelledby={titleId}
+							minRows={2}
+							maxRows={8}
+							disabled={sending}
+						/>
+					) : (
+						<input
+							value={answer.text ?? ""}
+							onChange={event => driver.setAnswer(index, { selected: [], custom: "", text: event.target.value })}
+							onKeyDown={event => {
+								if (event.key === "Enter") next();
+							}}
+							disabled={sending}
+							placeholder={t("question.placeholder")}
+							aria-labelledby={titleId}
+							className={otherInputClass}
+						/>
+					) : (
+						<ChoiceGrid
+							choices={question.options}
+							multi={question.multi}
+							labelledBy={titleId}
+							inlineCode
+							describedBy={questions.length > 1 ? progressId : undefined}
+							isOn={option => answer.selected.includes(option) && (question.multi || !custom.trim())}
+							activeIndex={activeIndex}
+							onSelect={select}
+							onConfirm={option => {
+								select(option);
+								if (last) driver.submit();
+								else go(index + 1);
+							}}
+							disabled={sending}
+						/>
+					)}
+					{allowOther && (
+						<input
+							value={custom}
+							onChange={event => driver.setAnswer(index, { selected: answer.selected, custom: event.target.value, ...savedText })}
+							onKeyDown={event => {
+								if (event.key === "Enter") next();
+							}}
+							disabled={sending}
+							placeholder={t("question.placeholder")}
+							aria-label={ASK_OTHER}
+							className={otherInputClass}
+						/>
+					)}
+					{skipReasonText && <p id={`${titleId}-skip-reason`} className="mt-2 text-sm text-fg-muted">{skipReasonText}</p>}
 				</div>
 			</PresenceSwap>
 			{!sending && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
 			<div className="mt-3 flex flex-wrap items-center gap-2">
 				{sending ? (
 					<span role="status" className="inline-flex items-center gap-2 text-sm text-fg-muted">
-						<Spinner />
-						{t("question.series.sending")}
+						{closing ? <span data-form-status-text>{t("question.formClosing")}</span> : <>
+							<Spinner />
+							{t("question.series.sending")}
+						</>}
 					</span>
 				) : (
 					<>
@@ -128,15 +171,27 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 								{t("question.series.previous")}
 							</Button>
 						)}
-						<Button variant="ghost" icon={<ChatCircle />} disabled={!canEnd} onClick={() => driver.chat()}>
-							{ASK_CHAT}
-						</Button>
+						{isForm ? (
+							<Button variant="ghost" disabled={!canEnd} onClick={() => driver.cancelForm()}>
+								{t("question.series.cancelForm")}
+							</Button>
+						) : (
+							<Button variant="ghost" icon={<ChatCircle />} disabled={!canEnd} onClick={() => driver.chat()}>
+								{ASK_CHAT}
+							</Button>
+						)}
 					</>
 				)}
 				<div className="ml-auto flex items-center gap-2">
 					{!sending && (
-						<Button variant="ghost" disabled={!canEnd} onClick={() => driver.skip()}>
-							{t("question.series.skip")}
+						<Button
+							variant="ghost"
+							disabled={isForm ? skipReason !== null : !canEnd}
+							aria-describedby={skipReasonText ? `${titleId}-skip-reason` : undefined}
+							title={skipReasonText}
+							onClick={skip}
+						>
+							{t(isForm ? last ? "question.series.skipAndSend" : "question.series.skipThisQuestion" : "question.series.skip")}
 						</Button>
 					)}
 					<Button

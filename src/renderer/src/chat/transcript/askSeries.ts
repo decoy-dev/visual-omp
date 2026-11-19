@@ -14,7 +14,7 @@
  */
 import type { CollabUiRequest, SessionEntry, ToolCallContent, WireMessage } from "@oh-my-pi/pi-wire";
 import { isRecord } from "../../tool-render/util";
-import { isAskFormRequest } from "../../tool-render/tools/askForm";
+import { isAskFormRequest, parseAskForm, type AskFormField } from "../../tool-render/tools/askForm";
 
 // Sentinel labels and the custom-answer title prefix appended by omp's guest ask (extension-ui-controller.ts).
 export const ASK_OTHER = "Other (type your own)";
@@ -25,6 +25,8 @@ export const CUSTOM_ANSWER_PREFIX = "Custom answer: ";
 export interface AskOption {
 	label: string;
 	description?: string;
+	/** Original enabled form label, including any text shown as a description. */
+	requestLabel?: string;
 }
 
 export interface AskQuestion {
@@ -33,12 +35,14 @@ export interface AskQuestion {
 	options: AskOption[];
 	multi: boolean;
 	recommended?: number;
+	formField?: AskFormField;
 }
 
-/** One question's answer: option indices (at most one for single choice) and the trimmed "Other" text ("" = none). */
+/** One question's answer: option indices, the "Other" text, and a form text value when applicable. */
 export interface AskAnswer {
 	selected: readonly number[];
 	custom: string;
+	text?: string;
 }
 
 /** Where the replay is: the question being answered and whether omp's next request is its select or its custom-answer editor. */
@@ -86,21 +90,79 @@ export function parseAskQuestions(args: unknown): AskQuestion[] | null {
 	return questions.length > 0 ? questions : null;
 }
 
-/** The option omp preselects for a single choice: `recommended`, clamped to the list. */
-export function initialIndex(question: AskQuestion): number {
-	return Math.max(0, Math.min(question.recommended ?? 0, Math.max(0, question.options.length - 1)));
+/** The HTML form fields that omp will ask through collab, in document order. */
+export function parseAskFormQuestions(html: string): AskQuestion[] | null {
+	const fields = parseAskForm(html).fields;
+	const questions: AskQuestion[] = [];
+	for (const [index, field] of fields.entries()) {
+		const enabled = field.kind === "choice" ? field.options.filter(option => !option.disabled) : [];
+		if (field.kind === "choice" && enabled.length === 0 && !field.other) continue;
+		const question: AskQuestion = {
+			id: `${field.name}:${index}`,
+			question: field.question,
+			options: enabled.map(option => ({
+				label: option.label,
+				...(option.description ? { description: option.description } : {}),
+				requestLabel: option.requestLabel ?? option.label,
+			})),
+			multi: field.multi,
+			formField: field,
+		};
+		const wireLabels = displayLabels(question);
+		question.options = question.options.map((option, optionIndex) => {
+			const wireLabel = sanitizeText(option.requestLabel ?? option.label);
+			const suffix = wireLabels[optionIndex]?.slice(wireLabel.length) ?? "";
+			return { ...option, label: `${option.label}${suffix}`, requestLabel: wireLabel };
+		});
+		questions.push(question);
+	}
+	return questions.length > 0 ? questions : null;
 }
 
-/** The answer a question starts with: omp's preselected option for a single choice, nothing for multiple choice. */
+export function initialIndex(question: AskQuestion): number {
+	return Math.max(0, Math.min(question.recommended ?? 0, question.options.length - 1));
+}
+
+/** The answer a question starts with: omp's recommendation or the HTML field's preselected value. */
 export function defaultAnswer(question: AskQuestion): AskAnswer {
+	const field = question.formField;
+	if (field?.kind === "text") return { selected: [], custom: "", text: field.value ?? "" };
+	if (field?.kind === "choice") {
+		const enabled = field.options.filter(option => !option.disabled);
+		const selected = enabled.flatMap((option, index) => option.selected ? [index] : []);
+		if (field.multi) return { selected, custom: "", text: "" };
+		if (field.control === "select" && selected.length === 0 && enabled.length > 0) selected.push(0);
+		return { selected: selected.length > 0 ? [selected.at(-1)!] : [], custom: "", text: "" };
+	}
 	return { selected: !question.multi && question.options.length > 0 ? [initialIndex(question)] : [], custom: "" };
 }
 
-/** A single choice needs one option or text; multiple choice needs at least one option or text (omp's Next gating). */
+/** Whether the answer is ready to replay through omp's form request sequence. */
 export function isComplete(question: AskQuestion, answer: AskAnswer | undefined): boolean {
 	if (!answer) return false;
+	const field = question.formField;
+	if (field?.kind === "text") return !field.required || !!answer.text?.trim();
+	if (field?.kind === "choice") {
+		if (answer.custom.trim() && field.other) return true;
+		return field.multi ? !field.required || answer.selected.length > 0 : answer.selected.length === 1;
+	}
 	if (answer.custom.trim()) return true;
 	return question.multi ? answer.selected.length > 0 : answer.selected.length === 1;
+}
+
+export type FormSkipReason = "single" | "checkbox" | "text";
+
+/** Why a form field cannot be left at its default, or null when Skip can use that default. */
+export function formSkipReason(question: AskQuestion): FormSkipReason | null {
+	const field = question.formField;
+	if (!field) return null;
+	const answer = defaultAnswer(question);
+	if (field.kind === "text") return field.required && !answer.text?.trim() ? "text" : null;
+	if (!field.multi) {
+		if (answer.selected.length > 0) return null;
+		return question.options.length === 0 && field.other ? "text" : "single";
+	}
+	return field.required && answer.selected.length === 0 ? "checkbox" : null;
 }
 
 function optionLabel(request: CollabUiRequest & { kind: "select" }, index: number): string | undefined {
@@ -114,9 +176,10 @@ function optionLabel(request: CollabUiRequest & { kind: "select" }, index: numbe
  * carriage returns cleaned, and a " (2)", " (3)"… suffix on one that repeats an earlier label or a sentinel.
  */
 export function displayLabels(question: AskQuestion): string[] {
-	const taken = new Set<string>([ASK_OTHER, ASK_CHAT, ASK_NEXT]);
+	const reserved = question.formField ? [ASK_OTHER, ASK_NEXT] : [ASK_OTHER, ASK_CHAT, ASK_NEXT];
+	const taken = new Set<string>(reserved);
 	return question.options.map(option => {
-		const base = sanitizeText(option.label);
+		const base = sanitizeText(option.requestLabel ?? option.label);
 		let candidate = base;
 		for (let suffix = 2; taken.has(candidate); suffix++) candidate = `${base} (${suffix})`;
 		taken.add(candidate);
@@ -124,11 +187,47 @@ export function displayLabels(question: AskQuestion): string[] {
 	});
 }
 
+function formSelectMismatch(question: AskQuestion, request: CollabUiRequest): string | null {
+	const field = question.formField;
+	if (!field || field.kind !== "choice") return "expected a form choice field";
+	if (request.kind !== "select") return `expected a select, got ${request.kind}`;
+	if (request.title !== sanitizeText(question.question)) return "the title is a different question";
+	if ((request.selectionMarker ?? "radio") !== (field.multi ? "checkbox" : "radio")) return "the selection marker differs";
+	const labels = displayLabels(question);
+	const rows = [...labels, ...(field.other ? [ASK_OTHER] : [])];
+	const checked = request.checkedIndices ?? [];
+	if (checked.some(index => !Number.isInteger(index) || index < 0 || index >= rows.length)) return "a checked index is out of range";
+	if (new Set(checked).size !== checked.length) return "a checked index is repeated";
+	if (request.markableCount !== undefined && request.markableCount !== rows.length) return "the option count differs";
+	const tail = field.multi
+		? [...(field.other ? [ASK_OTHER] : []), ...(!field.required || checked.length > 0 ? [ASK_NEXT] : [])]
+		: field.other ? [ASK_OTHER] : [];
+	const expected = [...labels, ...tail];
+	if (request.options.length !== expected.length) return "the option count differs";
+	for (let index = 0; index < expected.length; index++) {
+		if (optionLabel(request, index) !== expected[index]) return index < labels.length ? "the options differ" : "the trailing options differ";
+	}
+	if (field.multi) return null;
+	if (checked.length > 0) return "a single-choice request has checked options";
+	const initial = defaultAnswer(question).selected[0] ?? 0;
+	if ((request.initialIndex ?? 0) !== initial) return "the initial choice differs";
+	return null;
+}
+
+function formEditorMismatch(question: AskQuestion, request: CollabUiRequest): string | null {
+	if (request.kind !== "editor") return `expected an editor, got ${request.kind}`;
+	const field = question.formField;
+	if (!field || (field.kind === "choice" && !field.other)) return "the field does not accept text";
+	return request.title === sanitizeText(question.question) ? null : "the editor title is a different question";
+}
+
+
+
 /**
- * Why `request` is not omp's select for `question`, or null when it is. Checks the title, the
- * marker, every option label in order (as omp displays them) and the sentinel rows after them.
+ * Why a select request is not this question, or null when its labels and sentinels match.
  */
 export function selectMismatch(question: AskQuestion, request: CollabUiRequest): string | null {
+	if (question.formField) return formSelectMismatch(question, request);
 	if (request.kind !== "select") return `expected a select, got ${request.kind}`;
 	if (request.title !== sanitizeText(question.question)) return "the title is a different question";
 	const count = question.options.length;
@@ -144,11 +243,20 @@ export function selectMismatch(question: AskQuestion, request: CollabUiRequest):
 	}
 	return null;
 }
-
-/** omp's first request of the series: question 1's select with nothing checked. */
+/** omp's first request of a series: question 1 with the form's own defaults. */
 export function isSeriesStart(questions: readonly AskQuestion[], request: CollabUiRequest): boolean {
 	const first = questions[0];
-	return questions.length > 1 && first !== undefined && selectMismatch(first, request) === null && request.kind === "select" && !request.checkedIndices?.length;
+	if (!first) return false;
+	if (first.formField) {
+		const field = first.formField;
+		if (field.kind === "text") return formEditorMismatch(first, request) === null && request.kind === "editor" && (request.prefill ?? "") === (field.value ?? "");
+		if (request.kind !== "select" || formSelectMismatch(first, request) !== null) return false;
+		const defaults = defaultAnswer(first).selected;
+		const checked = request.checkedIndices ?? [];
+		if (field.multi) return defaults.length === checked.length && defaults.every(index => checked.includes(index));
+		return (request.initialIndex ?? 0) === (defaults[0] ?? 0);
+	}
+	return questions.length > 1 && selectMismatch(first, request) === null && request.kind === "select" && !request.checkedIndices?.length;
 }
 
 /** Text without whitespace, which `boundPromptTitle` collapses and wraps at the terminal width. */
@@ -182,6 +290,55 @@ function advance(cursor: ReplayCursor, total: number, value: string): ReplayStep
 	return { kind: "answer", value, cursor: { question, awaiting: "select", steps: 0 }, done: question >= total };
 }
 
+/** Replays one HTML form field, including its checkbox and Other round trips. */
+function replayFormStep(questions: readonly AskQuestion[], question: AskQuestion, answer: AskAnswer, cursor: ReplayCursor, request: CollabUiRequest): ReplayStep {
+	const field = question.formField!;
+	if (cursor.awaiting === "editor") {
+		const mismatch = formEditorMismatch(question, request);
+		if (mismatch) return { kind: "mismatch", reason: mismatch };
+		if (field.kind === "text") return advance(cursor, questions.length, answer.text ?? "");
+		if (!answer.custom.trim()) return { kind: "mismatch", reason: "the form Other answer is empty" };
+		if (field.multi) return { kind: "answer", value: answer.custom.trim(), cursor: { ...cursor, awaiting: "select", steps: cursor.steps + 1 }, done: false };
+		return advance(cursor, questions.length, answer.custom.trim());
+	}
+
+	if (field.kind === "text") {
+		const mismatch = formEditorMismatch(question, request);
+		if (mismatch) return { kind: "mismatch", reason: mismatch };
+		return advance(cursor, questions.length, answer.text ?? "");
+	}
+	const mismatch = formSelectMismatch(question, request);
+	if (mismatch) return { kind: "mismatch", reason: mismatch };
+	if (request.kind !== "select") return { kind: "mismatch", reason: "expected a select" };
+	const custom = answer.custom.trim();
+	if (!field.multi) {
+		if (custom) {
+			if (!field.other) return { kind: "mismatch", reason: "the field does not accept an Other answer" };
+			return { kind: "answer", value: ASK_OTHER, cursor: { ...cursor, awaiting: "editor", steps: cursor.steps + 1 }, done: false };
+		}
+		const label = optionLabel(request, answer.selected[0] ?? 0);
+		if (label === undefined) return { kind: "mismatch", reason: "the chosen option is missing" };
+		return advance(cursor, questions.length, label);
+	}
+
+	if (cursor.steps > question.options.length * 2 + (field.other ? 3 : 1)) return { kind: "mismatch", reason: "the choices did not take effect" };
+	const checked = new Set(request.checkedIndices ?? []);
+	const wanted = new Set(answer.selected);
+	const otherIndex = question.options.length;
+	if (custom) {
+		if (!field.other) return { kind: "mismatch", reason: "the field does not accept an Other answer" };
+		wanted.add(otherIndex);
+	}
+	const toggle = [...wanted].find(index => !checked.has(index)) ?? [...checked].find(index => !wanted.has(index));
+	if (toggle !== undefined) {
+		const label = optionLabel(request, toggle);
+		if (label === undefined) return { kind: "mismatch", reason: "the chosen option is missing" };
+		const opensOther = toggle === otherIndex && custom !== "" && !checked.has(toggle);
+		return { kind: "answer", value: label, cursor: { ...cursor, awaiting: opensOther ? "editor" : "select", steps: cursor.steps + 1 }, done: false };
+	}
+	return advance(cursor, questions.length, ASK_NEXT);
+}
+
 /**
  * The reply to omp's next request while replaying `answers`, and where the replay goes next. A request
  * that does not have the expected shape is a mismatch: the caller stops replaying and lets the user
@@ -193,6 +350,12 @@ export function replayStep(
 	cursor: ReplayCursor,
 	request: CollabUiRequest,
 ): ReplayStep {
+	if (cursor.question > 0 && request.kind === "editor") {
+		const previous = questions[cursor.question - 1];
+		if (previous?.formField?.kind === "text" && request.title.startsWith(`${sanitizeText(previous.question)} (`) && request.title.endsWith(")")) {
+			return { kind: "mismatch", reason: "omp re-asked a text field after validation" };
+		}
+	}
 	const question = questions[cursor.question];
 	if (!question) return { kind: "mismatch", reason: "omp asked again after the last answer" };
 	const answer = answers[cursor.question];
@@ -200,6 +363,7 @@ export function replayStep(
 	if (answer.selected.some(index => !Number.isInteger(index) || index < 0 || index >= question.options.length)) {
 		return { kind: "mismatch", reason: "an answer points past the options" };
 	}
+	if (question.formField) return replayFormStep(questions, question, answer, cursor, request);
 	const custom = answer.custom.trim();
 
 	if (cursor.awaiting === "editor") {

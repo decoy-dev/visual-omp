@@ -153,6 +153,14 @@
 			"next": "Next question",
 			"send": "Send answers",
 			"skip": "Skip questions",
+			"skipThisQuestion": "Skip this question",
+			"skipAndSend": "Skip and send answers",
+			"cancelForm": "Cancel form and stop reply",
+			"skipUnavailable": {
+				"single": "The form preselects no answer here, so this question can't be skipped. Choose an option to continue.",
+				"checkbox": "This question needs a choice and the form checks none, so it can't be skipped. Check a box to continue.",
+				"text": "This question needs an answer and the form leaves it empty, so it can't be skipped. Type an answer to continue."
+			},
 			"sending": "Sending your answers to omp…",
 			"fallback": "omp asked in a form the app did not expect, so it stopped sending your saved answers. Answer the rest here."
 		}

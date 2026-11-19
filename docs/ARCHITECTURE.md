@@ -1112,14 +1112,22 @@ Snapshots expose `questionMatches`, including diagnostic
 `nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock
 and retain first observations through completion; they do not establish input authority.
 
-omp 18.18.3 HTML `ask` forms retain the field-by-field collab question cards in both
-presentations. Radio and checkbox Other rows open omp's next editor request; their titles
-no longer use the legacy custom-answer prefix. The transcript's inert-template parser
-extracts legends, labels, options and preselected values without attaching model HTML.
-Pictures contribute accessible text only. Result details render `answers[]` question-answer
-pairs, including empty answers and timeout submissions. Saved `questions[]` calls retain
-their existing renderer and series replay.
+From omp 18.18.3, HTML `ask` forms are parsed from `html` and presented as an answer series. The renderer
+holds the first collab request while the user reviews each field. Previous question and Next question
+keep answers local until Send answers begins replay. The card shows progress only when the form has
+two or more questions. It renders safe form context, option descriptions, enabled choices, and text
+inputs or textareas. It hides form guest `helpText`, including omp's terminal key hints.
 
+Skip this question restores the field's default and advances. On the last question it sends the
+answers. Skip is unavailable when a single-choice field has no preselected option, a required
+checkbox group has no preselected boxes, or a required text field is empty. Cancel form and stop
+reply cancels the held request without form values. omp closes the form and ends its reply.
+Single choices replay by enabled-option wire label, including disambiguation suffixes. Other uses
+the field editor. Checkbox replay toggles from omp's `checkedIndices` until the saved set matches,
+then sends Next. Text uses the field editor. A mismatch, including a validation re-ask title,
+stops replay and shows the live field card for the remaining questions with the existing fallback
+note. The live fallback card also hides form guest key hints. Saved `questions[]` calls keep their
+existing renderer and replay.
 The renderer parses `form.html` in an inert template into safe paragraphs, headings, ordered and
 unordered lists, and inline runs for text, strong, emphasis, code and validated links. Ordered
 lists use decimal markers; unordered lists use bullets. It assigns text before a field to the
@@ -1151,33 +1159,45 @@ visible in the chat with an explicit View question in omp screen action. Other n
 dialogs follow the same explicit-opening policy. omp supplies no common form request
 id across the two channels, so matching still uses content and established node identity.
 
-The form presenter is keyed by its tool call and host generation rather than each guest
-request. After an answer, collab retires the displayed request before the next field and
-main's replacement match arrive. The presenter keeps the previous field visible during
-that gap. A capture guard ignores pointer and activation-key events for the retired request
-without disabling or dimming its choice and footer buttons; the group reports its busy and
-unavailable state to assistive technology. Editors remain disabled while waiting. Its established claim can follow a matched or settling binding
-on the same physical form, scoped to the host, generation, protocol epoch and source HTML.
-Missing nodes, uncertain matching, a different form or hidden/unmounted presentation release
-that ownership. The completed call keeps its disabled presenter until the paired native node
-departs, so result delivery cannot briefly reveal a second form. This uses no timer.
+The form series and live fallback presenters are keyed by the `ask` tool call and host
+generation rather than each guest request. While the person edits, the series holds omp's first
+request and sends no answers. Its per-chat driver stays bound to the same collab room, host
+generation and guest client. It sends saved answers only while the mirror is live, current,
+writable and fully downloaded. The driver records each request id before responding; a repeated
+request or a mismatch stops replay and returns control to the live fallback card.
 
-Form updates reuse the question card and option nodes across guest request ids.
-`questionPresentation` derives a pending ask from its writable active form. It keeps
-that ask active during request gaps. The header subtitle, composer placeholder and question hint retain their question text,
-and the working row remains absent until the ask ends. `pendingAsk` still requires a current
-request before granting prompt authority. Completion or cancellation clears the pending
-presentation; a completed card says it is closing until its paired native node departs. The visible
-card and its surrounding form area retain their tallest measured heights as minimums
-within the current step. A request after a submitted answer starts a new step, even
-when its title and options repeat. A change to request kind, title, selection mode or
-option labels also starts a step. A changed form source resets the step. Help text,
-option descriptions and checkbox state updates keep the current step. The minimums
-persist during field edits and width changes. They stay in place while omp displays
-the closing status and until it shows the next request. A shorter step gets its own
-measurement, so both areas shrink. While a minimum is held, the card stacks as a
-column and keeps its hint and buttons in a bottom group (`mt-auto`). Editor focus and
-radio-key navigation use `preventScroll`.
+The live `FormQuestionCard` remains for forms the series cannot represent and for replay
+fallbacks. After it answers a field, collab retires that request before the next field and main's
+replacement match arrive. The card keeps the previous field visible during that gap. A capture
+guard ignores pointer and activation-key events for the retired request without disabling or
+dimming its choice and footer buttons; the group reports its busy and unavailable state to
+assistive technology. Editors remain disabled while waiting.
+Both presenters claim the physical form root when it matches the visible request. The claim
+follows a matched or settling binding on the same form, scoped to the host, generation, protocol
+epoch and source HTML. Missing nodes, uncertain matching, a different form or hidden or
+unmounted presentation release ownership. The completed call keeps its disabled presenter
+until the paired native node departs, so result delivery cannot briefly reveal a second form.
+omp 19.0.0 shows a question as a card in its transcript (`omp.ask.card`) instead of a form in
+place of the editor, so there is no form root to claim. Both presenters then follow the collab
+requests alone, as in classic chats.
+
+In the live fallback card, `FormQuestionCard` reuses the question and option nodes across guest
+request ids. `questionPresentation` derives a pending ask from its writable active form and keeps
+it active during request gaps. The header subtitle, composer placeholder and question hint retain
+their question text, and the working row remains absent until the ask ends. `pendingAsk` still
+requires a current request before granting prompt authority. Completion or cancellation clears
+the pending presentation; a completed card says it is closing until its paired native node
+departs.
+
+A submitted field starts a new fallback step even if its title and options repeat. Changes to
+request kind, title, selection mode or option labels also start a step. A changed form source
+resets it. Form guest `helpText` is hidden in both the series and fallback cards. Option
+descriptions and checkbox state updates keep the current fallback step. The card and its
+surrounding form area retain their tallest measured heights within the current step. They keep
+those minimums during field edits and width changes and until the next request or closing status.
+A shorter step gets its own measurement. While a minimum is held, the card stacks as a column
+and keeps its hint and buttons in a bottom group (`mt-auto`). Editor focus and radio-key
+navigation use `preventScroll`.
 The composer retains only the form's displayed question id across request gaps and delayed
 native matches. Actual `uiRequest` readiness still controls submission; the cached display
 id grants no input authority. Its question tray and hint remain in place instead of showing

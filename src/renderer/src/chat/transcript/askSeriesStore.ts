@@ -16,10 +16,13 @@ import {
 	type AskAnswer,
 	type AskQuestion,
 	defaultAnswer,
+	findRunningFormAsk,
 	findSeriesAsk,
+	formSkipReason,
 	isAskRunning,
 	isComplete,
 	isSeriesStart,
+	parseAskFormQuestions,
 	REPLAY_START,
 	type ReplayCursor,
 	replayStep,
@@ -43,6 +46,8 @@ export interface AskSeriesState {
 	heldReqId: number;
 	questions: readonly AskQuestion[];
 	answers: readonly AskAnswer[];
+	/** Present for an HTML form series; the live form card handles any replay mismatch. */
+	formHtml?: string;
 	/** The question on screen. */
 	index: number;
 	phase: AskSeriesPhase;
@@ -114,6 +119,31 @@ export class AskSeriesDriver {
 	/** Cancelling any question cancels the whole ask in omp. */
 	skip(): void {
 		this.#finish(undefined);
+	}
+
+	/** Leaves the current HTML form field at its default and advances locally. */
+	skipQuestion(): void {
+		const state = this.#state;
+		if (state?.phase !== "editing" || !state.formHtml) return;
+		const question = state.questions[state.index];
+		if (!question || formSkipReason(question) !== null) return;
+		const answers = state.answers.map((current, at) => at === state.index ? defaultAnswer(question) : current);
+		const last = state.index === state.questions.length - 1;
+		if (!last) {
+			this.#set({ ...state, answers, index: state.index + 1 });
+			return;
+		}
+		if (!state.questions.every((item, at) => isComplete(item, answers[at]))) {
+			this.#set({ ...state, answers });
+			return;
+		}
+		this.#set({ ...state, answers, phase: "sending", cursor: REPLAY_START });
+		this.#queueFlush();
+	}
+
+	/** Cancels the held HTML form request and ends omp's reply without submitting form data. */
+	cancelForm(): void {
+		if (this.#state?.formHtml) this.#finish(undefined);
 	}
 
 	#finish(value: string | undefined): void {
@@ -195,27 +225,60 @@ export class AskSeriesDriver {
 				this.#clear();
 				return;
 			}
+			if (state.formHtml) {
+				const form = findRunningFormAsk(guest);
+				if (!form || form.toolCallId !== state.toolCallId || form.html !== state.formHtml) {
+					this.#clear();
+					return;
+				}
+			}
 			const request = guest.uiRequest;
-			// Anything other than the held question 1 while the user answers (an approval, say) goes to the usual card unanswered.
+			// Anything other than the held first request while the user answers goes to the live card unanswered.
 			if (state.phase === "editing" && request && (request.reqId !== state.heldReqId || !isSeriesStart(state.questions, request))) {
 				this.#fallback(state, `omp sent another request (${request.kind} "${request.title}") while the questions were open`);
 			} else if (state.phase === "sending") this.#queueFlush();
+			// After the last answer omp should finish the ask; a new request is a re-ask, such as a value omp rejected.
+			else if (state.phase === "sent" && request && !this.#answered.has(request.reqId)) {
+				this.#fallback(state, `omp asked again after the last answer (${request.kind} "${request.title}")`);
+			}
 			return;
 		}
 		const request = guest.uiRequest;
-		if (!room || request?.kind !== "select") return;
+		if (!room || !request) return;
 		const inputs = [request, guest.activeTools, guest.entries, guest.stream, guest.working];
 		if (inputs.every((input, index) => input === this.#detected[index])) return;
 		this.#detected = inputs;
-		const ask = findSeriesAsk(guest, request.title);
-		if (!ask || this.#done.has(ask.toolCallId) || !isSeriesStart(ask.questions, request)) return;
+		if (request.kind === "select") {
+			const ask = findSeriesAsk(guest, request.title);
+			if (ask && !this.#done.has(ask.toolCallId) && isSeriesStart(ask.questions, request)) {
+				this.#answered.clear();
+				this.#set({
+					toolCallId: ask.toolCallId,
+					room,
+					heldReqId: request.reqId,
+					questions: ask.questions,
+					answers: ask.questions.map(defaultAnswer),
+					index: 0,
+					phase: "editing",
+					cursor: REPLAY_START,
+					fallbackReason: null,
+					fallbackWhileSending: false,
+				});
+				return;
+			}
+		}
+		const form = findRunningFormAsk(guest);
+		if (!form || this.#done.has(form.toolCallId)) return;
+		const questions = parseAskFormQuestions(form.html);
+		if (!questions || !isSeriesStart(questions, request)) return;
 		this.#answered.clear();
 		this.#set({
-			toolCallId: ask.toolCallId,
+			toolCallId: form.toolCallId,
 			room,
 			heldReqId: request.reqId,
-			questions: ask.questions,
-			answers: ask.questions.map(defaultAnswer),
+			questions,
+			answers: questions.map(defaultAnswer),
+			formHtml: form.html,
 			index: 0,
 			phase: "editing",
 			cursor: REPLAY_START,
@@ -242,6 +305,11 @@ export class AskSeriesDriver {
 		const request = guest?.uiRequest;
 		if (!guest || !request) return;
 		if (!isAskRunning(guest, state.toolCallId)) return;
+		if (state.cursor.question === 0 && state.cursor.awaiting === "select" && state.cursor.steps === 0
+			&& (request.reqId !== state.heldReqId || !isSeriesStart(state.questions, request))) {
+			this.#fallback(state, "the first replay request did not match the held request");
+			return;
+		}
 		// omp asking again for a request that was answered means the reply may not have arrived: answering again could toggle twice.
 		if (this.#answered.has(request.reqId)) {
 			this.#fallback(state, `omp repeated request ${request.reqId}, which was already answered`);
