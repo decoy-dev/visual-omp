@@ -154,7 +154,7 @@ beforeEach(() => {
 		host: { hostId: "host", generation: 1, transport: "tsp", tspAvailability: snapshot.availability, cwd: "/tmp/plan-test", phase: "live",
 			link: null, sessionId: null, sessionFile: null, pid: null, exitCode: null, error: null, tui: null, cols: 80, rows: 24 },
 	};
-	controller = { hostId: "host", tabId: "plan-test", projectPath: "/tmp/plan-test", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, preserveFailedMessage: vi.fn() } as unknown as SessionController;
+	controller = { hostId: "host", tabId: "plan-test", projectPath: "/tmp/plan-test", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, preserveFailedMessage: vi.fn(), btwLine: () => null } as unknown as SessionController;
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") listeners.add(listener); return () => listeners.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);

@@ -26,9 +26,10 @@ describe.each(Object.entries(cardMarkdown))("%s Markdown safety", (_name, render
 		expect(html).not.toMatch(/<img\b/i);
 		expect(html).not.toMatch(/\bsrc=/i);
 	});
-	it("escapes raw HTML without creating active elements or event handlers", () => {
+	it("interprets a raw image only as an inert placeholder and escapes other raw HTML", () => {
 		const html = render('<img src="https://images.example/raw" onerror="alert(1)">\n\n<script>alert(2)</script>');
-		expect(html).toContain("&lt;img");
+		expect(html).toContain('data-remote-image="https://images.example/raw"');
+		expect(html).not.toContain("onerror");
 		expect(html).toContain("&lt;script&gt;");
 		expect(html).not.toMatch(/<img\b|<script\b|<iframe\b/i);
 	});

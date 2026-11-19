@@ -42,7 +42,7 @@ beforeEach(() => {
 	view = { mode: "live", readOnly: false, working: true, workingSince: Date.now(), guest: null, history: null, inputHistory: [], queue: [], strandedImages: false, host: null, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, error: null };
 	held = false; listeners = new Set();
 	session = { tabId: "redirect", projectPath: "/project", subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, getSnapshot: () => view,
-		abort: vi.fn(), send: vi.fn(async () => {}), holdQueue: (promise: Promise<unknown>) => { held = true; void promise.then(() => { held = false; }); }, preserveFailedMessage: vi.fn(),
+		abort: vi.fn(), send: vi.fn(async () => {}), holdQueue: (promise: Promise<unknown>) => { held = true; void promise.then(() => { held = false; }); }, preserveFailedMessage: vi.fn(), btwLine: () => null,
 	} as unknown as SessionController;
 	useComposerDrafts.getState().setDraft("redirect", "Keep these words");
 	useComposerDrafts.getState().addAttachments("redirect", [{ path: "/image.png", name: "image.png" }]);
