@@ -103,12 +103,12 @@ describe("omp 19.0.0 ask card", () => {
 		"omp.ask.error", "omp.ask.field", "omp.ask.label", "omp.ask.note", "omp.ask.options", "omp.ask.summary", "omp.ask.text", "omp.ask.preview", "omp.composer.skip",
 	];
 
-	it("recognizes the card's roles and keeps its fold and pill actions omp's own", () => {
+	it("recognizes the card's roles and its fold and pill actions", () => {
 		expect(roles.filter(role => !isKnownRole(role))).toEqual([]);
-		for (const action of ["open:1", "pick:1:0", "pick:12:3"]) {
-			expect(isKnownAction(action)).toBe(false);
-			expect(isReadOnlyAction(action)).toBe(true);
+		for (const action of ["open:0", "open:1", "pick:1:0", "pick:12:3"]) {
+			expect(isKnownAction(action)).toBe(true);
+			expect(isReadOnlyAction(action)).toBe(false);
 		}
-		for (const action of ["open:", "open:x", "pick:1", "pick:1:0:2"]) expect(isReadOnlyAction(action)).toBe(false);
+		for (const action of ["open:", "open:x", "open:01", "pick:1", "pick:1:0:2", "pick:-1:0", "open:1\n", "open:9999999"]) expect(isKnownAction(action)).toBe(false);
 	});
 });

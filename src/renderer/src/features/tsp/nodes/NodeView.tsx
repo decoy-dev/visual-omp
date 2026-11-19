@@ -57,6 +57,10 @@ function warnUnsupportedActions(node: TspNode): void {
 		warnUnsupportedActions(child);
 	}
 }
+/** Whether a descendant takes its own clicks, such as the option pills inside a folded question of omp 19's ask card. */
+function hasOwnControls(node: TspNode): boolean {
+	return node.c?.some(child => child.k === "button" || (!Array.isArray(child.p?.actions) && !!child.p?.actions?.click) || hasOwnControls(child)) ?? false;
+}
 function Fallback({ node, context }: NodeProps) {
 	const { t } = useTranslation("palette");
 	const [palette, setPalette] = useState<TerminalColors | null>(null);
@@ -146,9 +150,13 @@ export function NodeView({ node, context }: NodeProps) {
 	const content = <Body node={node} context={childContext} />;
 	const actionable = click && !["button", "list", "picker", "tree", "item", "tool", "agent", "json", "shell"].includes(node.k);
 	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
-	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly || unsupportedClick} title={unsupportedClick ? t("tsp.unsupportedAction", { action: click }) : undefined} onClick={() => {
+	const activate = () => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));
 		else if (click === "toggle") context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed: node.k === "card" || node.k === "section" ? !node.p?.collapsed : true });
-		else context.send({ ev: "action", sf: context.sf, id: node.id, act: click });
-	}}>{content}</Button> : content}</div>;
+		else if (click) context.send({ ev: "action", sf: context.sf, id: node.id, act: click });
+	};
+	// A button inside a button would send both clicks and hide the inner one from assistive technology, so a container
+	// with its own controls keeps them and offers its click as a separate button named by omp's title.
+	if (actionable && hasOwnControls(node)) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button size="sm" variant="secondary" disabled={readOnly} onClick={activate}>{node.p?.title ?? t("tsp.openAction")}</Button></div>;
+	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly} onClick={activate}>{content}</Button> : content}</div>;
 }

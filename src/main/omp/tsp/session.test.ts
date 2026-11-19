@@ -362,6 +362,32 @@ describe("TSP session", () => {
 		expect(h.session.availability().reasonCode).toBeUndefined();
 	});
 
+	it("sends omp 19's ask card fold and pill actions only for the declaring control inside a visible card", async () => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
+		// Shapes from omp 19.0.0's recorded ask card: a fold opens its question and a pill picks its option.
+		h.frame(2, [
+			["add", "card", "main", null, { id: "card", k: "col", p: { role: "omp.ask.card" }, c: [
+				{ id: "fold", k: "col", p: { role: "omp.ask.fold", title: "Answer this question", actions: { click: "open:2" } }, c: [{ id: "question", k: "text", p: { role: "omp.ask.fold.question", spans: [{ t: "Release note headline" }] } }] },
+				{ id: "pill", k: "button", p: { role: "omp.ask.pill", text: "Linux", size: "sm", actions: { click: "pick:1:2" } } },
+				{ id: "busy", k: "button", p: { role: "omp.ask.pill", text: "Quick", size: "sm", disabled: true, actions: { click: "pick:3:0" } } },
+			] }],
+			["add", "outside", "main", null, { id: "outside", k: "button", p: { text: "Linux", actions: { click: "pick:1:2" } } }],
+		]);
+		await h.flush();
+		await h.session.send({ ev: "action", sf: "s:1", id: "fold", act: "open:2" });
+		await h.session.send({ ev: "action", sf: "s:1", id: "pill", act: "pick:1:2" });
+		for (const [id, act] of [["pill", "pick:1:0"], ["fold", "pick:1:2"], ["busy", "pick:3:0"], ["outside", "pick:1:2"]] as const) {
+			await expect(h.session.send({ ev: "action", sf: "s:1", id, act })).rejects.toThrow("question card no longer offers this action");
+		}
+		h.frame(3, [["set", "card", { role: "omp.ask.card", hidden: true }]]);
+		await h.flush();
+		await expect(h.session.send({ ev: "action", sf: "s:1", id: "pill", act: "pick:1:2" })).rejects.toThrow("question card no longer offers this action");
+		expect(h.bodies().filter(body => body.ev === "action")).toEqual([
+			{ ev: "action", sf: "s:1", id: "fold", act: "open:2" },
+			{ ev: "action", sf: "s:1", id: "pill", act: "pick:1:2" },
+		]);
+	});
+
 	it("does not confuse missing, unnegotiated or send-unsupported surfaces with rich asks", () => {
 		const h = harness();
 		expect(h.session.availability().reasonCode).toBeUndefined();

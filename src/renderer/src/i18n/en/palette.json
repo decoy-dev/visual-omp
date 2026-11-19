@@ -70,6 +70,7 @@
 		"shellUnavailable": "Shell visualization is unavailable for this data.",
 		"unsupportedAction": "visual-omp cannot perform the omp action {{action}}.",
 		"unavailableAction": "Unavailable action",
+		"openAction": "Open",
 		"otherOutput": "Other omp output",
 		"rawOutline": "Show raw outline",
 		"retained": "This omp screen has closed. Its output is read-only.",

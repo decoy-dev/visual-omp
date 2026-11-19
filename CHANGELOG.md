@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### Improved
+
+- With omp 19.0.0 and later, omp's own question card works in the omp screen. Choose an answer's button to pick it, and choose Answer this question to open a question. These buttons used to be unavailable there, although Submit and Cancel already worked.
+
 ## [0.8.4] - 2026-11-19
 
 visual-omp 0.8.4 answers omp's forms one question at a time, shows the pictures omp puts in its replies and works with omp 19.0.0. It requires omp 18.15.0 or later.

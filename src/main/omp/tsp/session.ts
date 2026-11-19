@@ -3,7 +3,7 @@ import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, typ
 import type { TspAvailability, TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { TspRendererEvent } from "../../../shared/tsp-host.schema";
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isAskFormAction, isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
+import { isAskCardAction, isAskFormAction, isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents } from "../../../shared/tsp/dialogs";
 import { TspHookAnswer } from "../../../shared/tsp/dialogs.schema";
 import { planReview } from "../../../shared/tsp/plan-review";
@@ -353,6 +353,10 @@ export class TspSession {
 				if (event.ev === "action" && isAskFormAction(event.act)) {
 					const form = [...walkNodes(surface.doc.snapshot())].find(root => (root.p?.role === TSP_ROLES.editorAsk || root.p?.role === TSP_ROLES.editorAskHidden) && [...walkNodes(root)].some(child => child.id === node.id));
 					if (!form || Array.isArray(node.p?.actions) || node.p?.actions?.click !== event.act || node.k === "button" && (node.p?.disabled === true || typeof node.p?.disabled === "string" || node.p?.busy)) throw new TspInputStateError("omp screen: The form no longer offers this action.");
+				}
+				if (event.ev === "action" && isAskCardAction(event.act)) {
+					const card = [...walkNodes(surface.doc.snapshot())].find(root => root.p?.role === TSP_ROLES.askCard && !root.p?.hidden && [...walkNodes(root)].some(child => child.id === node.id));
+					if (!card || Array.isArray(node.p?.actions) || node.p?.actions?.click !== event.act || node.k === "button" && (node.p?.disabled === true || typeof node.p?.disabled === "string" || node.p?.busy)) throw new TspInputStateError("omp screen: The question card no longer offers this action.");
 				}
 				if ((event.ev === "select" || event.ev === "activate") && node.k === "tabs" && node.p?.role === TSP_ROLES.askQuestions
 					&& !node.p.items.some(item => item.id === event.item)) throw new TspInputStateError("omp screen: The form question tab is no longer available.");

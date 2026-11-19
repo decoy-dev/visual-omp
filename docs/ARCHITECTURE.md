@@ -1179,7 +1179,11 @@ unmounted presentation release ownership. The completed call keeps its disabled 
 until the paired native node departs, so result delivery cannot briefly reveal a second form.
 omp 19.0.0 shows a question as a card in its transcript (`omp.ask.card`) instead of a form in
 place of the editor, so there is no form root to claim. Both presenters then follow the collab
-requests alone, as in classic chats.
+requests alone, as in classic chats. In the omp screen, omp's card stays usable: a fold's
+`open:<question>` and a pill's `pick:<question>:<option>` are sent only for the control inside a
+visible card that declares that exact action (`isAskCardAction` and the guard in
+`TspSession.send`). A fold holds its pills, so `NodeView` keeps the pills as their own buttons and
+draws the fold's click as a separate button named by omp's title, "Answer this question".
 
 In the live fallback card, `FormQuestionCard` reuses the question and option nodes across guest
 request ids. `questionPresentation` derives a pending ask from its writable active form and keeps

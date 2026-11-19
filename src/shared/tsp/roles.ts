@@ -61,16 +61,20 @@ export function isAskFormAction(action: string): boolean {
 	const match = /^edit:(0|[1-9]\d*)$/.exec(action);
 	return match !== null && match[0] === action && Number.isSafeInteger(Number(match[1]));
 }
-export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action); }
+export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action) || isAskCardAction(action); }
 /** Recorded actions without an app interaction path stay display-only. */
 // The BTW note controls (omp 18.21.0) stay omp's own: the app opens the side-question history with `/btw` instead.
 export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
 /**
- * omp 19.0.0's ask card in the transcript opens a folded question (`open:<question>`) and picks a pill
- * (`pick:<question>:<option>`). The app answers through collab's question requests, so these stay omp's own.
+ * omp 19.0.0's ask card in the transcript opens a folded question (`open:<question>`) and picks or flips an option pill
+ * (`pick:<question>:<option>`) without submitting. The omp screen sends them only for the control inside a visible card
+ * that declares that exact action, as it does for the form controls above.
  */
+export function isAskCardAction(action: string): boolean {
+	return /^(?:open:(?:0|[1-9]\d{0,5})|pick:(?:0|[1-9]\d{0,5}):(?:0|[1-9]\d{0,5}))$/.test(action);
+}
 export function isReadOnlyAction(action: string): boolean {
-	return Object.hasOwn(TSP_READ_ONLY_ACTIONS, action) || /^(?:open:\d+|pick:\d+:\d+)$/.test(action);
+	return Object.hasOwn(TSP_READ_ONLY_ACTIONS, action);
 }
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
