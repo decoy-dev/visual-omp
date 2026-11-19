@@ -33,8 +33,8 @@ export default {
       id: "side-question", title: "04 Side questions with ?", pane: "files",
       prompts: [[
         "fixture notes",
-        "This chat checks omp 19.0.0's side questions. A message that starts with ? goes to omp as a side question, as /btw does, and the message box says so while you type one.",
-        "Send ? fixture notes What should I check first? Side questions opens with the question and the local model's answer, and the chat can take its next message right away.",
+        "This chat checks omp 19.0.0's side questions. A message that starts with ? goes to omp as a side question, as /btw does. Once omp has started in a chat, the message box says so while you type one.",
+        "Send ? fixture notes What should I check first? Side questions opens with the question and the local model's answer, and the chat can take its next message right away. Then type ? and another question in the message box: the note appears under it.",
       ].join("\n")],
     },
   ],
