@@ -4,6 +4,40 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-19
+
+visual-omp 0.8.4 answers omp's forms one question at a time, shows the pictures omp puts in its replies and works with omp 19.0.0. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** **Forms one question at a time.** Move back and forth between a form's questions, skip one, or cancel the whole form, and send all the answers at once.
+- **New:** Pictures in omp's replies appear in the chat, and pages appear as cards that open them.
+- **Improved:** File paths in a reply link to files in folders the chat used earlier.
+- **Fixed:** With omp 19.0.0, a question that starts with `?` goes to Side questions, and the chat no longer waits for it.
+- **Fixed:** Chats show the robot mark while omp waits for its helpers with its `wait` tool.
+
+### Detailed changes
+
+#### New
+
+- omp's forms (omp 18.18.3 and later) are answered in one card, one question at a time, with Question 2 of 4 at the top. Previous question and Next question move between them and keep your answers, and Send answers on the last question sends them all to omp at once. Skip this question keeps the answer the form gave that question, such as its preselected option or prefilled text, and moves on; it is unavailable, with the reason shown, when the form gives no answer omp would accept. Cancel form and stop reply closes the form without answers, which also ends omp's reply. Question cards no longer show omp's terminal key hints, such as "Escape cancel". If omp asks something the app did not expect while it sends your answers, the card stops and you answer the rest one question at a time.
+- Since omp 18.21.0, omp asks the model to show a picture with an `<img>` tag and a web page with an `<iframe>` tag, and visual-omp showed those tags as text. Replies now show the picture. A file in the chat's folder, or one named by its full path, appears at the width omp asked for, two pictures on one line sit side by side, and clicking a picture opens its file. A picture from the web waits until you choose Load image. A page appears as a link card that opens a web address in your browser and a local file in visual-omp.
+
+#### Improved
+
+- A file path in a reply links to the file when the path is relative to a folder the chat used earlier, such as a folder omp read a file from or ran commands in, as long as exactly one file matches. visual-omp looked only in the chat's folder, folders named in the same reply and the turn's Outputs.
+- A form with several questions that you cancel, or whose reply you stop, reads Form was cancelled in the transcript instead of Question was skipped. A one-question form still reads Question was skipped.
+
+#### Fixed
+
+- With omp 19.0.0, a message that starts with `?` and has no attached images is a side question, as `/btw` is. visual-omp sends it to Side questions and says so under the message box while you type one. A lone `?` stays an ordinary message. The chat's queue used to wait for a reply to the side question that never came.
+- Chats show the robot mark while omp waits for its helpers with its `wait` tool. visual-omp looked for a tool that omp replaced before 18.15, so the chat kept the spinner while omp waited.
+- After visual-omp reloads, a question that still waits for your answer shows as waiting in the transcript instead of Result unavailable.
+- Bash cards list the saved output of a long command again with omp 19.0.0, which names that output differently.
+- The omp screen shows omp 19.0.0's question card without notices about unknown elements.
+- The glob card shows the pattern beside the folder it searched, as omp 19.0.0 can send them apart.
+- A file row whose picture has transparent parts no longer shows the file icon through it.
+
 ## [0.8.3] - 2026-11-18
 
 visual-omp 0.8.3 adds color themes you can edit, keeps the sidebar's order steady while omp works and reorganizes the project page. It also shows the explanations in omp's forms and fixes the helpers mark. It requires omp 18.15.0 or later.
