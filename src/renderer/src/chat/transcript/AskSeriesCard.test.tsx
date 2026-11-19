@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as UiModule from "../../ui";
 import "../../i18n";
+import { TooltipProvider } from "../../ui/Tooltip";
 import type { SessionController } from "../../state/session";
 import { defaultAnswer, parseAskFormQuestions } from "./askSeries";
 import { AskSeriesCard } from "./AskSeriesCard";
@@ -67,7 +68,7 @@ describe("AskSeriesCard", () => {
 			fallbackWhileSending: false,
 		};
 		const session = {} as SessionController;
-		const html = renderToStaticMarkup(createElement(AskSeriesCard, { session, series }));
+		const html = renderToStaticMarkup(<TooltipProvider><AskSeriesCard session={session} series={series} /></TooltipProvider>);
 		const root = document.createElement("div");
 		root.innerHTML = html;
 		expect([...root.querySelectorAll("code")].map(code => code.textContent)).toEqual(["db.name", "config.yml", "mode"]);
@@ -89,14 +90,16 @@ describe("AskSeriesCard", () => {
 			fallbackReason: null,
 			fallbackWhileSending: false,
 		};
-		const html = renderToStaticMarkup(createElement(AskSeriesCard, { session: {} as SessionController, series }));
+		const html = renderToStaticMarkup(<TooltipProvider><AskSeriesCard session={{} as SessionController} series={series} /></TooltipProvider>);
 		const root = document.createElement("div");
 		root.innerHTML = html;
 		expect(root.textContent).toContain("Keep the note concise.");
 		expect(root.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("Default note");
 		// The only question is also the last, so skipping it sends the form.
 		expect(root.textContent).toContain("Skip and send answers");
-		expect(root.textContent).toContain("Cancel form and stop reply");
+		// Cancel form and stop reply lives in the ⋯ menu at the top right, which closed markup shows as its button.
+		expect(root.querySelector('[data-card-actions][aria-label="More actions"]')).not.toBeNull();
+		expect([...root.querySelectorAll("button")].some(button => button.textContent?.trim() === "Cancel form and stop reply")).toBe(false);
 		expect(root.textContent).not.toContain("Question 1 of 1");
 		expect(root.textContent).not.toContain("Skip questions");
 		expect(root.textContent).not.toContain("↑/↓ navigate Enter toggle Next → continue Escape cancel");
@@ -117,7 +120,7 @@ describe("AskSeriesCard", () => {
 			fallbackReason: null,
 			fallbackWhileSending: false,
 		};
-		const html = renderToStaticMarkup(createElement(AskSeriesCard, { session: {} as SessionController, series }));
+		const html = renderToStaticMarkup(<TooltipProvider><AskSeriesCard session={{} as SessionController} series={series} /></TooltipProvider>);
 		const root = document.createElement("div");
 		root.innerHTML = html;
 		const skip = [...root.querySelectorAll("button")].find(button => button.textContent?.trim() === "Skip and send answers");
@@ -147,7 +150,7 @@ describe("AskSeriesCard", () => {
 			fallbackWhileSending: false,
 		};
 		const root = document.createElement("div");
-		root.innerHTML = renderToStaticMarkup(createElement(AskSeriesCard, { session: {} as SessionController, series }));
+		root.innerHTML = renderToStaticMarkup(<TooltipProvider><AskSeriesCard session={{} as SessionController} series={series} /></TooltipProvider>);
 		expect(root.querySelector("[data-form-context]")?.textContent).toContain("Choose a channel for this release.");
 		expect(root.querySelector('[data-choice="0"]')?.querySelector(".text-md.font-medium")?.textContent).toBe("Stable");
 		expect(root.querySelector('[data-choice="0"]')?.querySelector(".text-sm.text-fg-muted")?.textContent).toBe("Use the tested channel.");
@@ -189,7 +192,7 @@ describe("AskSeriesCard", () => {
 		document.body.append(host);
 		const root = createRoot(host);
 		try {
-			await act(async () => root.render(createElement(Harness)));
+			await act(async () => root.render(<TooltipProvider><Harness /></TooltipProvider>));
 			const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent?.trim() === label)!;
 			await act(async () => button("Previous question").click());
 			expect(host.querySelector("[data-test-swap-direction]")?.getAttribute("data-test-swap-direction")).toBe("-1");

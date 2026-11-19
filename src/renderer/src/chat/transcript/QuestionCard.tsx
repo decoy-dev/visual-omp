@@ -8,11 +8,11 @@ import { type ReactNode, type SyntheticEvent, useCallback, useEffect, useId, use
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
 import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
-import { Button, cn, Textarea, toast } from "../../ui";
+import { Button, cn, MenuItem, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, defaultAnswer, formSkipReason, parseAskFormQuestions, replayStep, REPLAY_START, toolCallState, type AskQuestion, type ReplayCursor, type RunningFormAsk } from "./askSeries";
 import { useAskSeries, type AskSeriesState } from "./askSeriesStore";
-import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { CardActionsMenu, ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
 import { FormContext } from "./FormContext";
 import { useTsp } from "../../state/tsp/useTsp";
 import { usePresentationClaim, type PresentationTarget } from "../../state/tsp/presentation-claims";
@@ -515,14 +515,23 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 		session.answer(request.reqId, custom);
 	}, [request, session, onStepSubmitted]);
 
+	// A form card's ⋯ menu sits at the top right; the first lines keep clear of it.
+	const cornerPad = formRequest ? "pr-8" : undefined;
+	const cornerMenu = formRequest && (
+		<div className="absolute top-4 right-3">
+			<CardActionsMenu>
+				<MenuItem danger disabled={disabled && !steadyControls} onSelect={() => onFormCancel?.()}>{t("question.series.cancelForm")}</MenuItem>
+			</CardActionsMenu>
+		</div>
+	);
 	const noteLine = note && (
-		<p className="mb-3 flex items-start gap-2 text-sm text-fg-muted">
+		<p className={cn("mb-3 flex items-start gap-2 text-sm text-fg-muted", cornerPad)}>
 			<Info aria-hidden className="mt-0.5 size-4 shrink-0" />
 			{note}
 		</p>
 	);
 	// The current step keeps its minimum through edits and request gaps.
-	const steadyCard = cn(cardClass, minimumHeight ? "flex flex-col" : undefined);
+	const steadyCard = cn(cardClass, "relative", minimumHeight ? "flex flex-col" : undefined);
 	const statusText = formStatus ?? (pendingAsk(session.getSnapshot()) ? t("question.messageCloses") : undefined);
 	const statusLine = statusText && <p role={formStatus === undefined ? undefined : "status"} className={formStatus === undefined ? "mt-3 text-sm text-fg-muted" : "mt-3 grid text-sm text-fg-muted"}>
 		{formStatus === undefined ? statusText : <>
@@ -531,17 +540,18 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 			<span data-form-status-text className="[grid-area:1/1]">{statusText}</span>
 		</>}
 	</p>;
-	const formContextLine = formContext && <FormContext blocks={formContext} question={request.title} />;
+	const formContextLine = formContext && <div className={cornerPad}><FormContext blocks={formContext} question={request.title} /></div>;
 
 	if (request.kind === "editor") {
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
 		return (
 			<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
+				{cornerMenu}
 				{noteLine}
 				{formContextLine}
 				<Heading icon={<Question className="text-accent" />}>
-					<p id={titleId} className="selectable mb-3 text-base font-medium text-fg">
+					<p id={titleId} className={cn("selectable mb-3 text-base font-medium text-fg", cornerPad)}>
 						<ColorText text={request.title} inlineCode />
 					</p>
 					<Textarea
@@ -559,14 +569,11 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 					{statusLine}
 					{formSkipMessage && <p id={`${titleId}-skip-reason`} className="mt-2 text-sm text-fg-muted">{formSkipMessage}</p>}
 					<div className="mt-3 flex justify-end gap-2">
-						{formRequest ? <>
+						{formRequest ? (
 							<Button variant="ghost" disabled={(disabled && !steadyControls) || !!formSkipMessage} aria-describedby={formSkipMessage ? `${titleId}-skip-reason` : undefined} onClick={() => onFormSkip?.()}>
 								{t("question.series.skipThisQuestion")}
 							</Button>
-							<Button variant="ghost" disabled={disabled && !steadyControls} onClick={() => onFormCancel?.()}>
-								{t("question.series.cancelForm")}
-							</Button>
-						</> : (
+						) : (
 							<Button variant="ghost" onClick={() => answer()}>
 								{t("question.skip")}
 							</Button>
@@ -672,10 +679,11 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	return (
 		<div data-question-card={request.reqId} className={steadyCard} style={{ minHeight: minimumHeight }}>
 			{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
+			{cornerMenu}
 			{noteLine}
 			{formContextLine}
 			<Heading icon={<Question className="text-accent" />}>
-				<p id={titleId} className="selectable text-base font-medium text-fg">
+				<p id={titleId} className={cn("selectable text-base font-medium text-fg", cornerPad)}>
 					<ColorText text={request.title} inlineCode />
 				</p>
 				{(multi || helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={helpText ?? t("question.chooseMany")} inlineCode /></p>}
@@ -719,14 +727,11 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 						</Button>
 					)}
 					<div className="flex-1" />
-					{formRequest ? <>
+					{formRequest ? (
 						<Button variant="ghost" disabled={(disabled && !steadyControls) || !!formSkipMessage} aria-describedby={formSkipMessage ? `${titleId}-skip-reason` : undefined} onClick={() => onFormSkip?.()}>
 							{t("question.series.skipThisQuestion")}
 						</Button>
-						<Button variant="ghost" disabled={disabled && !steadyControls} onClick={() => onFormCancel?.()}>
-							{t("question.series.cancelForm")}
-						</Button>
-					</> : (
+					) : (
 						<Button variant="ghost" onClick={() => answer()}>
 							{t("question.skip")}
 						</Button>

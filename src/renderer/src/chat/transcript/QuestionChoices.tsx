@@ -1,8 +1,9 @@
 /** Pieces shared by the per-request question card and the question series card (DESIGN §4.8). */
-import { Check } from "@phosphor-icons/react";
+import { Check, DotsThree } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useId } from "react";
-import { cn, spring } from "../../ui";
+import { useTranslation } from "react-i18next";
+import { cn, IconButton, Menu, MenuContent, MenuTrigger, spring } from "../../ui";
 import { ColorText } from "../../transcript/ColorText";
 
 export const cardClass = "rounded-lg border border-border bg-panel p-4 shadow-(--shadow-card)";
@@ -19,6 +20,19 @@ export function Heading({ icon, children }: { icon: ReactNode; children: ReactNo
 			</span>
 			<div className="min-w-0 flex-1">{children}</div>
 		</div>
+	);
+}
+
+/** The ⋯ menu at a question card's top right, for the actions that end the question rather than answer it. */
+export function CardActionsMenu({ children }: { children: ReactNode }): ReactNode {
+	const { t } = useTranslation("chat");
+	return (
+		<Menu>
+			<MenuTrigger asChild>
+				<IconButton data-card-actions label={t("question.moreActions")} icon={<DotsThree weight="bold" />} size="sm" />
+			</MenuTrigger>
+			<MenuContent align="end">{children}</MenuContent>
+		</Menu>
 	);
 }
 

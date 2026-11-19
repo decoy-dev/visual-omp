@@ -6,10 +6,10 @@ import { ArrowLeft, ArrowRight, ChatCircle, Question } from "@phosphor-icons/rea
 import { type KeyboardEvent, type ReactNode, useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionController } from "../../state/session";
-import { Button, cn, PresenceSwap, Spinner, Textarea } from "../../ui";
+import { Button, cn, MenuItem, PresenceSwap, Spinner, Textarea } from "../../ui";
 import { ASK_CHAT, ASK_OTHER, formSkipReason, isComplete } from "./askSeries";
 import { askSeriesFor, type AskSeriesState } from "./askSeriesStore";
-import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { CardActionsMenu, ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
 import { FormContext } from "./FormContext";
 import { ColorText } from "../../transcript/ColorText";
 export function AskSeriesCard({ session, series, closing = false }: { session: SessionController; series: AskSeriesState; closing?: boolean }): ReactNode {
@@ -43,6 +43,7 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 	const skipReason = isForm ? formSkipReason(question) : null;
 	const skipReasonText = skipReason ? t(`question.series.skipUnavailable.${skipReason}`) : undefined;
 	const activeIndex = question.multi || custom.trim() || answer.selected.length === 0 ? -1 : (answer.selected[0] ?? -1);
+	const clearOfCorner = questions.length > 1 ? "pr-40 @max-[26rem]/askcard:pr-0" : "pr-8";
 
 	const go = (to: number, advance: () => void = () => driver.show(to)) => {
 		if (sending || to < 0 || to >= questions.length) return;
@@ -83,18 +84,30 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 	};
 
 	return (
-		<div data-question-card="series" data-ask-series={series.toolCallId} className={cn(cardClass, "relative")} onKeyDown={onKeyDown}>
-			{questions.length > 1 && (
-				<span id={progressId} role="status" aria-live="polite" className="absolute top-4 right-4 mt-0.5 text-sm whitespace-nowrap text-fg-muted tabular-nums">
-					{t("question.series.progress", { current: index + 1, total: questions.length })}
-				</span>
-			)}
+		<div data-question-card="series" data-ask-series={series.toolCallId} className={cn(cardClass, "relative @container/askcard")} onKeyDown={onKeyDown}>
+			{/* Progress and the ⋯ menu share the top right; the title and the first context line keep clear of them, or start
+			    below them once the card is too narrow to share the line. */}
+			<div className="absolute top-4 right-3 flex items-center gap-2">
+				{questions.length > 1 && (
+					<span id={progressId} role="status" aria-live="polite" className="text-sm whitespace-nowrap text-fg-muted tabular-nums">
+						{t("question.series.progress", { current: index + 1, total: questions.length })}
+					</span>
+				)}
+				{!sending && (
+					<CardActionsMenu>
+						{isForm ? (
+							<MenuItem danger disabled={!canEnd} onSelect={() => driver.cancelForm()}>{t("question.series.cancelForm")}</MenuItem>
+						) : (
+							<MenuItem icon={<ChatCircle />} disabled={!canEnd} onSelect={() => driver.chat()}>{ASK_CHAT}</MenuItem>
+						)}
+					</CardActionsMenu>
+				)}
+			</div>
 			<PresenceSwap swapKey={index} variant="slide" direction={direction}>
-				<div ref={focusOnArrival}>
-					{/* The right padding keeps the first context line clear of the progress label, as the title's does. */}
-					{field?.context.length ? <div className={cn(questions.length > 1 && "pr-28")}><FormContext blocks={field.context} question={question.question} /></div> : null}
+				<div ref={focusOnArrival} className={cn(questions.length > 1 && "@max-[26rem]/askcard:pt-9")}>
+					{field?.context.length ? <div className={clearOfCorner}><FormContext blocks={field.context} question={question.question} /></div> : null}
 					<Heading icon={<Question className="text-accent" />}>
-						<p id={titleId} className={cn("selectable text-base font-medium wrap-anywhere text-fg", questions.length > 1 && "pr-28")}>
+						<p id={titleId} className={cn("selectable text-base font-medium wrap-anywhere text-fg", clearOfCorner)}>
 							<ColorText text={question.question} inlineCode />
 						</p>
 						{question.multi && <p className="mt-0.5 text-sm text-fg-muted">{t("question.chooseMany")}</p>}
@@ -156,7 +169,7 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 				</div>
 			</PresenceSwap>
 			{!sending && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
-			<div className="mt-3 flex flex-wrap items-center gap-2">
+			<div data-series-footer className="mt-3 flex flex-wrap items-center gap-2">
 				{sending ? (
 					<span role="status" className="inline-flex items-center gap-2 text-sm text-fg-muted">
 						{closing ? <span data-form-status-text>{t("question.formClosing")}</span> : <>
@@ -164,23 +177,10 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 							{t("question.series.sending")}
 						</>}
 					</span>
-				) : (
-					<>
-						{index > 0 && (
-							<Button variant="ghost" icon={<ArrowLeft />} onClick={() => go(index - 1)} aria-keyshortcuts="Alt+ArrowLeft">
-								{t("question.series.previous")}
-							</Button>
-						)}
-						{isForm ? (
-							<Button variant="ghost" disabled={!canEnd} onClick={() => driver.cancelForm()}>
-								{t("question.series.cancelForm")}
-							</Button>
-						) : (
-							<Button variant="ghost" icon={<ChatCircle />} disabled={!canEnd} onClick={() => driver.chat()}>
-								{ASK_CHAT}
-							</Button>
-						)}
-					</>
+				) : index > 0 && (
+					<Button variant="ghost" icon={<ArrowLeft />} onClick={() => go(index - 1)} aria-keyshortcuts="Alt+ArrowLeft">
+						<FooterLabel full={t("question.series.previous")} />
+					</Button>
 				)}
 				<div className="ml-auto flex items-center gap-2">
 					{!sending && (
@@ -191,7 +191,10 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 							title={skipReasonText}
 							onClick={skip}
 						>
-							{t(isForm ? last ? "question.series.skipAndSend" : "question.series.skipThisQuestion" : "question.series.skip")}
+							<FooterLabel
+								full={t(isForm ? last ? "question.series.skipAndSend" : "question.series.skipThisQuestion" : "question.series.skip")}
+								short={t("question.series.skipShort")}
+							/>
 						</Button>
 					)}
 					<Button
@@ -201,10 +204,25 @@ export function AskSeriesCard({ session, series, closing = false }: { session: S
 						onClick={next}
 						aria-keyshortcuts={last ? undefined : "Alt+ArrowRight"}
 					>
-						{last ? t("question.series.send") : t("question.series.next")}
+						{last
+							? <FooterLabel full={t("question.series.send")} short={t("question.series.sendShort")} narrowOnly />
+							: <FooterLabel full={t("question.series.next")} short={t("question.series.nextShort")} />}
 					</Button>
 				</div>
 			</div>
 		</div>
 	);
+}
+
+/**
+ * A footer label that keeps the footer on one row as the card narrows. Below 32rem (22rem with `narrowOnly`) only the
+ * short label shows, or the button's icon alone without one; the rest of the full label stays for assistive
+ * technology, so the button's name and text never change. The breakpoints are in rem, so they follow the app's text
+ * size. A short label that does not begin the full one leaves the full label showing.
+ */
+function FooterLabel({ full, short, narrowOnly = false }: { full: string; short?: string; narrowOnly?: boolean }): ReactNode {
+	const hidden = narrowOnly ? "@max-[22rem]/askcard:sr-only" : "@max-[32rem]/askcard:sr-only";
+	if (short === undefined) return <span className={hidden}>{full}</span>;
+	if (!full.startsWith(short)) return full;
+	return <span>{short}<span className={hidden}>{full.slice(short.length)}</span></span>;
 }

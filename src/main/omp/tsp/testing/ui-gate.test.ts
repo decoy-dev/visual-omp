@@ -834,6 +834,40 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.clickElement(button("Next question"));
 		await page.until("document.querySelector('[data-question-card=\"series\"]').textContent.includes('Question 4 of 4')");
 		await page.clickElement(choice(1));
+		// The last question's footer holds Previous, Skip and send and Send on one row inside the card, and the title keeps
+		// a readable width clear of the progress and ⋯ menu, from a wide chat down to a 360px split pane, at 100% and 130% text.
+		for (const scale of [100, 130]) {
+			for (const width of [1100, 560, 420, 360]) {
+				await page.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+				await page.evaluate(`document.documentElement.style.fontSize=${JSON.stringify(`${scale}%`)}`);
+				await delay(100);
+				const footer = await page.evaluate<{ card: { left: number; right: number }; title: { top: number; right: number; height: number; lineHeight: number }; corner: { bottom: number; left: number }; buttons: { text: string; top: number; left: number; right: number; overflow: boolean }[] }>(`(() => {
+					const footer = document.querySelector('[data-question-card="series"] [data-series-footer]');
+					const card = footer.closest('[data-question-card]').getBoundingClientRect();
+					const titleElement = document.getElementById(document.querySelector('[data-question-card="series"] [role="radiogroup"]').getAttribute('aria-labelledby'));
+					const titleText = document.createRange();
+					titleText.selectNodeContents(titleElement);
+					const title = titleText.getBoundingClientRect();
+					const corner = document.querySelector('[data-question-card="series"] [data-card-actions]').parentElement.getBoundingClientRect();
+					return { card: { left: card.left, right: card.right }, title: { top: title.top, right: title.right, height: title.height, lineHeight: parseFloat(getComputedStyle(titleElement).lineHeight) }, corner: { bottom: corner.bottom, left: corner.left }, buttons: [...footer.querySelectorAll('button')].map(button => { const box = button.getBoundingClientRect(); return { text: button.textContent.trim(), top: Math.round(box.top), left: box.left, right: box.right, overflow: button.scrollWidth > button.clientWidth + 1 }; }) };
+				})()`);
+				const where = `${width}px at ${scale}%`;
+				expect(footer.buttons.map(button => button.text), where).toEqual(["Previous question", "Skip and send answers", "Send answers"]);
+				expect(new Set(footer.buttons.map(button => button.top)).size, `${where}: one row`).toBe(1);
+				for (const button of footer.buttons) {
+					expect(button.overflow, `${where}: ${button.text} fits its label`).toBe(false);
+					expect(button.left >= footer.card.left && button.right <= footer.card.right, `${where}: ${button.text} stays inside the card`).toBe(true);
+				}
+				expect(footer.title.height, `${where}: "Review depth" stays on one line`).toBeLessThan(footer.title.lineHeight * 1.5);
+				expect(footer.title.right <= footer.corner.left || footer.title.top >= footer.corner.bottom, `${where}: title clear of the progress and menu`).toBe(true);
+				if (!classic && theme === "light") {
+					const footerShot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+					await writeFile(join(shots, `ask-series-footer-${width}-${scale}.png`), Buffer.from(footerShot.data, "base64"));
+				}
+			}
+		}
+		await page.evaluate("document.documentElement.style.fontSize='100%'");
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
 		await page.evaluate("window.gate.beginFormUpdates()");
 		await page.clickElement(button("Send answers"));
 
@@ -1071,7 +1105,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		}
 		const firstButtons = captured.frames[0]!.buttons;
 		expect(firstButtons.card.map(button => button.text)).toContain("Skip this question");
-		expect(firstButtons.card.map(button => button.text)).toContain("Cancel form and stop reply");
+		expect(firstButtons.card.map(button => button.label)).toContain("More actions");
 		expect(firstButtons.card.map(button => button.text)).toContain("Next question");
 		expect(firstButtons.composer.some(button => button.label === "Send message")).toBe(true);
 		for (const frame of captured.frames) for (const section of ["card", "composer"] as const) {
@@ -1087,7 +1121,9 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(captured.frames.every(frame => frame.claims === 1 && !frame.screen)).toBe(true);
 		expect(await page.evaluate("window.gate.calls")).toEqual([]);
 		// This gate reuses one session, so end the form before the next parameterized scenario.
-		await page.clickElement("[...document.querySelectorAll('[data-question-card=\"series\"] button')].find(button => button.textContent.trim() === 'Cancel form and stop reply')", false);
+		await page.clickElement("document.querySelector('[data-question-card=\"series\"] [data-card-actions]')", false);
+		await page.until("[...document.querySelectorAll('[role=\"menuitem\"]')].some(item => item.textContent.trim() === 'Cancel form and stop reply')");
+		await page.clickElement("[...document.querySelectorAll('[role=\"menuitem\"]')].find(item => item.textContent.trim() === 'Cancel form and stop reply')", false);
 		await page.until("window.gate.calls.length === 1 && !document.querySelector('[data-question-card=\"series\"]')");
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 30_000);

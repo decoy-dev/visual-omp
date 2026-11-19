@@ -8,7 +8,7 @@ export default {
         "This chat checks question cards. Send fixture form: the local fixture model asks four release questions in one form. The card shows Question 1 of 4, one question at a time, and no terminal key hints such as Escape cancel.",
         "Choose Beta, then Next question. On Platforms to check, check Linux, then Next question: the card gets shorter for Release note headline, and the chat stays scrolled to the bottom. Choose Previous question: Linux is still checked. Go forward again and choose Skip this question on the headline, which keeps the form's text for it.",
         "On Review depth, choose Quick, then Send answers. omp gets all four answers at once and replies; the ask card lists Beta, macOS, Windows and Linux, the original headline, and Quick.",
-        "Send fixture form again and choose Cancel form and stop reply: the form closes without answers, omp stops its reply, and the ask row reads Form was cancelled.",
+        "Send fixture form again, open the ⋯ menu beside Question 1 of 4 and choose Cancel form and stop reply: the form closes without answers, omp stops its reply, and the ask row reads Form was cancelled. The footer keeps Previous question on the left and Skip and Next on the right, in one row.",
         "With omp 19.0.0, send fixture form once more and choose Open omp screen while the card waits: omp shows its own question card in its transcript, with no notices about unknown elements. Answer in the app's card.",
       ].join("\n")],
     },

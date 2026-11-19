@@ -145,6 +145,7 @@
 		"denialReason": "Explain what omp should do instead",
 		"denialFailed": "Couldn't send the denial message",
 		"skip": "Skip question",
+		"moreActions": "More actions",
 		"answer": "Send answer",
 		"send": "Send answer",
 		"placeholder": "Type your answer…",
@@ -158,6 +159,9 @@
 			"skip": "Skip questions",
 			"skipThisQuestion": "Skip this question",
 			"skipAndSend": "Skip and send answers",
+			"skipShort": "Skip",
+			"nextShort": "Next",
+			"sendShort": "Send",
 			"cancelForm": "Cancel form and stop reply",
 			"skipUnavailable": {
 				"single": "The form preselects no answer here, so this question can't be skipped. Choose an option to continue.",

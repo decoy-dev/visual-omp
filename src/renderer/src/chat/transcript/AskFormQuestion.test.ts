@@ -20,6 +20,17 @@ import { usePendingQuestion } from "./QuestionCard";
 import { askSeriesFor } from "./askSeriesStore";
 import evidence from "../../../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
 import "../../i18n";
+import { TooltipProvider } from "../../ui/Tooltip";
+
+/** Opens the card's ⋯ menu from the keyboard and chooses Cancel form and stop reply. */
+async function chooseCancelForm(card: Element): Promise<void> {
+	const trigger = card.querySelector<HTMLButtonElement>("[data-card-actions]");
+	expect(trigger).not.toBeNull();
+	await act(async () => trigger!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(entry => entry.textContent?.trim() === "Cancel form and stop reply");
+	expect(item).not.toBeUndefined();
+	await act(async () => item!.click());
+}
 
 vi.hoisted(() => {
 	// As in ComposerAvailability.test, use Motion's JS fallback for happy-dom's incomplete WAAPI.
@@ -104,7 +115,7 @@ beforeEach(async () => {
 	vi.spyOn(controller, "guestClient").mockReturnValue({ getSnapshot: () => view.guest! } as GuestClient);
 	stopApp = useApp.subscribe((state, previous) => { if (state.terminalTabId && state.terminalTabId !== previous.terminalTabId) opens.push(state.terminalTabId); });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
-	await act(async () => root.render(createElement(Harness)));
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Harness))));
 	await vi.waitFor(() => expect(presentationClaims.getSnapshot()).toHaveLength(1));
 });
 afterEach(async () => {
@@ -169,10 +180,7 @@ it("keeps answers while navigating and restores defaults when skipping a field",
 
 it("cancels the held form request and ends omp's reply", async () => {
 	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
-	const cancel = [...element.querySelectorAll<HTMLButtonElement>('[data-question-card="series"] button')]
-		.find(button => button.textContent?.trim() === "Cancel form and stop reply");
-	expect(cancel).not.toBeUndefined();
-	await act(async () => cancel!.click());
+	await chooseCancelForm(element.querySelector('[data-question-card="series"]')!);
 	expect(answer).toHaveBeenCalledExactlyOnceWith(first.reqId, undefined);
 });
 it("replays saved form answers in request order", async () => {
@@ -211,9 +219,7 @@ it("cancels the choice list after cancelling its Other editor", async () => {
 	const editor: CollabUiRequest = { reqId: 99, kind: "editor", title: first.title, prefill: "" };
 	await updateRequest(editor);
 	await vi.waitFor(() => expect(element.querySelector('[data-form-question] [data-question-card="99"]')).not.toBeNull());
-	const cancel = [...element.querySelectorAll<HTMLButtonElement>('[data-question-card="99"] button')]
-		.find(button => button.textContent?.trim() === "Cancel form and stop reply")!;
-	await act(async () => cancel.click());
+	await chooseCancelForm(element.querySelector('[data-question-card="99"]')!);
 	expect(answer).toHaveBeenCalledExactlyOnceWith(99, undefined);
 
 	await updateRequest({ ...first, reqId: 100 });
@@ -297,7 +303,7 @@ it("uses the live form fallback and hides guest key hints", async () => {
 	const fallback = { ...first, reqId: 99, helpText: keyHints };
 	await updateRequest(fallback);
 	await vi.waitFor(() => expect(element.querySelector('[data-form-question] [data-question-card="99"]')).not.toBeNull());
-	expect(element.textContent).toContain("Cancel form and stop reply");
+	expect(element.querySelector('[data-question-card="99"] [data-card-actions]')).not.toBeNull();
 	expect(element.textContent).toContain("Skip this question");
 	expect(element.textContent).not.toContain(keyHints);
 });
