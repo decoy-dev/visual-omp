@@ -308,6 +308,8 @@ function showThumb(tile: HTMLElement, src: string | null | undefined): void {
 	image.className = "tr-file-thumb";
 	image.alt = "";
 	image.decoding = "async";
+	// The kind icon stays under the image while it loads; a loaded thumbnail hides it, so a transparent image shows no icon through it.
+	image.addEventListener("load", () => { tile.dataset.thumbLoaded = ""; });
 	image.addEventListener("error", () => image.remove());
 	image.src = src;
 	tile.append(image);

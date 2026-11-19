@@ -161,6 +161,10 @@
 	height: 1rem;
 }
 
+.tr-md .tr-file-tile[data-thumb-loaded] .tr-file-icon {
+	visibility: hidden;
+}
+
 .tr-md .tr-file-thumb {
 	position: absolute;
 	inset: 0;
