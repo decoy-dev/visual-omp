@@ -27,18 +27,15 @@ export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "error" |
 
 /**
  * omp's own reply only waits for background work: its turn ended until a job result can resume it
- * (`awaitingAsyncWork`), or every tool it runs is a `hub` wait for jobs or a peer's message. A `hub` wait that names a
- * launched process waits on that process, not on helpers.
+ * (`awaitingAsyncWork`), or every tool it runs is omp's `wait`, which blocks until a job, a helper or a peer's
+ * message has something new (it takes no arguments from omp 18.15 on).
  */
 function replyOnlyWaits(view: SessionView): boolean {
 	const guest = view.guest;
 	if (!guest) return false;
 	if (guest.awaitingAsyncWork) return true;
 	if (guest.activeTools.size === 0) return false;
-	for (const tool of guest.activeTools.values()) {
-		const args = tool.args as { op?: unknown; name?: unknown } | null;
-		if (tool.toolName !== "hub" || args?.op !== "wait" || args.name) return false;
-	}
+	for (const tool of guest.activeTools.values()) if (tool.toolName !== "wait") return false;
 	return true;
 }
 

@@ -39,15 +39,13 @@ describe("chatStatus", () => {
 		expect(chatStatus(view({ ...helpers, awaitingAsyncWork: true }, { working: true }))).toBe("helpersWorking");
 		const tool = (toolName: string, args: unknown): ActiveTool => ({ toolCallId: toolName, toolName, args, startedAt: 0 });
 		const running = (...tools: ActiveTool[]) => ({ ...helpers, activeTools: new Map(tools.map(item => [item.toolCallId, item])) });
-		expect(chatStatus(view(running(tool("hub", { op: "wait" })), { working: true }))).toBe("helpersWorking");
-		expect(chatStatus(view(running(tool("hub", { op: "wait", from: "Atlas" })), { working: true }))).toBe("helpersWorking");
-		// Waiting on a launched process, or doing anything else beside the wait, is omp's own work.
-		expect(chatStatus(view(running(tool("hub", { op: "wait", name: "web", for: "ready" })), { working: true }))).toBe("working");
-		expect(chatStatus(view(running(tool("hub", { op: "wait" }), { ...tool("read", { path: "a.ts" }), toolCallId: "r" }), { working: true }))).toBe("working");
+		expect(chatStatus(view(running(tool("wait", {})), { working: true }))).toBe("helpersWorking");
+		// Doing anything else beside the wait is omp's own work.
+		expect(chatStatus(view(running(tool("wait", {}), { ...tool("read", { path: "a.ts" }), toolCallId: "r" }), { working: true }))).toBe("working");
 		expect(chatStatus(view(running(), { working: true }))).toBe("working");
 		// The same waits with no helper at work, such as a background command, keep the spinner.
 		expect(chatStatus(view({ awaitingAsyncWork: true }, { working: true }))).toBe("working");
-		expect(chatStatus(view({ activeTools: new Map([["hub", tool("hub", { op: "wait" })]]) }, { working: true }))).toBe("working");
+		expect(chatStatus(view({ activeTools: new Map([["wait", tool("wait", {})]]) }, { working: true }))).toBe("working");
 	});
 
 	it("puts a question first, even while helpers run", () => {
