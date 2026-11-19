@@ -13,7 +13,7 @@ import { relativePath } from "@shared/outputPaths";
 import { fileRefOf, textRefs } from "./fileRefs";
 
 /** Anchor labels, code blocks and their headers, math and links already made hold no text references. */
-const SKIP = "a, pre, .tr-code-head, math, .katex, .tr-file, .vomp-diagram, .vomp-chart, .vomp-remote-image";
+const SKIP = "a, pre, .tr-code-head, math, .katex, .tr-file, .vomp-diagram, .vomp-chart, .vomp-remote-image, .vomp-local-image, .vomp-iframe-link";
 
 export interface Occurrence {
 	/** The text node holding the reference, an inline `code` element, or a local Markdown anchor. */

@@ -109,6 +109,9 @@
 		"loadImageFrom": "Load image from {{host}}",
 		"loadingImage": "Loading image…",
 		"imageFailed": "This image could not be loaded.",
+		"imageFileLink": "Open image file",
+		"openImageFile": "Open image file: {{name}}",
+		"openLocalPage": "Open {{name}}",
 		"resourceDiagram": "This diagram includes image resources or external styles. Its source is shown below."
 	},
 	"callout": {

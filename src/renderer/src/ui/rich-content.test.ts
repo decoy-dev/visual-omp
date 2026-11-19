@@ -8,13 +8,22 @@ import { hydrateRichContent } from "./rich-content";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); document.body.replaceChildren(); });
 const table = "| Model | Tokens |\n| --- | ---: |\n| Alpha | 10 |\n| Beta | 20 |\n| Gamma | 50 |\n| Delta | 80 |";
-function mount(source: string, streaming = false): HTMLElement {
+const WEBP_DATA_URL = "data:image/webp;base64,UklGRoIAAABXRUJQVlA4IHYAAABQDACdASrIAMgAPm02mUmkIyKhIEgAgA2JaW7hdrEbQBPa9FXCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20WcAAD+/9GgAAAAAAAA";
+function mount(source: string, streaming = false, base: string | null = null): HTMLElement {
 	const root = document.createElement("div");
 	root.style.setProperty("--fg", "rgb(10, 20, 30)");
 	root.innerHTML = renderMarkdown(source);
 	document.body.append(root);
-	cleanups.push(hydrateRichContent(root, streaming));
+	cleanups.push(hydrateRichContent(root, streaming, base));
 	return root;
+}
+function mockBridge(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>): () => void {
+	const previous = Object.getOwnPropertyDescriptor(window, "vomp");
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke } });
+	return () => {
+		if (previous) Object.defineProperty(window, "vomp", previous);
+		else Reflect.deleteProperty(window, "vomp");
+	};
 }
 
 describe("rich Markdown rendering", () => {
@@ -56,6 +65,127 @@ describe("rich Markdown rendering", () => {
 		expect(root.querySelector("td:first-child code")?.hasAttribute("data-wrap-long")).toBe(false);
 		expect(root.querySelector("td:nth-child(2) code")?.hasAttribute("data-wrap-long")).toBe(true);
 		expect(root.querySelector("td:nth-child(2) code")?.textContent).toBe(path);
+	});
+
+	it.each([false, true])("loads raw local images through panes:readFile from the chat folder while streaming=%s", async streaming => {
+		const invoke = vi.fn(async (channel: string) => channel === "panes:readFile"
+			? { kind: "image", dataUrl: WEBP_DATA_URL, size: 1 }
+			: undefined);
+		const restore = mockBridge(invoke);
+		try {
+			const source = '<img src="/var/folders/.../omp-sshots-15d47b138a1e10b6.webp" alt="The previous white picker..." width="45%">';
+			const root = mount(source, streaming, "/chat");
+			await vi.waitFor(() => expect(root.querySelector("img")?.src).toBe(WEBP_DATA_URL));
+			const image = root.querySelector("img")!;
+			expect(image.alt).toBe("The previous white picker...");
+			expect(image.hasAttribute("tabindex")).toBe(false);
+			const fileLink = root.querySelector<HTMLAnchorElement>(".vomp-local-image-file")!;
+			expect(fileLink.tabIndex).toBe(0);
+			expect(fileLink.dataset.filePath).toBe("/var/folders/.../omp-sshots-15d47b138a1e10b6.webp");
+			expect(fileLink.getAttribute("aria-label")).toBe("Open image file: omp-sshots-15d47b138a1e10b6.webp");
+			expect(image.style.width).toBe("45%");
+			image.dispatchEvent(new Event("load"));
+			expect(root.querySelector(".vomp-local-image")?.textContent).toBe("");
+			expect(root.querySelector(".vomp-local-image")?.children).toHaveLength(1);
+			expect(image.style.backgroundColor).toBe("");
+			expect(invoke).toHaveBeenCalledWith("panes:readFile", "/var/folders/.../omp-sshots-15d47b138a1e10b6.webp");
+		} finally {
+			restore();
+		}
+	});
+	it("keeps non-image paths as links without reading them", async () => {
+		const invoke = vi.fn(async () => undefined);
+		const restore = mockBridge(invoke);
+		try {
+			const root = mount('<img src="secret.txt" alt="Secret file">', false, "/chat");
+			await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>(".vomp-local-image-file")?.dataset.filePath).toBe("/chat/secret.txt"));
+			expect(invoke).not.toHaveBeenCalledWith("panes:readFile", "/chat/secret.txt");
+			expect(root.textContent).toContain("Secret file");
+		} finally {
+			restore();
+		}
+	});
+	it("ignores a failed image read after the chat folder changes", async () => {
+		const staleRead = Promise.withResolvers<unknown>();
+		const invoke = vi.fn((channel: string, ...args: unknown[]): Promise<unknown> => {
+			if (channel !== "panes:readFile") return Promise.resolve(undefined);
+			return args[0] === "/old/picture.webp"
+				? staleRead.promise
+				: Promise.resolve({ kind: "image", dataUrl: WEBP_DATA_URL, size: 1 });
+		});
+		const restore = mockBridge(invoke);
+		try {
+			const root = mount('<img src="picture.webp" alt="Picture">', false, "/old");
+			await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("panes:readFile", "/old/picture.webp"));
+			cleanups.push(hydrateRichContent(root, false, "/new"));
+			await vi.waitFor(() => expect(root.querySelector("img")?.src).toBe(WEBP_DATA_URL));
+			const image = root.querySelector("img")!;
+			image.dispatchEvent(new Event("load"));
+			expect(root.querySelector<HTMLAnchorElement>(".vomp-local-image-file")?.dataset.filePath).toBe("/new/picture.webp");
+			staleRead.reject(new Error("old image read failed"));
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(root.querySelector("img")).toBe(image);
+			expect(root.querySelector<HTMLAnchorElement>(".vomp-local-image-file")?.dataset.filePath).toBe("/new/picture.webp");
+			expect(root.querySelector(".vomp-local-image")?.textContent).toBe("");
+		} finally {
+			restore();
+		}
+	});
+	it("expands home-relative raw image paths before reading them", async () => {
+		const invoke = vi.fn(async (channel: string) => channel === "app:info"
+			? { homeDir: "/Users/example" }
+			: channel === "panes:readFile"
+				? { kind: "image", dataUrl: WEBP_DATA_URL, size: 1 }
+				: undefined);
+		const restore = mockBridge(invoke);
+		try {
+			const root = mount('<img src="~/Pictures/grey-dot.webp" alt="Grey dot">', false, "/chat");
+			await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("panes:readFile", "/Users/example/Pictures/grey-dot.webp"));
+			expect(root.querySelector("img")?.alt).toBe("Grey dot");
+		} finally {
+			restore();
+		}
+	});
+
+	it("keeps alt text and a Files link when a local image cannot be read", async () => {
+		const restore = mockBridge(async () => { throw new Error("missing image"); });
+		try {
+			const root = mount('<img src="assets/missing.webp" alt="Preview unavailable">', false, "/chat");
+			await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>(".vomp-local-image-file")?.dataset.filePath).toBe("/chat/assets/missing.webp"));
+			expect(root.textContent).toContain("Preview unavailable");
+			expect(root.querySelector(".vomp-local-image-file")?.textContent).toBe("Open image file");
+			expect(root.querySelector("img")).toBeNull();
+		} finally {
+			restore();
+		}
+	});
+
+	it("turns local iframe HTML into a Files link card without creating an iframe", async () => {
+		const restore = mockBridge(async () => undefined);
+		try {
+			const root = mount('<iframe src="reports/index.html" title="Build report"></iframe>', false, "/chat");
+			await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>(".vomp-iframe-link")?.dataset.filePath).toBe("/chat/reports/index.html"));
+			expect(root.querySelector("iframe")).toBeNull();
+			expect(root.querySelector(".vomp-iframe-link")?.textContent).toBe("Build report");
+		} finally {
+			restore();
+		}
+	});
+
+	it("draws data image URIs with focus and drops unsafe raw image attributes", () => {
+		const root = mount('<img src="data:image/png;base64,YQ==" alt="Pixel" width="64px" onerror="run()" style="color:red" srcset="large.png 2x">');
+		const image = root.querySelector("img")!;
+		expect(image.src).toBe("data:image/png;base64,YQ==");
+		expect(image.tabIndex).toBe(0);
+		expect(image.style.width).toBe("64px");
+		expect(image.hasAttribute("onerror")).toBe(false);
+		expect(image.hasAttribute("style")).toBe(true);
+		expect(image.style.color).toBe("");
+		expect(image.hasAttribute("srcset")).toBe(false);
+		const unsafe = mount('<img src="javascript:alert(1)" alt="Blocked">');
+		expect(unsafe.querySelector("img")).toBeNull();
+		expect(unsafe.textContent).toContain("Blocked");
 	});
 
 	it("renders SVG as an isolated image while retaining accessible source", () => {

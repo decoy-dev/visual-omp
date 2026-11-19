@@ -16,6 +16,10 @@ const corpus: Record<string, string> = {
 	referenceLinks:
 		'See [the docs][docs] and [inline](https://example.com "Title").\n\nAlso [docs] again.\n\n[docs]: https://example.com/docs\n[docs]: https://example.com/second\n\nUnsafe [bad](javascript:alert(1)).',
 	rawHtml: '<div class="x">block html</div>\n\nInline <b>bold</b> and <span>dropped</span> and <script>alert(1)</script>.\n\n&lt;already escaped&gt; &amp; &#x41;',
+	rawImage: '<img src="/var/folders/.../omp-sshots-15d47b138a1e10b6.webp" alt="The previous white picker..." width="45%">',
+	rawImagePair: '<img src="/tmp/first.png" alt="First"><img src="/tmp/second.png" alt="Second">',
+	rawIframe: '<iframe src="https://example.com/preview" title="Preview"></iframe>',
+	rawInlineIframe: 'Text <iframe src="https://example.com/inline" title="Inline report"></iframe> after.',
 	blockquote: "> quoted line\nlazy continuation\n> > nested\n\n> second quote\n\nAfter",
 	crlf: "Line one\r\nLine two\r\n\r\n- a\r\n- b\r\n\r\n```\r\ncode\r\n```\r\n",
 	callouts: "> [!NOTE]\n> Read **this** first.\n\n> [!tip] Faster path\n> Use the cache.\n\n> [!WARNING]\n>\n> Second paragraph.\n\n> Plain quote [!NOTE]",
@@ -86,6 +90,53 @@ describe("Markdown upgrades", () => {
 		expect(html).toContain("evil.example");
 		expect(html).toContain("Load image");
 	});
+	it("renders raw reply images in block and inline HTML with the safe attributes", () => {
+		const exact = renderMarkdown(corpus.rawImage ?? "");
+		expect(exact).toContain('class="vomp-local-image"');
+		expect(exact).toContain("The previous white picker...");
+		expect(exact).toContain('data-image-width="45%"');
+		expect(exact).not.toContain("&lt;img");
+		const pair = dom(renderMarkdown(corpus.rawImagePair ?? ""));
+		expect(pair.match(/class="vomp-local-image"/g)).toHaveLength(2);
+		const unsafe = renderMarkdown('<img src="/tmp/pixel.png" alt="Pixel" onerror="run()" style="color:red" srcset="/tmp/large.png 2x">');
+		expect(unsafe).toContain('class="vomp-local-image"');
+		expect(unsafe).not.toMatch(/<(?:img|span|a)\b[^>]*(?:onerror|style|srcset)=/i);
+	});
+
+	it("renders raster data URIs with safe width and height styles", () => {
+		const html = renderMarkdown('<img src="data:image/png;base64,YQ==" alt="Pixel" width="45%" height="16vh">');
+		expect(html).toContain('<img tabindex="0" src="data:image/png;base64,YQ==" alt="Pixel" style="max-width:100%;width:45%;height:16vh">');
+		expect(renderMarkdown('<img src="data:image/webp;base64,YQ==" width="12ch">')).toContain('style="max-width:100%;width:12ch;height:auto"');
+	});
+
+	it("keeps raw HTTP images behind consent and turns iframe tags into link cards", () => {
+		const remote = renderMarkdown('<img src="https://images.example/picker.webp" alt="Picker">');
+		expect(remote).not.toContain("<img");
+		expect(remote).toContain('class="vomp-remote-image"');
+		expect(remote).toContain('data-image-alt="Picker"');
+		expect(remote).toContain("Load image");
+		const iframe = renderMarkdown(corpus.rawIframe ?? "");
+		expect(iframe).not.toContain("<iframe");
+		expect(iframe).toContain('<a class="vomp-iframe-link" href="https://example.com/preview"');
+		expect(iframe).toContain(">Preview</a>");
+		const inlineIframe = renderMarkdown(corpus.rawInlineIframe ?? "");
+		expect(inlineIframe).not.toContain("<iframe");
+		expect(inlineIframe).toContain('href="https://example.com/inline"');
+		expect(inlineIframe).toContain("after.");
+		const local = renderMarkdown('<iframe src="reports/index.html"></iframe>');
+		expect(local).toContain('class="vomp-iframe-link"');
+		expect(local).toContain('data-local-file-src="reports/index.html"');
+	});
+
+	it("escapes other raw HTML and refuses active image and iframe schemes", () => {
+		const html = renderMarkdown('<div onclick="run()"><b>Bold</b></div>');
+		expect(html).toContain('&lt;div onclick=&quot;run()&quot;&gt;');
+		expect(html).toContain("&lt;b&gt;Bold&lt;/b&gt;");
+		const unsafe = renderMarkdown('<img src="javascript:alert(1)" alt="Blocked"><iframe src="javascript:alert(1)" title="Blocked"></iframe>');
+		expect(unsafe).not.toMatch(/<(?:img|iframe)\b/i);
+		expect(unsafe).not.toMatch(/(?:src|href)="javascript:/i);
+	});
+
 
 	it("keeps trusted data and relative images while refusing active schemes", () => {
 		expect(renderMarkdown("![inline](data:image/png;base64,iVBORw0KGgo=)")).toContain("<img");

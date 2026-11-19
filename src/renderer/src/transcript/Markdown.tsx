@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useContext, useLayoutEffect, useMemo, useRef } from "react";
 import { i18n } from "../i18n";
 import { toast } from "../ui/toast";
 import { blockIn, useMotionReduced } from "../ui/motion";
 import { hydrateRichContent, useRichContent } from "../ui/rich-content";
 import { MATH_PENDING, useMathReady } from "./math";
 import { MarkdownBlocks, renderMarkdown } from "./render";
+import { FileRefContext } from "../chat/transcript/fileRefScope";
 
 /**
  * Copies the code block whose Copy button (rendered by `render.ts`) was clicked. True when the click was on such a
@@ -61,6 +62,8 @@ interface MountedBlock {
  * finished blocks never animate again.
  */
 export function StreamingMarkdown({ text, blockIn: enter = false }: { text: string; blockIn?: boolean }): ReactNode {
+	const scope = useContext(FileRefContext);
+	const base = scope?.bases[0] ?? null;
 	const reduced = useMotionReduced();
 	const math = useMathReady();
 	const ref = useRef<HTMLDivElement | null>(null);
@@ -96,8 +99,8 @@ export function StreamingMarkdown({ text, blockIn: enter = false }: { text: stri
 			root.append(template.content);
 		}
 		mounted.current = next;
-		return hydrateRichContent(root, true);
-	}, [text, enter, reduced, math]);
+		return hydrateRichContent(root, true, base);
+	}, [text, enter, reduced, math, base]);
 	// Only the chat transcript streams; its click handler runs `copyCode` for these blocks and for saved replies.
 	return <div ref={ref} className="tr-md" />;
 }

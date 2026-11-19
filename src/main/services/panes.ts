@@ -4,24 +4,13 @@ import { type FileHandle, lstat, open, opendir, readdir, readFile, realpath, sta
 import { homedir, tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, parse, resolve } from "node:path";
 import type { PaneFileContent, PaneFilePreview, PaneMadeFile, PaneMadeQuery, PanePlanFile } from "@shared/contracts/panes";
+import { IMAGE_TYPES } from "@shared/imageTypes";
 import { outputPathKey } from "@shared/outputPaths";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
 /** Bytes sniffed for NUL / invalid UTF-8 to tell text from binary. */
 const SNIFF_BYTES = 8192;
-
-const IMAGE_TYPES: Record<string, string> = {
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".webp": "image/webp",
-	".avif": "image/avif",
-	".bmp": "image/bmp",
-	".ico": "image/x-icon",
-	".svg": "image/svg+xml",
-};
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 

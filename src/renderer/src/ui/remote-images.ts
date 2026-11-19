@@ -1,4 +1,5 @@
 import { i18n } from "../i18n";
+const CSS_IMAGE_DIMENSION = /^(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|vw|vh|ch|em)$/i;
 
 /** Remote Markdown images stay inert until this exact placeholder's button is activated. */
 export function handleRemoteImage(event: MouseEvent, root: HTMLElement): void {
@@ -18,7 +19,15 @@ export function handleRemoteImage(event: MouseEvent, root: HTMLElement): void {
 	image.alt = placeholder.dataset.imageAlt || "";
 	image.referrerPolicy = "no-referrer";
 	image.tabIndex = 0;
-	image.onload = () => { if (root.contains(placeholder)) placeholder.replaceChildren(image); };
+	const width = placeholder.dataset.imageWidth;
+	const height = placeholder.dataset.imageHeight;
+	image.style.maxWidth = "100%";
+	if (width && CSS_IMAGE_DIMENSION.test(width)) image.style.width = width;
+	if (height && CSS_IMAGE_DIMENSION.test(height)) image.style.height = height;
+	if (width && !height) image.style.height = "auto";
+	if (height && !width) image.style.width = "auto";
+	if (placeholder.dataset.imageTitle) image.title = placeholder.dataset.imageTitle;
+	image.onload = () => { if (root.contains(placeholder)) { placeholder.dataset.imageLoaded = ""; placeholder.replaceChildren(image); } };
 	image.onerror = () => {
 		if (!root.contains(placeholder)) return;
 		button.disabled = false;

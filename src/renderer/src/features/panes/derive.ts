@@ -8,6 +8,7 @@ import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePaylo
 import type { NativeJob } from "@shared/contracts/native";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
 import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
+import { IMAGE_EXT } from "@shared/imageTypes";
 import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import { isReplyWrite, resolveToolCall } from "../../chat/friendly";
 import { type JobStatus, parseNotice } from "../../chat/transcript/notices";
@@ -734,7 +735,7 @@ export function devServerUrls(entries: readonly SessionEntry[], activeTools?: Re
 // ── outputs ─────────────────────────────────────────────────────────────────────────────────────
 
 /** Image paths the Files viewer and Outputs pane stream through scoped preview grants. */
-export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+export { IMAGE_EXT };
 export const PDF_EXT = /\.pdf$/i;
 /** Raster/PDF toolbar eligibility. Native thumbnails validate bytes; `app:openFile` confirms other regular files. */
 export const OPENABLE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|pdf)$/i;

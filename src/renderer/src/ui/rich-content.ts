@@ -1,5 +1,8 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useContext, useLayoutEffect, type RefObject } from "react";
 import { i18n } from "../i18n";
+import { FileRefContext } from "../chat/transcript/fileRefScope";
+import type { PaneFileContent } from "@shared/contracts/panes";
+import { isSupportedImagePath } from "@shared/imageTypes";
 import { figurePalette, sanitizeSvg, svgAccessibility, svgImage } from "./diagram-source";
 import { closePartialSvg } from "./charts/vendor/omp/svg-source";
 import { handleRemoteImage } from "./remote-images";
@@ -25,13 +28,179 @@ function markTableTokens(root: HTMLElement): void {
 		token.toggleAttribute("data-wrap-long", long);
 	}
 }
+let homeDirectory: Promise<string | null> | null = null;
+const LOCAL_IMAGE_DATA_URL = /^data:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon|svg\+xml);base64,/i;
+const IMAGE_DIMENSION = /^(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|vw|vh|ch|em)$/i;
+
+function readHomeDirectory(): Promise<string | null> {
+	homeDirectory ??= window.vomp.invoke("app:info").then(info => info.homeDir).catch(() => null);
+	return homeDirectory;
+}
+
+function absoluteReplyPath(source: string, base: string | null, home: string | null): string | null {
+	let value = source.trim();
+	if (!value || value.length > 1024 || value.includes("\0")) return null;
+	if (value === "~" || value.startsWith("~/") || (window.vomp.platform === "win32" && value.startsWith("~\\"))) {
+		if (!home) return null;
+		value = home + value.slice(1);
+	}
+	const windows = window.vomp.platform === "win32";
+	if (windows) value = value.replaceAll("\\", "/");
+	const drive = /^[A-Za-z]:\//.exec(value)?.[0] ?? null;
+	if (windows && value.startsWith("//")) return null;
+	if (!drive && !value.startsWith("/")) {
+		if (!base) return null;
+		const folder = windows ? base.replaceAll("\\", "/") : base;
+		value = `${folder.replace(/\/+$/, "")}/${value}`;
+	}
+	if (windows && !/^[A-Za-z]:\//.test(value)) return null;
+	const root = /^[A-Za-z]:\//.exec(value)?.[0] ?? "/";
+	const parts: string[] = [];
+	for (const part of value.slice(root.length).split("/")) {
+		if (!part || part === ".") continue;
+		if (part === "..") parts.pop();
+		else parts.push(part);
+	}
+	return root + parts.join("/");
+}
+
+async function resolveReplyPath(source: string, base: string | null): Promise<string | null> {
+	const home = source === "~" || source.startsWith("~/") || (window.vomp.platform === "win32" && source.startsWith("~\\")) ? await readHomeDirectory() : null;
+	return absoluteReplyPath(source, base, home);
+}
+
+function setFileLinkPath(link: HTMLAnchorElement, path: string, base?: string | null): void {
+	link.dataset.filePath = path;
+	link.setAttribute("href", "#");
+	if (base !== undefined) link.dataset.localFileBase = base ?? "";
+}
+
+function hydrateLocalFileLinks(root: HTMLElement, base: string | null): void {
+	for (const link of root.querySelectorAll<HTMLAnchorElement>("[data-local-file-src]")) {
+		const source = link.dataset.localFileSrc;
+		if (!source) continue;
+		const key = JSON.stringify([source, base ?? ""]);
+		if (link.dataset.localFileKey === key) continue;
+		link.dataset.localFileKey = key;
+		delete link.dataset.filePath;
+		link.removeAttribute("href");
+		void resolveReplyPath(source, base).then(path => {
+			if (path && root.contains(link) && link.dataset.localFileKey === key) setFileLinkPath(link, path, base);
+		});
+	}
+}
+
+function applyImageSize(image: HTMLImageElement, slot: HTMLElement): void {
+	const width = slot.dataset.imageWidth;
+	const height = slot.dataset.imageHeight;
+	image.style.maxWidth = "100%";
+	if (width && IMAGE_DIMENSION.test(width)) image.style.width = width;
+	if (height && IMAGE_DIMENSION.test(height)) image.style.height = height;
+	if (width && !height) image.style.height = "auto";
+	if (height && !width) image.style.width = "auto";
+}
+
+function showLocalImageFallback(slot: HTMLElement, source: string, path: string, base: string | null): void {
+	slot.replaceChildren();
+	const alt = slot.dataset.imageAlt ?? "";
+	if (alt) {
+		const text = document.createElement("span");
+		text.dataset.imageFallback = "";
+		text.textContent = alt;
+		slot.append(text);
+	}
+	const link = document.createElement("a");
+	const name = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+	link.className = "vomp-local-image-file";
+	link.dataset.localFileSrc = source;
+	link.dataset.localImageFile = "";
+	link.dataset.localFileKey = JSON.stringify([source, base ?? ""]);
+	link.setAttribute("aria-label", i18n.t("chat:visual.openImageFile", { name }));
+	link.setAttribute("role", "link");
+	link.tabIndex = 0;
+	link.textContent = i18n.t("chat:visual.imageFileLink");
+	setFileLinkPath(link, path, base);
+	slot.append(link);
+	slot.dataset.localImageState = "failed";
+}
+
+async function loadLocalImage(root: HTMLElement, slot: HTMLElement, source: string, base: string | null, key: string): Promise<void> {
+	const path = await resolveReplyPath(source, base);
+	if (!path || !root.contains(slot) || slot.dataset.localImageKey !== key) {
+		if (root.contains(slot) && slot.dataset.localImageKey === key) slot.dataset.localImageState = "failed";
+		return;
+	}
+	const fallbackLink = slot.querySelector<HTMLAnchorElement>("[data-local-image-file]");
+	if (fallbackLink) setFileLinkPath(fallbackLink, path, base);
+	if (!isSupportedImagePath(path)) {
+		showLocalImageFallback(slot, source, path, base);
+		return;
+	}
+	let content: PaneFileContent;
+	try {
+		content = await window.vomp.invoke("panes:readFile", path);
+	} catch {
+		if (root.contains(slot) && slot.dataset.localImageKey === key) showLocalImageFallback(slot, source, path, base);
+		return;
+	}
+	if (!root.contains(slot) || slot.dataset.localImageKey !== key) return;
+	if (content.kind !== "image" || !LOCAL_IMAGE_DATA_URL.test(content.dataUrl)) {
+		showLocalImageFallback(slot, source, path, base);
+		return;
+	}
+	const image = document.createElement("img");
+	image.alt = slot.dataset.imageAlt ?? "";
+	if (slot.dataset.imageTitle) image.title = slot.dataset.imageTitle;
+	applyImageSize(image, slot);
+	image.onload = () => {
+		if (root.contains(slot) && slot.dataset.localImageKey === key) slot.dataset.localImageState = "loaded";
+	};
+	image.onerror = () => {
+		if (root.contains(slot) && slot.dataset.localImageKey === key) showLocalImageFallback(slot, source, path, base);
+	};
+	const link = document.createElement("a");
+	const name = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+	link.className = "vomp-local-image-file";
+	link.dataset.localFileSrc = source;
+	link.dataset.localImageFile = "";
+	link.dataset.localFileKey = JSON.stringify([source, base ?? ""]);
+	link.dataset.imageLink = "";
+	link.setAttribute("aria-label", i18n.t("chat:visual.openImageFile", { name }));
+	link.setAttribute("role", "link");
+	link.tabIndex = 0;
+	setFileLinkPath(link, path, base);
+	link.append(image);
+	slot.replaceChildren(link);
+	image.src = content.dataUrl;
+}
+
+function hydrateLocalImages(root: HTMLElement, base: string | null): void {
+	for (const slot of root.querySelectorAll<HTMLElement>("[data-local-image-src]")) {
+		const source = slot.dataset.localImageSrc;
+		if (!source) continue;
+		const key = JSON.stringify([source, base ?? ""]);
+		if (slot.dataset.localImageKey === key && slot.dataset.localImageState) continue;
+		slot.dataset.localImageKey = key;
+		slot.dataset.localImageState = "loading";
+		void loadLocalImage(root, slot, source, base, key).catch(() => {
+			if (root.contains(slot) && slot.dataset.localImageKey === key) {
+				const link = slot.querySelector<HTMLAnchorElement>("[data-local-image-file]");
+				const path = link?.dataset.filePath;
+				if (path) showLocalImageFallback(slot, source, path, base);
+				else slot.dataset.localImageState = "failed";
+			}
+		});
+	}
+}
 
 /** Hydrate app-owned Markdown presentation and generated figures. Original text remains unchanged. */
-export function hydrateRichContent(root: HTMLElement, streaming = false): () => void {
+export function hydrateRichContent(root: HTMLElement, streaming = false, base: string | null = null): () => void {
 	markTableTokens(root);
 	let live = true;
 	const loadImage = (event: MouseEvent) => handleRemoteImage(event, root);
 	root.addEventListener("click", loadImage);
+	hydrateLocalFileLinks(root, base);
+	hydrateLocalImages(root, base);
 	const update = () => {
 		const palette = figurePalette(root);
 		for (const slot of root.querySelectorAll<HTMLElement>("[data-diagram]")) {
@@ -113,5 +282,7 @@ export function hydrateRichContent(root: HTMLElement, streaming = false): () => 
 }
 
 export function useRichContent(ref: RefObject<HTMLElement | null>, html: string): void {
-	useLayoutEffect(() => ref.current ? hydrateRichContent(ref.current) : undefined, [ref, html]);
+	const scope = useContext(FileRefContext);
+	const base = scope?.bases[0] ?? null;
+	useLayoutEffect(() => ref.current ? hydrateRichContent(ref.current, false, base) : undefined, [ref, html, base]);
 }

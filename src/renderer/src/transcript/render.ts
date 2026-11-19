@@ -41,6 +41,192 @@ function unescapeHtml(raw: string): string {
 		}
 	});
 }
+type VisualAttributes = Partial<Record<"src" | "alt" | "title" | "width" | "height", string>>;
+
+interface RawTag {
+	start: number;
+	name: string;
+	closing: boolean;
+	end: number;
+	attributesAt: number;
+}
+
+const RAW_TEXT_TAGS: Record<string, true> = { code: true, pre: true, script: true, style: true, textarea: true, title: true, xmp: true, plaintext: true };
+const VISUAL_ATTRIBUTES: Record<keyof VisualAttributes, true> = { src: true, alt: true, title: true, width: true, height: true };
+const VISUAL_ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+const RASTER_DATA_IMAGE = /^data:image\/(?:png|jpeg|gif|webp|avif|bmp)(?:;[^,]*)?,/i;
+const CSS_IMAGE_DIMENSION = /^(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|vw|vh|ch|em)$/i;
+
+function rawTagAt(text: string, start: number): RawTag | null {
+	const match = /^<\s*(\/?)\s*([a-z][a-z0-9:-]*)/i.exec(text.slice(start));
+	if (!match) return null;
+	let quote = "";
+	for (let at = start + match[0].length; at < text.length; at++) {
+		const character = text[at]!;
+		if (quote) {
+			if (character === quote) quote = "";
+		} else if (character === '"' || character === "'") quote = character;
+		else if (character === ">") {
+			return { start, name: match[2]!.toLowerCase(), closing: Boolean(match[1]), end: at + 1, attributesAt: start + match[0].length };
+		}
+	}
+	return null;
+}
+
+function visualAttributes(text: string, tag: RawTag): VisualAttributes {
+	const attributes: VisualAttributes = {};
+	VISUAL_ATTRIBUTE.lastIndex = 0;
+	for (const match of text.slice(tag.attributesAt, tag.end - 1).replace(/\/\s*$/, "").matchAll(VISUAL_ATTRIBUTE)) {
+		const name = match[1]!.toLowerCase();
+		if (VISUAL_ATTRIBUTES[name as keyof VisualAttributes] !== true || attributes[name as keyof VisualAttributes] !== undefined) continue;
+		const value = match[2] ?? match[3] ?? match[4];
+		if (value !== undefined) attributes[name as keyof VisualAttributes] = unescapeHtml(value);
+	}
+	return attributes;
+}
+
+function cssDimension(value: string | undefined): string | null {
+	const trimmed = value?.trim() ?? "";
+	if (!trimmed) return null;
+	if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(trimmed)) return `${trimmed}px`;
+	if (!CSS_IMAGE_DIMENSION.test(trimmed) || Number.parseFloat(trimmed) < 0) return null;
+	return trimmed;
+}
+
+function imageDimensions(attributes: VisualAttributes): { width: string | null; height: string | null; style: string } {
+	const width = cssDimension(attributes.width);
+	const height = cssDimension(attributes.height);
+	if (!width && !height) return { width, height, style: "" };
+	return {
+		width,
+		height,
+		style: ` style="max-width:100%;width:${width ?? "auto"};height:${height ?? "auto"}"`,
+	};
+}
+
+function fileName(path: string): string {
+	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function webImageUrl(source: string): URL | null {
+	if (!/^[a-z][a-z\d+.-]*:/i.test(source) && !/^[\\/]{2}/.test(source)) return null;
+	try {
+		const url = /^[\\/]{2}/.test(source) ? new URL(source, "https://relative.invalid/") : new URL(source);
+		return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+	} catch {
+		return null;
+	}
+}
+
+function localPathSource(source: string): boolean {
+	return !/^[a-z][a-z\d+.-]*:/i.test(source) || /^[a-z]:[\\/]/i.test(source);
+}
+
+function renderRemoteImage(url: URL, attributes: VisualAttributes): string {
+	const alt = attributes.alt || i18n.t("chat:visual.remoteImage");
+	const { width, height } = imageDimensions(attributes);
+	const title = attributes.title ? ` data-image-title="${escapeHtml(attributes.title)}"` : "";
+	return `<span class="vomp-remote-image" data-remote-image="${escapeHtml(url.href)}" data-image-alt="${escapeHtml(attributes.alt ?? "")}"${title}${width ? ` data-image-width="${escapeHtml(width)}"` : ""}${height ? ` data-image-height="${escapeHtml(height)}"` : ""}><span>${escapeHtml(alt)}</span><span class="vomp-image-host">${escapeHtml(url.host)}</span><button type="button" data-load-image aria-label="${escapeHtml(i18n.t("chat:visual.loadImageFrom", { host: url.host }))}">${escapeHtml(i18n.t("chat:visual.loadImage"))}</button><span data-image-status role="status"></span></span>`;
+}
+
+function renderRawImage(source: string, tag: RawTag): string {
+	const raw = source.slice(tag.start, tag.end);
+	const attributes = visualAttributes(source, tag);
+	const path = attributes.src?.trim();
+	if (!path) return escapeHtml(unescapeHtml(raw));
+	const dimensions = imageDimensions(attributes);
+	const title = attributes.title ? ` title="${escapeHtml(attributes.title)}"` : "";
+	const dataTitle = attributes.title ? ` data-image-title="${escapeHtml(attributes.title)}"` : "";
+	const alt = escapeHtml(attributes.alt ?? "");
+	const url = webImageUrl(path);
+	if (url) return renderRemoteImage(url, attributes);
+	if (/^data:/i.test(path)) {
+		if (!RASTER_DATA_IMAGE.test(path)) return escapeHtml(unescapeHtml(raw));
+		return `<img tabindex="0" src="${escapeHtml(path)}" alt="${alt}"${title}${dimensions.style}>`;
+	}
+	if (!localPathSource(path)) return alt || escapeHtml(unescapeHtml(raw));
+	const width = dimensions.width ? ` data-image-width="${escapeHtml(dimensions.width)}"` : "";
+	const height = dimensions.height ? ` data-image-height="${escapeHtml(dimensions.height)}"` : "";
+	const fallback = attributes.alt ? `<span data-image-fallback>${alt}</span>` : "";
+	const label = escapeHtml(i18n.t("chat:visual.openImageFile", { name: fileName(path) }));
+	const linkText = escapeHtml(i18n.t("chat:visual.imageFileLink"));
+	return `<span class="vomp-local-image" data-local-image-src="${escapeHtml(path)}" data-image-alt="${alt}"${dataTitle}${width}${height}>${fallback}<a class="vomp-local-image-file" data-local-file-src="${escapeHtml(path)}" data-local-image-file="" aria-label="${label}" role="link" tabindex="0">${linkText}</a></span>`;
+}
+
+function renderRawIframe(source: string, tag: RawTag): string {
+	const attributes = visualAttributes(source, tag);
+	const path = attributes.src?.trim();
+	if (!path) return escapeHtml(unescapeHtml(source.slice(tag.start, tag.end)));
+	const url = webImageUrl(path);
+	const title = attributes.title?.trim() || (url ? url.href : fileName(path));
+	const titleAttribute = ` title="${escapeHtml(title)}"`;
+	if (url) return `<a class="vomp-iframe-link" href="${escapeHtml(url.href)}" target="_blank" rel="noopener"${titleAttribute}>${escapeHtml(title)}</a>`;
+	if (!localPathSource(path)) return escapeHtml(title);
+	const label = escapeHtml(i18n.t("chat:visual.openLocalPage", { name: title }));
+	return `<a class="vomp-iframe-link" data-local-file-src="${escapeHtml(path)}" aria-label="${label}" role="link" tabindex="0"${titleAttribute}>${escapeHtml(title)}</a>`;
+}
+
+function renderRawHtml(text: string): string {
+	const source = text.replace(/<\/?(?:advisory|span|text)\b(?:\s[^>]*)?\s*\/?>/gi, "");
+	if (source === "") return "";
+	let output = "";
+	let cursor = 0;
+	let search = 0;
+	while (search < source.length) {
+		const start = source.indexOf("<", search);
+		if (start < 0) break;
+		if (source.startsWith("<!--", start) || source.startsWith("<![CDATA[", start)) {
+			const delimiter = source.startsWith("<!--", start) ? "-->" : "]]>";
+			const end = source.indexOf(delimiter, start + 2);
+			search = end < 0 ? source.length : end + delimiter.length;
+			continue;
+		}
+		const tag = rawTagAt(source, start);
+		if (!tag) {
+			search = start + 1;
+			continue;
+		}
+		if (tag.closing && tag.name === "iframe") {
+			output += escapeHtml(unescapeHtml(source.slice(cursor, start)));
+			cursor = tag.end;
+			search = tag.end;
+			continue;
+		}
+		if (tag.closing || (tag.name !== "img" && tag.name !== "iframe")) {
+			if (!tag.closing && RAW_TEXT_TAGS[tag.name] === true) {
+				const close = new RegExp(`<\\/\\s*${tag.name}\\s*>`, "ig");
+				close.lastIndex = tag.end;
+				const match = close.exec(source);
+				search = match ? close.lastIndex : source.length;
+			} else {
+				search = tag.end;
+			}
+			continue;
+		}
+		if (tag.name === "img") {
+			output += escapeHtml(unescapeHtml(source.slice(cursor, start)));
+			output += renderRawImage(source, tag);
+			cursor = tag.end;
+			search = tag.end;
+			continue;
+		}
+		const close = /<\/\s*iframe\s*>/ig;
+		close.lastIndex = tag.end;
+		const match = close.exec(source);
+		if (!match) {
+			output += escapeHtml(unescapeHtml(source.slice(cursor, start)));
+			output += renderRawIframe(source, tag);
+			cursor = tag.end;
+			search = tag.end;
+			continue;
+		}
+		output += escapeHtml(unescapeHtml(source.slice(cursor, start)));
+		output += renderRawIframe(source, tag);
+		cursor = close.lastIndex;
+		search = close.lastIndex;
+	}
+	return output + escapeHtml(unescapeHtml(source.slice(cursor)));
+}
 export function safeHref(href: string): string | null {
 	const trimmed = href.trim();
 	let protocol: string;
@@ -76,11 +262,9 @@ const md = new Marked({
 		codespan(token) {
 			return `<code>${decorateColors(escapeHtml(token.text), true)}</code>`;
 		},
-		// Raw HTML tokens (block + inline both arrive here) are escaped, never emitted.
+		// Only images and iframe links are interpreted from raw HTML. Every other tag stays escaped.
 		html({ text }) {
-			const cleaned = text.replace(/<\/?(?:advisory|span|text)\b(?:\s[^>]*)?\s*\/?>/gi, "");
-			if (cleaned === "") return "";
-			return escapeHtml(unescapeHtml(cleaned));
+			return renderRawHtml(text);
 		},
 		link({ href, title, tokens, autolink, text }) {
 			const inner = autolink ? escapeHtml(text) : this.parser.parseInline(tokens);

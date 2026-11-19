@@ -38,4 +38,22 @@ describe("remote Markdown image consent", () => {
 		expect(root.querySelector<HTMLButtonElement>("button")!.disabled).toBe(false);
 		expect(root.textContent).toContain("This image could not be loaded.");
 	});
+	it("keeps raw HTML images inert until consent and applies their safe size", () => {
+		let requested: HTMLImageElement | undefined;
+		vi.spyOn(HTMLImageElement.prototype, "src", "set").mockImplementation(function(this: HTMLImageElement) { requested = this; });
+		const root = document.createElement("div");
+		root.innerHTML = renderMarkdown('<img src="https://images.example/raw.png" alt="Raw preview" title="Preview" width="40%">');
+		document.body.append(root);
+		root.addEventListener("click", event => handleRemoteImage(event, root));
+		expect(root.querySelector("img")).toBeNull();
+		expect(root.querySelector(".vomp-remote-image")?.textContent).toContain("Raw preview");
+		root.querySelector<HTMLButtonElement>("[data-load-image]")!.click();
+		expect(requested?.style.width).toBe("40%");
+		expect(requested?.style.height).toBe("auto");
+		expect(requested?.title).toBe("Preview");
+		requested!.dispatchEvent(new Event("load"));
+		expect(root.querySelector("img")).toBe(requested);
+		expect(root.querySelector(".vomp-remote-image")?.textContent).toBe("");
+		expect(requested?.style.backgroundColor).toBe("");
+	});
 });
