@@ -236,7 +236,7 @@ test("0.8.5 is the default and checks Send now, omp 19.1 plan review and bash st
   assert.match(byId["question-card-screen"].prompts[0], /fixture form/);
   assert.match(byId["question-card-screen"].prompts[0], /omp 19's question card/);
   assert.match(byId["question-card-screen"].prompts[0], /Answer this question/);
-  assert.match(byId["question-card-screen"].prompts[0], /Beta/);
+  assert.match(byId["question-card-screen"].prompts[0], /keeps its own selection.*does not show in the app's question card.*Beta.*Submit.*question card closes/s);
   assert.ok(release085.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release085.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });

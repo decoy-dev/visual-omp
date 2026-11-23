@@ -51,7 +51,7 @@ export default {
       prompts: [[
         "fixture notes",
         "Send `fixture form` to open omp 19's question card. While it waits, open the omp screen with ⌘J.",
-        "Fold and reopen the card. Choose Beta with one of its option buttons and confirm the app's question card shows that choice. Choose Answer this question, then answer in the app's question card.",
+        "The omp screen shows omp's own card, which keeps its own selection, so a pick there does not show in the app's question card. Click Beta to pick it. Under Platforms to check, choose Answer this question and confirm macOS and Windows have check marks, then choose Submit. The app's question card closes, and the ask row records Beta for Release channel.",
       ].join("\n")],
     },
   ],
