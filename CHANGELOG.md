@@ -6,13 +6,13 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Highlights
 
-- **Improved:** Settings → General and Permissions name the settings omp stores while omp reads them, with a placeholder where each control will appear.
+- **Improved:** While omp reads your settings, Settings → General and Permissions say so, name each affected setting and show a placeholder where its control will appear.
 
 ### Detailed changes
 
 #### Improved
 
-- While omp reads its settings, Settings → General and Permissions show each affected setting's name with a placeholder for its control, and help text that depends on the value is a placeholder too. These controls used to be missing until omp answered, and each tool in Permissions showed Default.
+- While omp reads its settings, Settings → General and Permissions show a notice with a spinner at the top: "Reading your settings from omp. Gray placeholders mark settings that are still loading. This can take several seconds." Each part still waiting shows "Waiting for omp" beside its heading or its buttons. Each affected setting keeps its name with a placeholder for its control, and help text that depends on the value is a placeholder too. The notice folds away when omp answers. These controls used to be missing until omp answered, and each tool in Permissions showed Default, so the page could look broken.
 
 ## [0.8.5] - 2026-11-23
 

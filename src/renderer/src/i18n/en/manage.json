@@ -72,7 +72,9 @@
 		"externalChange": "Settings were changed outside the app.",
 		"reload": "Reload settings",
 		"loadFailed": "Couldn't read omp's settings: {{reason}}",
-		"retry": "Try again"
+		"retry": "Try again",
+		"reading": "Reading your settings from omp. Gray placeholders mark settings that are still loading. This can take several seconds.",
+		"waiting": "Waiting for omp"
 	},
 	"providers": {
 		"login": {

@@ -7,7 +7,7 @@ import type { SettingsSectionProps } from "@/registry/slots";
 import { Button, Dialog, DialogContent, IconButton, Input, Notice, PageHeader, SectionHeader, Segmented, Skeleton } from "@/ui";
 import { listRowMotion } from "../listMotion";
 import { useResource } from "../shared";
-import { ConfigNotices, SectionScope, SourceChip } from "./parts";
+import { ConfigNotices, OmpReading, OmpWaiting, SectionScope, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
 import type { OmpSettings } from "./useOmpSettings";
 import { restrictedFoldersForEdit } from "./permissionsModel";
@@ -105,6 +105,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 					void approval.reload();
 				}}
 			/>
+			<OmpReading open={approvalPending || omp.pending} />
 			<p className="text-md text-fg-muted">
 				{t("permissions.intro", { mode: state ? t(`general.approvalMode.${state.mode ?? "unknown"}`) : "…" })}
 			</p>
@@ -212,7 +213,7 @@ function RestrictedFolders({ omp }: { omp: OmpSettings }) {
 	return (
 		<section className="mt-8" aria-labelledby="restricted-folders-title" aria-busy={omp.pending || undefined}>
 			<SectionHeader id="restricted-folders-title" title={t("permissions.restricted.title")} description={t("permissions.restricted.help")}
-				actions={<Button size="sm" icon={<Plus />} disabled={!setting || busy} onClick={() => void add()}>{t("permissions.restricted.add")}</Button>} />
+				actions={<>{omp.pending && <OmpWaiting />}<Button size="sm" icon={<Plus />} disabled={!setting || busy} onClick={() => void add()}>{t("permissions.restricted.add")}</Button></>} />
 			{folders.length > 0 ? (
 				<ul className="divide-y divide-border border-y border-border" aria-label={t("permissions.restricted.title")}>
 					{folders.map(folder => <li key={folder} className="flex items-center gap-3 py-2">

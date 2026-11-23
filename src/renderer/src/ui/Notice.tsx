@@ -16,14 +16,16 @@ export interface NoticeProps {
 	/** Buttons on the right, such as "Try again". */
 	actions?: ReactNode;
 	className?: string;
+	/** Replaces the tone's glyph, such as a spinner while something loads. */
+	icon?: ReactNode;
 }
 
 /** Inline banner: glyph + message (+ optional actions on the right). Errors are announced. */
-export function Notice({ tone = "info", children, actions, className }: NoticeProps) {
+export function Notice({ tone = "info", children, actions, className, icon }: NoticeProps) {
 	const style = noticeTones[tone];
 	return (
 		<div role={tone === "err" ? "alert" : "status"} className={cn("flex items-start gap-3 rounded-md border px-3 py-3 text-sm", style.box, className)}>
-			<span className="mt-px inline-flex shrink-0">{style.icon}</span>
+			<span className="mt-px inline-flex shrink-0">{icon ?? style.icon}</span>
 			<div className="min-w-0 flex-1 break-words">{children}</div>
 			{actions && <div className="-my-1 flex shrink-0 items-center gap-1.5">{actions}</div>}
 		</div>

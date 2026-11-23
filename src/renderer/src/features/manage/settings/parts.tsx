@@ -3,7 +3,7 @@ import { ArrowsClockwise } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
-import { Button, Chip, Notice, ScopeSwitch } from "@/ui";
+import { Button, Chip, Expand, Notice, ScopeSwitch, Spinner } from "@/ui";
 import { whenLeaving } from "@/state/leaveGuard";
 import { folderName, useExternalConfigChange } from "../shared";
 
@@ -37,14 +37,48 @@ export function SettingRow({
 	);
 }
 
-/** Group of rows inside a Settings section, with an optional heading. `busy` while some of its values are still loading. */
+/**
+ * Group of rows inside a Settings section, with an optional heading. `busy` while some of its values are still
+ * loading: the heading then says the section is waiting for omp, so its placeholders do not look broken.
+ */
 export function SettingsSection({ title, description, busy = false, children }: { title?: ReactNode; description?: ReactNode; busy?: boolean; children: ReactNode }) {
 	return (
 		<section className="mb-8" aria-busy={busy || undefined}>
-			{title && <h2 className="text-md font-semibold text-fg">{title}</h2>}
+			{title && (
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+					<h2 className="text-md font-semibold text-fg">{title}</h2>
+					{busy && <OmpWaiting />}
+				</div>
+			)}
 			{description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
 			<div className="relative mt-2 divide-y divide-border">{children}</div>
 		</section>
+	);
+}
+
+/** Beside a heading whose values omp has not reported yet. The page's `OmpReading` notice is the announced status. */
+export function OmpWaiting() {
+	const { t } = useDeferredTranslation("settings");
+	return (
+		<span className="inline-flex items-center gap-1.5 text-sm text-fg-muted">
+			<Spinner size={12} />
+			{t("settings.waiting")}
+		</span>
+	);
+}
+
+/**
+ * Top of a section while omp reports its settings: says why rows show placeholders and that they will turn on.
+ * It folds away when omp answers, so the rows below move up smoothly instead of jumping.
+ */
+export function OmpReading({ open }: { open: boolean }) {
+	const { t } = useDeferredTranslation("settings");
+	return (
+		<Expand open={open}>
+			<div className="pb-6">
+				<Notice icon={<Spinner size={14} />}>{t("settings.reading")}</Notice>
+			</div>
+		</Expand>
 	);
 }
 

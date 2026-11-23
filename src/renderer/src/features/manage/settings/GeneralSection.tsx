@@ -8,7 +8,7 @@ import { useApp } from "@/state/app";
 import { Button, PageHeader, Segmented, Select, SelectItem, Skeleton, Switch } from "@/ui";
 import { useResource } from "../shared";
 import { approvalModes } from "../../session-tools/approval";
-import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
+import { ConfigNotices, OmpReading, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
 import { AutoUpdateSwitch } from "./AutoUpdateSetting";
 import { CompactAtField } from "../../compaction/CompactAtField";
@@ -64,6 +64,7 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 					void approval.reload();
 				}}
 			/>
+			<OmpReading open={omp.pending || approvalPending} />
 			<SettingsSection title={t("general.safety")} busy={approvalPending}>
 				<SettingRow
 					label={t("general.approvalMode.label")}

@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { i18n } from "../../../i18n";
+import type * as UiModule from "../../../ui";
 import { PermissionsSection } from "./PermissionsSection";
+
+// The loading notice folds away through Expand; an animation still running at unmount is cancelled with an error,
+// so these tests open and close it at once.
+vi.mock("../../../ui", async importOriginal => ({ ...await importOriginal<typeof UiModule>(), Expand: ({ open, children }: PropsWithChildren<{ open: boolean }>) => (open ? children : null) }));
 
 const invoke = vi.fn();
 let root: Root;
@@ -29,6 +34,9 @@ it("shows each tool without a choice until omp reports its permissions, then its
 	expect(toolChoices()).toHaveLength(0);
 	expect(element.querySelectorAll('[aria-busy="true"]').length).toBeGreaterThanOrEqual(3);
 	expect(element.textContent).not.toContain("No restricted folders");
+	// The page says why the rows are placeholders, so they do not look broken.
+	expect(element.querySelector('[role="status"]')?.textContent).toContain("Reading your settings from omp");
+	expect(element.textContent).toContain("Waiting for omp");
 
 	await act(async () => approval.resolve({ cwd: null, mode: "write", modeSource: "global", policies: [{ tool: "bash", policy: "deny", source: "global" }], unrecognized: [] }));
 	await act(async () => list.resolve({ settings: [{ key: "tools.restrictedFolders", value: [], globalValue: null, projectValue: null, source: "default" }] }));
@@ -36,6 +44,8 @@ it("shows each tool without a choice until omp reports its permissions, then its
 	const bash = element.querySelector('[aria-label*="Run commands"]');
 	expect(bash?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Deny");
 	expect(element.textContent).toContain("No restricted folders");
+	expect(element.textContent).not.toContain("Waiting for omp");
+	expect(element.textContent).not.toContain("Reading your settings from omp");
 });
 
 it("drops the placeholders when omp cannot report its settings", async () => {
