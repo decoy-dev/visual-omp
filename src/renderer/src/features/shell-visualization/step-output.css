@@ -1,5 +1,5 @@
 /* The bash card's step output slot (LiveShellOutput). It renders outside the lazily loaded shell view, so its rules live here. */
 .shell-step-output { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
-.shell-step-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
+.shell-step-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; font-family: var(--font-ui); font-size: var(--text-sm); }
 .shell-step-label { font-family: var(--font-mono); font-size: var(--text-code); color: var(--fg); }
 .shell-step-meta { color: var(--fg-muted); overflow-wrap: anywhere; }
