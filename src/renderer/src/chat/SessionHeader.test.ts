@@ -57,7 +57,7 @@ vi.mock("../ui", () => {
 import "../features/palette/commands";
 import { SessionHeader } from "./SessionHeader";
 
-const view: SessionView = { mode: "history", host: null, guest: null, history: { header: null, entries: [], title: null, all: [] }, queue: [], inputHistory: [], working: false, workingSince: null, readOnly: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, strandedImages: false, error: null };
+const view: SessionView = { mode: "history", host: null, guest: null, history: { header: null, entries: [], title: null, all: [] }, queue: [], sendingNow: [], inputHistory: [], working: false, workingSince: null, readOnly: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, strandedImages: false, error: null };
 const session = (tabId: string) => ({ tabId, projectPath: "/project", subscribe: () => () => {}, getSnapshot: () => view }) as unknown as SessionController;
 const render = (tabId = "a") => renderToStaticMarkup(createElement(SessionHeader, { session: session(tabId), fallbackTitle: "Chat" }));
 

@@ -721,7 +721,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 				<p className="flex-1">{view.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
 				<Button size="sm" variant="secondary" disabled={readOnly} onClick={() => void session.retryEditorRestore().catch((error: unknown) => toast({ tone: "err", message: String(error) }))}>{t("editorRestore.retry")}</Button>
 			</div>}
-			<QueueTray session={session} queue={view.queue} questionId={questionId} formQuestion={displayScope !== null} askWaiting={view.questionPending || formPresented} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
+			<QueueTray session={session} queue={view.queue} sendingNow={view.sendingNow} questionId={questionId} formQuestion={displayScope !== null} askWaiting={view.questionPending || formPresented} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
 					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",

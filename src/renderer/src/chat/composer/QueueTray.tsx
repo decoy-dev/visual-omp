@@ -12,13 +12,15 @@ import { type DragEvent, type KeyboardEvent, useLayoutEffect, useRef, useState }
 import { useTranslation } from "react-i18next";
 import { isResumeDeclined } from "../../registry/guards";
 import type { QueuedMessage, SessionController } from "../../state/session";
-import { Button, Chip, cn, duration, ease, Expand, IconButton, releaseScrollFollow, spring, toast, useMotionReduced } from "../../ui";
+import { Button, Chip, cn, duration, ease, Expand, IconButton, PulseDot, releaseScrollFollow, spring, toast, useMotionReduced } from "../../ui";
 
 const VISIBLE_ROWS = 3;
 
 interface QueueTrayProps {
 	session: SessionController;
 	queue: readonly QueuedMessage[];
+	/** Messages marked "Send now" that are waiting for omp's next step to record them in the transcript. */
+	sendingNow?: readonly QueuedMessage[];
 	/** Pending omp question (reqId) not yet answered. */
 	questionId: number | null;
 	askWaiting?: boolean;
@@ -44,9 +46,10 @@ function revealQuestion(reqId: number, reduced: boolean): void {
  * The tray stays mounted in the composer and opens or closes itself. After the last queued message leaves, the
  * section is held open until that row's exit animation finishes, then collapses.
  */
-export function QueueTray({ session, queue, questionId, askWaiting = false, formQuestion = false, sendBlocked = false, strandedImages }: QueueTrayProps) {
+export function QueueTray({ session, queue, sendingNow = [], questionId, askWaiting = false, formQuestion = false, sendBlocked = false, strandedImages }: QueueTrayProps) {
 	const { t } = useTranslation("composer");
 	const [expanded, setExpanded] = useState(false);
+	const [sendingExpanded, setSendingExpanded] = useState(false);
 	const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -62,8 +65,17 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, form
 	const shownCount = useRef(queue.length);
 	if (queue.length > 0) shownCount.current = queue.length;
 	const count = shownCount.current;
+	const [sendingHeld, setSendingHeld] = useState(sendingNow.length > 0);
+	if (sendingNow.length > 0 && !sendingHeld) setSendingHeld(true);
+	const sendingLength = useRef(sendingNow.length);
+	sendingLength.current = sendingNow.length;
+	const shownSendingCount = useRef(sendingNow.length);
+	if (sendingNow.length > 0) shownSendingCount.current = sendingNow.length;
+	const sendingCount = shownSendingCount.current;
 	const rows = expanded ? queue : queue.slice(0, VISIBLE_ROWS);
 	const hidden = queue.length - rows.length;
+	const sendingRows = sendingExpanded ? sendingNow : sendingNow.slice(0, VISIBLE_ROWS);
+	const sendingHidden = sendingNow.length - sendingRows.length;
 	// "Restart omp" stays disabled from the click until the restart clears the hold, or fails.
 	const [restarting, setRestarting] = useState(false);
 	if (restarting && !strandedImages) setRestarting(false);
@@ -117,7 +129,7 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, form
 	};
 
 	return (
-		<Expand open={held || questionId !== null || strandedImages} instant={formDeparture && !held && !strandedImages}>
+		<Expand open={held || sendingHeld || questionId !== null || strandedImages} instant={formDeparture && !held && !sendingHeld && !strandedImages}>
 			<div className="mx-3 rounded-t-lg border border-b-0 border-border-strong bg-inset">
 			<Expand open={questionId !== null} instant={formDeparture}>
 				<div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-1.5">
@@ -149,6 +161,61 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, form
 						{t("queue.restart")}
 					</Button>
 				</div>
+			</Expand>
+			<Expand open={sendingHeld}>
+				<section aria-label={t("queue.sendingNowLabel", { count: sendingCount })} className={cn("p-menu", held && "pb-0")}>
+					<p className="flex items-center gap-1.5 px-1.5 pb-1 text-xs font-medium text-fg-muted">
+						<PaperPlaneRight className="size-3 text-accent" aria-hidden />
+						{t("queue.sendingNowTitle", { count: sendingCount })}
+					</p>
+					<ol className="relative flex flex-col gap-0.5">
+						<AnimatePresence
+							initial={false}
+							mode="popLayout"
+							onExitComplete={() => {
+								if (sendingLength.current === 0) setSendingHeld(false);
+							}}
+						>
+							{sendingRows.map(item => (
+								<motion.li
+									key={item.id}
+									layout="position"
+									initial={{ opacity: 0, y: 6 }}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{ opacity: 0, x: 12, transition: { duration: duration.fast, ease: "easeIn" } }}
+									transition={{ layout: spring.gentle, y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } }}
+								>
+									<div className="relative flex h-8 items-center gap-1 rounded-sm bg-panel pr-2 text-sm shadow-(--shadow-card)">
+										<span className="inline-flex h-8 w-6 shrink-0 items-center justify-center">
+											<PulseDot />
+										</span>
+										{item.images.length > 0 && (
+											<Chip icon={<ImageSquare />} title={item.images.map(image => image.name).join("\n")} className="h-5 px-2">
+												<span className="@max-[28rem]/composer:sr-only">{t("queue.images", { count: item.images.length })}</span>
+												<span aria-hidden className="hidden @max-[28rem]/composer:inline">
+													{item.images.length}
+												</span>
+											</Chip>
+										)}
+										<span className="min-w-0 flex-1 truncate text-fg" title={item.text}>
+											{item.text}
+										</span>
+										<span className="shrink-0 text-xs font-medium text-accent">{t("queue.sendingNowBadge")}</span>
+									</div>
+								</motion.li>
+							))}
+						</AnimatePresence>
+					</ol>
+					{(sendingHidden > 0 || sendingExpanded) && sendingNow.length > VISIBLE_ROWS && (
+						<button
+							type="button"
+							onClick={() => setSendingExpanded(value => !value)}
+							className="mt-1 ml-7 rounded-sm px-1 text-xs font-medium text-fg-muted outline-none hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
+						>
+							{sendingExpanded ? t("queue.less") : t("queue.more", { count: sendingHidden })}
+						</button>
+					)}
+				</section>
 			</Expand>
 			<Expand open={held}>
 				<section aria-label={t("queue.label", { count })} className="p-menu">

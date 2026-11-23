@@ -7,7 +7,7 @@ import { composerSelection } from './selection';
 
 function snapshot(): SessionView {
 	const guest: GuestSnapshot = { phase: 'live', endedReason: null, header: null, entries: [], state: null, agents: [], progress: new Map(), lifecycle: new Map(), stream: null, streamDone: false, activeTools: new Map(), backgroundTools: new Map(), working: true, readOnly: false, uiRequest: null, notices: [], thinkingSelector: null, loading: null };
-	return { mode: 'live', host: null, guest, history: null, queue: [], inputHistory: [], working: true, workingSince: null, readOnly: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, strandedImages: false, error: null };
+	return { mode: 'live', host: null, guest, history: null, queue: [], sendingNow: [], inputHistory: [], working: true, workingSince: null, readOnly: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, strandedImages: false, error: null };
 }
 
 describe('composer visual selection', () => {

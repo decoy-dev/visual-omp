@@ -125,3 +125,46 @@ it("keeps legacy question tray departures animated", async () => {
 		expect(container.querySelector("[data-tray-expand]")?.getAttribute("data-instant")).toBe("false");
 	} finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+
+it("keeps messages marked Send now visible in a dedicated section until omp records them", async () => {
+	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+	const container = document.createElement("div"); document.body.append(container);
+	const root = createRoot(container);
+	try {
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(QueueTray, {
+			session: {} as SessionController,
+			queue: [{ id: "later", text: "Wait until finished", images: [] }],
+			sendingNow: [{ id: "now", text: "Stop and check tests", images: [{ path: "/workspace/err.png", name: "err.png" }] }],
+			questionId: null,
+			strandedImages: false,
+		}))));
+		expect(container.textContent).toContain("Sending at omp's next step.");
+		expect(container.textContent).toContain("Stop and check tests");
+		expect(container.textContent).toContain("Sending next");
+		expect(container.textContent?.match(/Sending next/g)).toHaveLength(1);
+		expect(container.textContent).toContain("1 image");
+		expect(container.textContent).toContain("Wait until finished");
+	} finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("shows three Send now messages until you ask for the rest, as the queue does", async () => {
+	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+	const container = document.createElement("div"); document.body.append(container);
+	const root = createRoot(container);
+	try {
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(QueueTray, {
+			session: {} as SessionController,
+			queue: [],
+			sendingNow: Array.from({ length: 5 }, (_, index) => ({ id: `now-${index}`, text: `Steer ${index + 1}`, images: [] })),
+			questionId: null,
+			strandedImages: false,
+		}))));
+		const shown = () => [...container.querySelectorAll("li")].map(item => item.textContent?.replace("Sending next", ""));
+		expect(shown()).toEqual(["Steer 1", "Steer 2", "Steer 3"]);
+		const toggle = [...container.querySelectorAll("button")].find(button => button.textContent === "Show 2 more")!;
+		await act(async () => toggle.click());
+		expect(shown()).toEqual(["Steer 1", "Steer 2", "Steer 3", "Steer 4", "Steer 5"]);
+		expect(toggle.textContent).toBe("Show fewer messages");
+	} finally { await act(async () => root.unmount()); container.remove(); }
+});

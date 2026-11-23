@@ -85,7 +85,7 @@ beforeEach(() => {
 		if (channel === "config:approval") return { mode: "always-ask", supportedModes: ["always-ask", "write", "yolo"], modeSource: "project" };
 		return undefined;
 	});
-	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: null, error: null };
+	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], sendingNow: [], strandedImages: false, host: null, error: null };
 	session = { tabId: "polling", projectPath: "/tmp", sessionFile: null, get hostId() { return view.host?.hostId ?? null; }, getSnapshot: () => view, subscribe(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, btwLine: () => null } as unknown as SessionController;
 	useComposerDrafts.getState().setDraft("polling", "");
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);

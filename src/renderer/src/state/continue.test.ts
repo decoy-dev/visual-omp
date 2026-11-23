@@ -32,7 +32,7 @@ const guest = (patch: Partial<GuestSnapshot> = {}): GuestSnapshot => ({
 	...patch,
 });
 const view = (patch: Partial<SessionView> = {}): SessionView => ({
-	mode: "live", host, guest: guest(), displayLeaf: null, history: null, queue: [], inputHistory: [],
+	mode: "live", host, guest: guest(), displayLeaf: null, history: null, queue: [], sendingNow: [], inputHistory: [],
 	working: false, workingSince: null, readOnly: false, follow: null, ownerUnverified: false,
 	carryover: null, strandedImages: false, error: null, ...patch,
 });

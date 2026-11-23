@@ -63,7 +63,7 @@ beforeEach(() => {
 	// happy-dom omits FontFaceSet; Composer only subscribes to its loadingdone event here.
 	fontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
-	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: null, error: null };
+	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], sendingNow: [], strandedImages: false, host: null, error: null };
 	useComposerDrafts.getState().setDraft("availability", "A message ready to send");
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });

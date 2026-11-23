@@ -536,3 +536,90 @@ it.each(["removed", "disabled"] as const)("revalidates a picker item that became
 	await h.session.send(event);
 	expect(h.bodies().filter(body => body.ev === "activate")).toEqual([event]);
 });
+
+it("advertises menu while keeping buttons, web and doc excluded from TSP hello", async () => {
+	const h = harness();
+	h.hello();
+	await h.flush();
+	const hello = h.bodies().find(body => body.r === "hello") as { kinds?: string[] } | undefined;
+	expect(hello?.kinds).toEqual([...TSP_ADVERTISED_KINDS]);
+	expect(hello?.kinds).toContain("menu");
+	expect(hello?.kinds).not.toContain("buttons");
+	expect(hello?.kinds).not.toContain("web");
+	expect(hello?.kinds).not.toContain("doc");
+	expect(hello?.kinds).toHaveLength(47);
+});
+
+it("guards jobs source:<id> menu actions against enabled, string, separator, disabled, hidden and non-menu nodes", async () => {
+	const h = harness(); h.hello(); h.open();
+	h.frame(1, [
+		["add", "src-menu", "s:1", null, {
+			id: "src-menu", k: "menu", p: {
+				items: [
+					"-",
+					{ header: "Streams" },
+					{ id: "source:stdout", label: "stdout" },
+					"source:stderr",
+					{ id: "source:disabled", label: "disabled", disabled: true },
+					{ id: "source:nested", label: "more", items: [{ id: "source:child", label: "child" }] },
+				],
+			},
+		}],
+		["add", "hidden-menu", "s:1", null, { id: "hidden-menu", k: "menu", p: { hidden: true, items: [{ id: "source:stdout", label: "stdout" }] } }],
+		["add", "not-menu", "s:1", null, { id: "not-menu", k: "button", p: { text: "stdout", actions: { click: "source:stdout" } } }],
+	]);
+	await h.flush(); h.messages.length = 0;
+
+	await h.session.send({ ev: "action", sf: "s:1", id: "src-menu", act: "source:stdout" });
+	await h.session.send({ ev: "action", sf: "s:1", id: "src-menu", act: "source:stderr" });
+	await h.session.send({ ev: "action", sf: "s:1", id: "src-menu", act: "source:child" });
+	expect(h.bodies()).toEqual([
+		{ ev: "action", sf: "s:1", id: "src-menu", act: "source:stdout" },
+		{ ev: "action", sf: "s:1", id: "src-menu", act: "source:stderr" },
+		{ ev: "action", sf: "s:1", id: "src-menu", act: "source:child" },
+	]);
+	h.messages.length = 0;
+
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "src-menu", act: "source:missing" })).rejects.toThrow("no longer available");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "src-menu", act: "source:disabled" })).rejects.toThrow("no longer available");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "hidden-menu", act: "source:stdout" })).rejects.toThrow("no longer available");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "not-menu", act: "source:stdout" })).rejects.toThrow("no longer available");
+	expect(h.messages).toEqual([]);
+});
+
+it("reads the dock queue as the main chat's only while the main editor is there and no helper is focused", async () => {
+	const h = harness(); h.hello(); h.open();
+	h.frame(1, [
+		["add", "dock", "s:1", null, {
+			id: "dock", k: "col", p: { role: "omp.editor" }, c: [
+				{
+					id: "queue", k: "col", p: { role: "omp.queue" }, c: [
+						{ id: "q1", k: "row", p: { role: "omp.queue.item", title: "Steering" }, c: [{ id: "t1", k: "text", p: { text: "Main steer" } }] },
+						{ id: "q2", k: "row", p: { role: "omp.queue.item", title: "After yield" }, c: [{ id: "t2", k: "text", p: { text: "Main follow-up" } }] },
+					],
+				},
+				{ id: "editor", k: "editor", p: { sendable: true, text: "" } },
+			],
+		}],
+		["focus", "editor"],
+	]);
+	await h.flush();
+	expect(composerFacts(h.session.snapshot().surfaces).queuedItems).toEqual([
+		{ text: "Main steer", kind: "steer" },
+		{ text: "Main follow-up", kind: "followUp" },
+	]);
+
+	// A focused helper's header means the pills are that helper's queue.
+	h.frame(2, [["add", "focus-bar", "dock", null, { id: "focus-bar", k: "row", p: { role: "omp.composer.focus" } }]]);
+	await h.flush();
+	const focused = composerFacts(h.session.snapshot().surfaces);
+	expect(focused.queued).toEqual(["Main steer", "Main follow-up"]);
+	expect(focused.queuedItems).toBeUndefined();
+
+	// A selector that replaces the editor also removes the header while the helper stays focused: the owner is unknown.
+	h.frame(3, [["del", "focus-bar"], ["del", "editor"]]);
+	await h.flush();
+	const replaced = composerFacts(h.session.snapshot().surfaces);
+	expect(replaced.queued).toEqual(["Main steer", "Main follow-up"]);
+	expect(replaced.queuedItems).toBeUndefined();
+});

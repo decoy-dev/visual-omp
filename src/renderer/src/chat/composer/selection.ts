@@ -10,6 +10,7 @@ export function composerSelection(view: SessionView) {
 		working: view.working,
 		follow: view.follow,
 		queue: view.queue,
+		sendingNow: view.sendingNow,
 		strandedImages: view.strandedImages,
 		inputHistory: view.inputHistory,
 		history: view.history,

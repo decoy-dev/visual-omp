@@ -9,7 +9,8 @@ export function composerFacts(surfaces: readonly TspSurfaceSnapshot[]): TspCompo
 	const nodes = live.flatMap(surface => [...walkNodes(surface.document)]);
 	const approval = nodes.some(node => node.p?.role === TSP_ROLES.approvalChoices);
 	const ask = nodes.some(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden);
-	const panel = !!screenSurface(live) || nodes.some(node => node.p?.role === TSP_ROLES.composerFocus)
+	const helperFocused = nodes.some(node => node.p?.role === TSP_ROLES.composerFocus);
+	const panel = !!screenSurface(live) || helperFocused
 		|| live.some(surface => region(surface, "layer").some(node => !node.p?.hidden && node.k !== "toast" && ![...walkNodes(node)].some(child => child.p?.role === TSP_ROLES.approvalChoices)))
 		|| (!approval && nodes.some(isHookNode));
 	let target: { surface: TspSurfaceSnapshot; node: TspNode } | undefined;
@@ -26,9 +27,13 @@ export function composerFacts(surfaces: readonly TspSurfaceSnapshot[]): TspCompo
 		const dock = surface.document.c?.find(node => node.id === "dock");
 		if (dock) { const node = search(dock, false); if (node) target = { surface, node }; }
 	}
-	const queued = live.flatMap(surface => region(surface, "dock").flatMap(root => [...walkNodes(root)]))
+	const queuedItems = live.flatMap(surface => region(surface, "dock").flatMap(root => [...walkNodes(root)]))
 		.filter(node => node.p?.role === TSP_ROLES.queueItem)
-		.map(node => (node.c ?? []).find(child => child.k === "text")?.p?.text ?? "");
+		.map(node => ({
+			text: (node.c ?? []).find(child => child.k === "text")?.p?.text ?? "",
+			kind: (node.p?.title === "After yield" ? "followUp" : "steer") as "steer" | "followUp",
+		}));
+	const queued = queuedItems.map(item => item.text);
 	const text = target?.node.k === "editor" ? target.node.p?.text ?? "" : "";
 	const cursor = target?.node.k === "editor" ? target.node.p?.cursor : undefined;
 	return {
@@ -36,6 +41,10 @@ export function composerFacts(surfaces: readonly TspSurfaceSnapshot[]): TspCompo
 		text, cursor: typeof cursor === "number" ? cursor : text.length,
 		ghost: target?.node.k === "editor" ? target.node.p?.ghost ?? "" : "",
 		editorId: target?.node.id ?? null, surfaceId: target?.surface.open.id ?? null, queued,
+		// Dock queue pills belong to the main chat only while its editor is in the dock: a focused subagent's header
+		// (`omp.composer.focus`) means they are that helper's queue, and a selector that replaces the editor also
+		// removes that header while the helper stays focused, so the queue then has no known owner.
+		...(!helperFocused && target ? { queuedItems } : {}),
 		blockedBy: panel ? "panel" : approval ? "approval" : ask ? "ask" : null,
 	};
 }

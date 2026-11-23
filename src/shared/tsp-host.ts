@@ -36,6 +36,11 @@ export function tspAllowsAskPrompt(availability: TspAvailability | undefined, re
 		|| (availability?.reasonCode === "matched-question" && availability.questionReqId === reqId);
 }
 
+export interface TspQueuedItem {
+	text: string;
+	kind: "steer" | "followUp";
+}
+
 export interface TspComposerFacts {
 	sendable: boolean;
 	text: string;
@@ -44,6 +49,7 @@ export interface TspComposerFacts {
 	editorId: string | null;
 	surfaceId: string | null;
 	queued: string[];
+	queuedItems?: readonly TspQueuedItem[];
 	blockedBy: "ask" | "approval" | "panel" | null;
 }
 

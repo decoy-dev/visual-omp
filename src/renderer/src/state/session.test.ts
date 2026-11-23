@@ -2722,3 +2722,171 @@ describe("deferred saved-chat file reader", () => {
 		expect(invoked.some(call => call[0] === "host:start" || call[0] === "sessions:follow")).toBe(false);
 	});
 });
+
+describe("visible Send now pending messages", () => {
+	const liveHost = (patch: Partial<HostState> = {}): HostState => ({
+		hostId: "h-now", cwd: "/p", phase: "live", link: "https://relay.example/room#key",
+		sessionId: "s-now", sessionFile: "/p/s-now.jsonl", pid: 1, generation: 1,
+		exitCode: null, error: null, tui: null, cols: 80, rows: 24, ...patch,
+	});
+	const userEntry = (id: string, text: string): MessageEntry => ({
+		id, parentId: null, timestamp: "2026-11-23T00:00:00Z", type: "message",
+		message: { role: "user", content: text, timestamp: 100 },
+	});
+
+	it("keeps a queued message visible in sendingNow when Send now is clicked until omp records it", async () => {
+		const session = new SessionController({ tabId: "send-now-visible", projectPath: "/p", sessionFile: null });
+		session.attach(liveHost());
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [], true);
+
+		await session.send("Check the build first");
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+
+		await session.sendNow(session.getSnapshot().queue[0]!.id);
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Check the build first" }]);
+
+		guest.emit("live", [userEntry("u1", "Check the build first")], true);
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		await session.dispose();
+	});
+
+	it("keeps a steered message from the composer visible in sendingNow while omp works and clears on delivery or exit", async () => {
+		const session = new SessionController({ tabId: "steer-visible", projectPath: "/p", sessionFile: null });
+		session.attach(liveHost());
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [], true);
+
+		await session.steer("Skip the slow suite");
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Skip the slow suite" }]);
+
+		guest.emit("live", [userEntry("u1", "Skip the slow suite")], true);
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+
+		await session.steer("Second steer before exit");
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Second steer before exit" }]);
+		for (const listener of hostListeners) listener(liveHost({ phase: "exited", exitCode: 0 }));
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		await session.dispose();
+	});
+
+	it("moves a failed Send now message out of sendingNow and back into queue", async () => {
+		const session = new SessionController({ tabId: "send-now-fail", projectPath: "/p", sessionFile: null });
+		session.attach(liveHost());
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [], true);
+
+		await session.send("Retry me");
+		const id = session.getSnapshot().queue[0]!.id;
+		respond = channel => channel === "host:submit" ? Promise.reject(new Error("editor busy")) : undefined;
+		await expect(session.sendNow(id)).rejects.toThrow("editor busy");
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Retry me" }]);
+		await session.dispose();
+	});
+
+	it("clears sendingNow when omp restores queued text to the editor (Escape or /compact)", async () => {
+		const session = new SessionController({ tabId: "send-now-restore", projectPath: "/p", sessionFile: null });
+		useComposerDrafts.getState().forget(session.tabId);
+		session.attach(liveHost({ transport: "tsp" }));
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [], true);
+
+		await session.steer("Cancel me via Escape");
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Cancel me via Escape" }]);
+
+		for (const listener of hostListeners) {
+			listener(liveHost({
+				transport: "tsp",
+				tspEditorRestore: { id: "r-esc", hostId: "h-now", text: "Cancel me via Escape", cleared: true, error: null },
+			}));
+		}
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		useComposerDrafts.getState().forget(session.tabId);
+		await session.dispose();
+	});
+
+	it("reflects omp's TSP steering queue across reloads and clears when omp drains or drops it", async () => {
+		const session = new SessionController({ tabId: "send-now-tsp-reload", projectPath: "/p", sessionFile: null });
+		const composer = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "ed", surfaceId: "s1", blockedBy: null as null };
+		// Attaching a fresh controller to an already-running TSP host with omp-queued steering picks it up immediately.
+		session.attach(liveHost({
+			transport: "tsp",
+			tspComposer: {
+				...composer,
+				queued: ["Steered before reload", "After yield note"],
+				queuedItems: [
+					{ text: "Steered before reload", kind: "steer" },
+					{ text: "After yield note", kind: "followUp" },
+				],
+			},
+		}));
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Steered before reload", images: [] }]);
+
+		// Clearing omp's steering queue drops the row without needing a user entry or editor restore.
+		for (const listener of hostListeners) {
+			listener(liveHost({
+				transport: "tsp",
+				tspComposer: { ...composer, queued: [], queuedItems: [] },
+			}));
+		}
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		await session.dispose();
+	});
+
+	it("deduplicates multi-line and tabbed Send now messages against omp's normalized TSP queue text", async () => {
+		const session = new SessionController({ tabId: "send-now-multiline", projectPath: "/p", sessionFile: null });
+		const composer = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "ed", surfaceId: "s1", blockedBy: null as null };
+		session.attach(liveHost({ transport: "tsp", tspComposer: { ...composer, queued: [], queuedItems: [] } }));
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [], true);
+
+		const text = "First line\n\tSecond\tline\r\n  Third line";
+		await session.steer(text, [{ path: "/p/shot.png", name: "shot.png" }]);
+		expect(session.getSnapshot().sendingNow).toHaveLength(1);
+
+		// omp's QueuedMessagesBand expands tabs to 3 spaces and joins lines with " ↵ ".
+		const ompNormalized = "First line ↵ Second   line ↵ Third line";
+		for (const listener of hostListeners) {
+			listener(liveHost({
+				transport: "tsp",
+				tspComposer: { ...composer, queued: [ompNormalized], queuedItems: [{ text: ompNormalized, kind: "steer" }] },
+			}));
+		}
+		expect(session.getSnapshot().sendingNow).toHaveLength(1);
+		expect(session.getSnapshot().sendingNow[0]).toMatchObject({ text, images: [{ name: "shot.png" }] });
+
+		for (const listener of hostListeners) {
+			listener(liveHost({ transport: "tsp", tspComposer: { ...composer, queued: [], queuedItems: [] } }));
+		}
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		await session.dispose();
+	});
+
+	it("keeps a Send now message and its images while omp's dock has no known owner and on the first frame back", async () => {
+		const session = new SessionController({ tabId: "send-now-helper-focus", projectPath: "/p", sessionFile: null });
+		const composer = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "ed", surfaceId: "s1", blockedBy: null as null };
+		const frame = (queuedItems: { text: string; kind: "steer" }[] | undefined) => {
+			for (const listener of hostListeners) listener(liveHost({ transport: "tsp", tspComposer: { ...composer, queued: queuedItems?.map(item => item.text) ?? [], ...(queuedItems ? { queuedItems } : {}) } }));
+		};
+		session.attach(liveHost({ transport: "tsp", tspComposer: { ...composer, queued: [], queuedItems: [] } }));
+		fakes.guests.at(-1)!.emit("live", [], true);
+		await session.steer("Check the logs", [{ path: "/p/log.png", name: "log.png" }]);
+		frame([{ text: "Check the logs", kind: "steer" }]);
+
+		// A helper is focused: the dock's pills belong to it, so main reports no queuedItems.
+		frame(undefined);
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Check the logs", images: [{ name: "log.png" }] }]);
+		// Unfocused: the first frame can show the dock before omp puts the main chat's pills back.
+		frame([]);
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Check the logs", images: [{ name: "log.png" }] }]);
+		frame([{ text: "Check the logs", kind: "steer" }]);
+		expect(session.getSnapshot().sendingNow).toMatchObject([{ text: "Check the logs", images: [{ name: "log.png" }] }]);
+		// Missing from a later frame, it is gone.
+		frame([]);
+		expect(session.getSnapshot().sendingNow).toEqual([]);
+		await session.dispose();
+	});
+});

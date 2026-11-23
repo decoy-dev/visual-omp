@@ -150,7 +150,7 @@ beforeEach(() => {
 	snapshot = { ...docs, hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Plan review" }, surfaces: docs.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
 	view = {
 		mode: "live", readOnly: false, working: false, workingSince: null, guest: null, history: null,
-		inputHistory: [], queue: [], strandedImages: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, error: null,
+		inputHistory: [], queue: [], sendingNow: [], strandedImages: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, error: null,
 		host: { hostId: "host", generation: 1, transport: "tsp", tspAvailability: snapshot.availability, cwd: "/tmp/plan-test", phase: "live",
 			link: null, sessionId: null, sessionFile: null, pid: null, exitCode: null, error: null, tui: null, cols: 80, rows: 24 },
 	};

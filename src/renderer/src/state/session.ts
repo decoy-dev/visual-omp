@@ -110,6 +110,39 @@ interface PendingSubmission {
 	acking: boolean;
 }
 
+/** Compare two `sendingNow` snapshots by id, text and attachment count so unchanged ticks keep referential stability. */
+function sameQueuedMessages(a: readonly QueuedMessage[], b: readonly QueuedMessage[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i]!.id !== b[i]!.id || a[i]!.text !== b[i]!.text || a[i]!.images.length !== b[i]!.images.length) return false;
+	}
+	return true;
+}
+
+/** Normalize queued text the same way omp's QueuedMessagesBand does (3-space tabs, ` ↵ ` line joins). */
+function normalizeTspQueuedText(value: string): string {
+	return value.replaceAll("\t", "   ").replace(/\s*\r?\n\s*/g, " ↵ ").trim();
+}
+
+/** Whether a TSP `omp.queue.item` text matches an app-initiated Send-now entry (including multi-line and image-only prompts). */
+function tspQueuedMatches(queuedText: string, item: QueuedMessage): boolean {
+	const normalized = normalizeTspQueuedText(queuedText);
+	const target = normalizeTspQueuedText(item.text);
+	if (normalized === target) return true;
+	if (!target && item.images.length > 0 && /^\[Image\b/.test(normalized)) return true;
+	return item.images.length > 0 && (expandedPromptTextMatches(normalized, target, item.images.length) || expandedPromptTextMatches(queuedText.trim(), item.text.trim(), item.images.length));
+}
+
+/** A message marked "Send now" that stays visible in the tray until omp appends it to the transcript. */
+interface SendingNowEntry {
+	item: QueuedMessage;
+	room: number;
+	submissionId?: string;
+	ack?: Acknowledgement;
+	/** Seen in omp's TSP steering queue (`omp.queue.item`), so its removal there clears this entry. */
+	seenInTspQueue?: boolean;
+}
+
 interface AskPromptTarget {
 	guest: GuestClient;
 	room: number;
@@ -144,6 +177,8 @@ export interface SessionView {
 	guest: GuestSnapshot | null;
 	history: SessionHistory | null;
 	queue: readonly QueuedMessage[];
+	/** Messages sent with "Send now" that are waiting for omp's next step to record them in the transcript. */
+	sendingNow: readonly QueuedMessage[];
 	/** Text successfully submitted in this window, including commands absent from the transcript. */
 	inputHistory: readonly { text: string; timestamp: number }[];
 	/** omp is running a turn or waiting for background work to resume it. */
@@ -270,6 +305,15 @@ export class SessionController {
 	#awaiting: Acknowledgement | null = null;
 	/** Exact submitted input retained until collab accepts it or main reports an explicit rejection. */
 	#submissions = new Map<string, PendingSubmission>();
+	/** Messages sent via "Send now" (steer / sendNow) still waiting for omp to record them in the transcript. */
+	#sendingNow = new Map<string, SendingNowEntry>();
+	/** False while omp's dock queue has no known owner: a helper is focused, or a selector replaced the main editor. */
+	#tspQueueOwnerKnown = true;
+	/**
+	 * True for the first frame after an unknown owner. omp can draw the dock before it puts the main chat's queue back,
+	 * so that frame keeps Send now entries it does not show; one still missing from the next frame is gone.
+	 */
+	#tspQueueSettling = false;
 	/** Keep consumed entry ids after their watches retire, so repeated text needs a new transcript entry. */
 	#submissionEntries = new Set<string>();
 	/** Turns seen starting (working edges), so an acknowledgement that arrived mid-write is not missed. */
@@ -334,6 +378,7 @@ export class SessionController {
 			guest: null,
 			history: null,
 			queue: [],
+			sendingNow: [],
 			inputHistory: [],
 			working: false,
 			workingSince: null,
@@ -613,10 +658,12 @@ export class SessionController {
 			|| (host.sessionFile && previous.sessionFile && previous.sessionFile !== host.sessionFile))) {
 			this.#submissions.clear();
 			this.#submissionEntries.clear();
+			this.#sendingNow.clear();
 			this.#awaiting = null;
 			this.#room++;
 		}
 		if (host.tspEditorRestore) this.#receiveEditorRestore(host.tspEditorRestore);
+		this.#reconcileTspQueue(host);
 		const previousStatus = this.#view.host?.programStatus;
 		this.#projectPath = host.cwd;
 		if (host.sessionFile && this.#sessionFile && host.sessionFile !== this.#sessionFile) {
@@ -628,13 +675,14 @@ export class SessionController {
 			this.#receivePromptFailures(host);
 			this.#submissions.clear();
 			this.#submissionEntries.clear();
+			this.#sendingNow.clear();
 			// Nothing typed into the omp that stopped is coming back to acknowledge itself, and its editor is gone:
 			// the next omp starts with an empty one.
 			this.#room++;
 			this.#awaiting = null;
 			this.#strandedSince = null;
 			this.#closeGuest();
-			this.#set({ host, mode: "exited", working: false, strandedImages: false, error: host.error });
+			this.#set({ host, mode: "exited", working: false, strandedImages: false, sendingNow: [], error: host.error });
 			this.#emit({ kind: "exited", code: host.exitCode });
 			return;
 		}
@@ -643,7 +691,8 @@ export class SessionController {
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
 		if (host.phase === "live") this.#hosted = true;
-		this.#set({ host, mode, error: host.error });
+		const nextSendingNow = this.#sendingNowList(host);
+		this.#set({ host, mode, error: host.error, ...(sameQueuedMessages(this.#view.sendingNow, nextSendingNow) ? {} : { sendingNow: nextSendingNow }) });
 		this.#syncAsyncWait();
 		if (host.programStatus?.state === "blocked" && previousStatus?.state !== "blocked" && !this.#view.guest?.uiRequest) {
 			this.#emit({ kind: "needsInput" });
@@ -670,6 +719,7 @@ export class SessionController {
 		this.#awaiting = null;
 		this.#submissions.clear();
 		this.#submissionEntries.clear();
+		this.#sendingNow.clear();
 		this.#closeGuest();
 		this.#completionRevision = 0;
 		this.#guestLink = link;
@@ -677,7 +727,10 @@ export class SessionController {
 		guest.setForeground(this.#foreground);
 		this.#guest = guest;
 		this.#unsubscribeGuest = guest.subscribe(() => this.#onGuest(guest.getSnapshot()));
-		if (carryover !== this.#view.carryover) this.#set({ carryover });
+		const patch: Partial<SessionView> = {};
+		if (carryover !== this.#view.carryover) patch.carryover = carryover;
+		if (this.#view.sendingNow.length > 0) patch.sendingNow = [];
+		if (Object.keys(patch).length > 0) this.#set(patch);
 		guest.connect();
 	}
 
@@ -736,8 +789,12 @@ export class SessionController {
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
 		if (hadRequest !== undefined && !snapshot.uiRequest && !working) this.#resumeQueue();
 		for (const submission of this.#submissions.values()) {
-			if (!submission.rejected && this.#submissionDelivered(submission) && submission.submitted) this.#ackSubmission(submission);
+			if (!submission.rejected && this.#submissionDelivered(submission)) {
+				this.#removeSendingNow(submission.item.id);
+				if (submission.submitted) this.#ackSubmission(submission);
+			}
 		}
+		this.#reconcileSendingNow();
 		if (this.#awaiting && this.#acknowledged(this.#awaiting)) {
 			this.#awaiting = null;
 			// A shell or Python line finished without a turn: no turn end will move the queue on.
@@ -926,17 +983,34 @@ export class SessionController {
 		const known = this.btwLine(message.text, message.images);
 		this.#assertTspApproval(known ?? message.text);
 		const askTarget = known ? undefined : this.#askPromptTarget(message.text);
+		const sendingId = !known && (this.#view.working || this.#view.mode !== "live") ? `q${nextQueueId++}` : undefined;
+		if (sendingId) {
+			this.#sendingNow.set(sendingId, { item: { id: sendingId, ...message }, room: this.#room });
+			this.#syncSendingNow();
+		}
 		this.markInput();
 		this.noteSent();
-		try { await this.whenLive(message); }
-		catch (error) {
+		try {
+			await this.whenLive(message);
+		} catch (error) {
+			this.#removeSendingNow(sendingId);
 			if (error instanceof ResumeDeclinedError && error.transferredMessage === message) return;
 			throw error;
 		}
 		// A chat without a running omp learns its version only once omp starts, so decide again now.
 		const side = this.btwLine(message.text, message.images);
-		if (side) await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message, text: side }, 0, false, false);
-		else await this.#deliverDirect(message, askTarget);
+		if (side) {
+			this.#removeSendingNow(sendingId);
+			await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message, text: side }, 0, false, false);
+			return;
+		}
+		try {
+			const ownership = await this.#deliverDirect(sendingId ? { id: sendingId, ...message } : message, askTarget);
+			if (ownership.kind !== "submitted") this.#removeSendingNow(sendingId);
+		} catch (error) {
+			this.#removeSendingNow(sendingId);
+			throw error;
+		}
 	}
 
 	get canContinue(): boolean {
@@ -995,15 +1069,23 @@ export class SessionController {
 		this.#assertTspApproval(item.text);
 		if (this.#view.strandedImages) throw new StrandedImagesError();
 		const askTarget = this.#askPromptTarget(item.text);
-		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
+		const queue = this.#view.queue.filter(entry => entry.id !== id);
+		const slash = this.#isSlash(item);
+		if (!slash) {
+			this.#sendingNow.set(item.id, { item, room: this.#room });
+			this.#set({ queue, sendingNow: this.#sendingNowList() });
+		} else {
+			this.#set({ queue });
+		}
 		this.noteSent();
-		if (this.#isSlash(item)) {
+		if (slash) {
 			await this.#deliverSlash(item, index, false);
 			return;
 		}
 		try {
 			await this.#deliverMessage(item, askTarget, index);
 		} catch (error) {
+			this.#removeSendingNow(item.id);
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
 			this.#requeue({ ...item, error: failure.queueError || (item.explicitRetry ? failure.message || i18n.t("composer:send.failed") : undefined) }, index);
 			throw failure.reason;
@@ -1086,6 +1168,8 @@ export class SessionController {
 	}
 
 	#receiveEditorRestore(capture: TspEditorRestore): void {
+		// omp returned queued input to its editor (Escape, /compact, etc.), so clear pending Send-now entries.
+		this.#sendingNow.clear();
 		useComposerDrafts.getState().restoreEditor(this.tabId, capture.id, capture.text);
 		if (!capture.cleared || this.#restoreAcks.has(capture.id)) return;
 		this.#restoreAcks.add(capture.id);
@@ -1201,6 +1285,7 @@ export class SessionController {
 		this.#tspQuestionSync.dispose();
 		this.#submissions.clear();
 		this.#submissionEntries.clear();
+		this.#sendingNow.clear();
 		this.tspNotices.dispose();
 		this.#stopFollowing();
 		this.#closeGuest();
@@ -1241,6 +1326,7 @@ export class SessionController {
 				|| failure.generation !== host.generation || submission.ack.room !== this.#room) continue;
 			if (!submission.rejected) {
 				submission.rejected = true;
+				this.#removeSendingNow(submission.item.id);
 				if (!failure.cleared) this.#strandImages(true);
 				if (this.#awaiting?.submissionId === submission.id) this.#awaiting = null;
 				this.#requeue({ ...submission.item, error: failure.diagnostic }, submission.index);
@@ -1373,6 +1459,10 @@ export class SessionController {
 						index, ack: before, submitted: false, rejected: false, retained: false, acking: false,
 					};
 					this.#submissions.set(id, submission);
+					if (item.id) {
+						const tracked = this.#sendingNow.get(item.id);
+						if (tracked) tracked.submissionId = id;
+					}
 				}
 				if (item.images.length > 0 && this.#view.host?.transport === "tsp") {
 					await window.vomp.invoke("host:submit", hostId, item.text, "steer", imagePathsText(item.images.map(image => image.path)), submission?.id);
@@ -1393,6 +1483,7 @@ export class SessionController {
 			// The state event may have retained this rejection before the submit request completed.
 			if (submission?.rejected) return;
 			if (submission) this.#submissions.delete(submission.id);
+			this.#removeSendingNow(item.id);
 			const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "") : "";
 			const restored = /^(?:omp screen:\s*)?Image submission was restored\.\s+([\s\S]+)$/.exec(message)?.[1];
 			if (restored) throw new DeliveryFailure(error, false, restored);
@@ -1403,8 +1494,22 @@ export class SessionController {
 			if (pasted) this.#strandImages(requiresRelaunch);
 			throw new DeliveryFailure(error, pasted);
 		}
-		if (submission?.rejected) return;
-		if (submission && this.#submissions.get(submission.id) === submission && this.#submissionDelivered(submission)) this.#ackSubmission(submission);
+		if (submission?.rejected) {
+			this.#removeSendingNow(item.id);
+			return;
+		}
+		if (item.id) {
+			const tracked = this.#sendingNow.get(item.id);
+			if (tracked) {
+				tracked.room = ack.room;
+				tracked.ack = ack;
+				if (ack.room !== this.#room || (!submission && this.#acknowledged(ack))) this.#removeSendingNow(item.id);
+			}
+		}
+		if (submission && this.#submissions.get(submission.id) === submission && this.#submissionDelivered(submission)) {
+			this.#removeSendingNow(submission.item.id);
+			this.#ackSubmission(submission);
+		}
 		this.#settle(ack);
 	}
 
@@ -1421,7 +1526,7 @@ export class SessionController {
 	 * with a fresh paste after omp restarts), and the promise resolves. Any other failure rejects with the
 	 * reason, and the caller gets the message back.
 	 */
-	async #deliverDirect(message: { text: string; images: readonly Attachment[]; explicitRetry?: true }, askTarget?: AskPromptTarget): Promise<SendOwnership> {
+	async #deliverDirect(message: { id?: string; text: string; images: readonly Attachment[]; explicitRetry?: true }, askTarget?: AskPromptTarget): Promise<SendOwnership> {
 		if (this.#view.host?.transport === "tsp" && message.images.length === 0 && message.text.startsWith("/")) {
 			// UI-only commands have no collab user entry or turn acknowledgement.
 			if (!slashDelivery) throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
@@ -1620,6 +1725,79 @@ export class SessionController {
 			resolve();
 		});
 		this.holdQueue(promise);
+	}
+
+	#reconcileTspQueue(host: HostState): void {
+		if (host.transport !== "tsp") return;
+		if (host.tspComposer?.queuedItems === undefined) {
+			this.#tspQueueOwnerKnown = false;
+			return;
+		}
+		this.#tspQueueSettling = !this.#tspQueueOwnerKnown;
+		this.#tspQueueOwnerKnown = true;
+		const steer = host.tspComposer.queuedItems.filter(item => item.kind === "steer");
+		const used = new Set<number>();
+		for (const [id, entry] of this.#sendingNow) {
+			const matchIndex = steer.findIndex((queued, index) => !used.has(index) && tspQueuedMatches(queued.text, entry.item));
+			if (matchIndex >= 0) {
+				used.add(matchIndex);
+				entry.seenInTspQueue = true;
+			} else if (entry.seenInTspQueue && !this.#tspQueueSettling) {
+				this.#sendingNow.delete(id);
+			}
+		}
+	}
+
+	#sendingNowList(host: HostState | null = this.#view.host): readonly QueuedMessage[] {
+		if (host?.transport === "tsp" && host.tspComposer?.queuedItems !== undefined) {
+			const steer = host.tspComposer.queuedItems.filter(item => item.kind === "steer");
+			const remaining = new Map(this.#sendingNow);
+			const list: QueuedMessage[] = [];
+			for (const [index, queued] of steer.entries()) {
+				let matched: [string, SendingNowEntry] | undefined;
+				for (const pair of remaining) {
+					if (tspQueuedMatches(queued.text, pair[1].item)) { matched = pair; break; }
+				}
+				if (matched) {
+					remaining.delete(matched[0]);
+					list.push(matched[1].item);
+				} else {
+					list.push({ id: `tsp-steer:${index}:${queued.text}`, text: queued.text, images: [] });
+				}
+			}
+			for (const entry of remaining.values()) {
+				if (!entry.seenInTspQueue || this.#tspQueueSettling) list.push(entry.item);
+			}
+			return list;
+		}
+		return [...this.#sendingNow.values()].map(entry => entry.item);
+	}
+
+	#syncSendingNow(): void {
+		if (this.#disposed) return;
+		const next = this.#sendingNowList();
+		if (!sameQueuedMessages(this.#view.sendingNow, next)) this.#set({ sendingNow: next });
+	}
+
+	#removeSendingNow(id: string | undefined): void {
+		if (id && this.#sendingNow.delete(id)) this.#syncSendingNow();
+	}
+
+	#reconcileSendingNow(): void {
+		let changed = false;
+		for (const [id, entry] of this.#sendingNow) {
+			if (entry.room !== this.#room) {
+				this.#sendingNow.delete(id);
+				changed = true;
+			} else if (entry.submissionId && !this.#submissions.has(entry.submissionId)) {
+				this.#sendingNow.delete(id);
+				changed = true;
+			} else if (!entry.submissionId && entry.ack && this.#acknowledged(entry.ack)) {
+				this.#sendingNow.delete(id);
+				changed = true;
+			}
+		}
+		if (changed) this.#syncSendingNow();
 	}
 
 	#set(patch: Partial<SessionView>): void {

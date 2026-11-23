@@ -123,7 +123,7 @@ it.each([false, true])("keeps the helper banner and return target while its chun
 
 it("holds the working row through native-held closing and keeps its departure geometry instant across updates", async () => {
 	const session = {} as SessionController;
-	let view: SessionView = { mode: "live", readOnly: false, working: true, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: { hostId: "form-host", generation: 1, transport: "tsp" } as SessionView["host"], error: null };
+	let view: SessionView = { mode: "live", readOnly: false, working: true, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], sendingNow: [], strandedImages: false, host: { hostId: "form-host", generation: 1, transport: "tsp" } as SessionView["host"], error: null };
 	const stopFocus = { current: false };
 	footer.form = "presented-form";
 	await act(async () => root.render(createElement(WorkingStatus, { view, session, activity: null, stopFocus })));
@@ -144,7 +144,7 @@ it("holds the working row through native-held closing and keeps its departure ge
 
 it("resets working-row departure geometry when the host generation changes", async () => {
 	const session = {} as SessionController;
-	const view: SessionView = { mode: "live", readOnly: false, working: true, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: { hostId: "form-host", generation: 1, transport: "tsp" } as SessionView["host"], error: null };
+	const view: SessionView = { mode: "live", readOnly: false, working: true, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], sendingNow: [], strandedImages: false, host: { hostId: "form-host", generation: 1, transport: "tsp" } as SessionView["host"], error: null };
 	const stopFocus = { current: false };
 	footer.form = "presented-form";
 	await act(async () => root.render(createElement(WorkingStatus, { view, session, activity: null, stopFocus })));
