@@ -3,7 +3,15 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-export type ScriptedReply = { text?: string; prefix?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
+export type ScriptedToolCall = { name: string; arguments: object };
+export type ScriptedReply = {
+  text?: string;
+  prefix?: string;
+  tool?: ScriptedToolCall | ((body: { tools?: { function?: { name?: string } }[]; messages?: unknown[] }) => ScriptedToolCall);
+  delayMs?: number;
+  gate?: string;
+  error?: string;
+};
 
 export interface ScriptedProvider {
   requests: object[];
@@ -43,11 +51,12 @@ export async function scriptedProvider(script: ScriptedReply[], agent: string, m
         response.end(JSON.stringify({ error: { message: reply.error, type: "invalid_request_error", code: "invalid_request_error" } }));
         return;
       }
-      const delta = reply.tool
-        ? { role: "assistant", tool_calls: [{ index: 0, id: `fixture-tool-${index}`, type: "function", function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.arguments) } }] }
+      const resolvedTool = typeof reply.tool === "function" ? reply.tool(body) : reply.tool;
+      const delta = resolvedTool
+        ? { role: "assistant", tool_calls: [{ index: 0, id: `fixture-tool-${index}`, type: "function", function: { name: resolvedTool.name, arguments: JSON.stringify(resolvedTool.arguments) } }] }
         : { role: "assistant", content: reply.text ?? "Fixture response." };
       if (!reply.prefix) response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end(chunk(delta, null) + chunk({}, reply.tool ? "tool_calls" : "stop") + "data: [DONE]\n\n");
+      response.end(chunk(delta, null) + chunk({}, resolvedTool ? "tool_calls" : "stop") + "data: [DONE]\n\n");
     } catch (error) { response.writeHead(500).end(String(error)); }
   });
   const listening = Promise.withResolvers<void>();

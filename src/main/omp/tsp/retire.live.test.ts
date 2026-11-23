@@ -45,14 +45,30 @@ describe.skipIf(!process.env.OMP_BIN || process.platform === "win32")("TSP paint
 			isolated.agent = agent;
 			isolated.env = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), PI_CODING_AGENT_DIR: agent, PI_CONFIG_DIR: agent, TMPDIR: root, TERM: "xterm-256color", COLORTERM: "truecolor" };
 
-			// Reuse the recorder's checked-in plan conversation, including both exact
-			// write calls, rather than introduce another version of the plan workflow.
+			// Reuse the recorder's checked-in plan conversation, adapting its `xd://propose`
+			// submission to `propose` (or `bash propose`) when omp 19.1+ no longer asks for `xd://propose`.
 			const recordedPlan = JSON.parse(await readFile(join(fixtures, "18.15.0/plan-review-refine.provider.json"), "utf8")) as ProviderRequest[];
 			const planCalls = recordedPlan.at(-1)!.messages.flatMap(message => message.tool_calls ?? []);
 			expect(planCalls).toHaveLength(2);
 			const script: ScriptedReply[] = [
 				{ text: "Fixture retirement answer." },
-				...planCalls.map(call => ({ tool: { name: call.function.name, arguments: JSON.parse(call.function.arguments) as object } })),
+				...planCalls.map(call => {
+					const args = JSON.parse(call.function.arguments) as { path?: string; content?: string };
+					if (call.function.name === "write" && args.path === "xd://propose") {
+						const title = typeof args.content === "string" && args.content ? args.content : "fixture";
+						return {
+							tool: (body: { tools?: { function?: { name?: string } }[]; messages?: { role?: string; content?: unknown }[] }) => {
+								const promptUsesXdPropose = (body.messages ?? []).some(message => message.role !== "assistant" && message.role !== "tool" && JSON.stringify(message.content ?? "").includes("xd://propose"));
+								if (promptUsesXdPropose) return { name: call.function.name, arguments: args };
+								const names = (body.tools ?? []).map(tool => tool.function?.name);
+								if (names.includes("propose")) return { name: "propose", arguments: { title } };
+								if (names.includes("bash")) return { name: "bash", arguments: { command: `propose ${title}` } };
+								return { name: call.function.name, arguments: args };
+							},
+						};
+					}
+					return { tool: { name: call.function.name, arguments: args } };
+				}),
 				{ text: "Fixture refined plan includes the empty state." },
 			];
 			const models = ["large", "small"].map(size => ({ id: `fixture-${size}`, name: `Fixture ${size}`, reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: size === "large" ? 128000 : 32000, maxTokens: 4096 }));

@@ -525,7 +525,14 @@ const scenarios: Scenario[] = [
     name: `plan-review-${choice}`, command: "/plan Draft a fixture plan", end: "open" as const, tools: ["write", "read"],
     script: [
       { tool: { name: "write", arguments: { path: "local://fixture-plan.md", content: "# Fixture plan\n\n## Implementation\n\n- [ ] Add the requested behavior.\n- [ ] Cover the consumer-visible result.\n\n## Validation\n\nRun the focused checks.\n" } } },
-      { tool: { name: "write", arguments: { path: "xd://propose", content: "fixture" } } },
+      { tool: (body: { tools?: { function?: { name?: string } }[]; messages?: { role?: string; content?: unknown }[] }) => {
+        const promptUsesXdPropose = (body.messages ?? []).some(message => message.role !== "assistant" && message.role !== "tool" && JSON.stringify(message.content ?? "").includes("xd://propose"));
+        if (promptUsesXdPropose) return { name: "write", arguments: { path: "xd://propose", content: "fixture" } };
+        const names = (body.tools ?? []).map(tool => tool.function?.name);
+        if (names.includes("propose")) return { name: "propose", arguments: { title: "fixture" } };
+        if (names.includes("bash")) return { name: "bash", arguments: { command: "propose fixture" } };
+        return { name: "write", arguments: { path: "xd://propose", content: "fixture" } };
+      } },
       ...Array.from({ length: 8 }, () => ({ text: "Fixture work completed." })),
     ],
     run: async ({ session, send, until, find }: RecordingContext) => {
