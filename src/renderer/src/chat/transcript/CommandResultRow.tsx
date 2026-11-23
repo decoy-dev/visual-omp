@@ -20,17 +20,39 @@ const TONE_CLASS = { info: "text-fg-faint", warn: "text-warn", err: "text-err" }
 
 type ResultLocation = NonNullable<CommandResultRecord["locations"]>[number];
 
+function isTildePath(value: string): boolean {
+	return value === "~" || value.startsWith("~/") || value.startsWith("~\\");
+}
+
+function expandLocationPath(value: string, homeDir: string | null): string {
+	if (!homeDir || !isTildePath(value)) return value;
+	if (value === "~") return homeDir;
+	const base = homeDir.endsWith("/") || homeDir.endsWith("\\") ? homeDir.slice(0, -1) : homeDir;
+	return `${base}${value.slice(1)}`;
+}
+
 function CommandResultLocation({ location }: { location: ResultLocation }): ReactNode {
 	const { t } = useTranslation("session");
+	const [resolvedPath, setResolvedPath] = useState<string | null>(location.kind === "path" && !isTildePath(location.value) ? location.value : null);
 	const [exists, setExists] = useState(false);
 	useEffect(() => {
 		let cancelled = false;
-		if (location.kind === "path") {
-			void window.vomp.invoke("fs:exists", location.value).then(
+		setExists(false);
+		if (location.kind !== "path") {
+			setResolvedPath(null);
+			return;
+		}
+		const resolveTarget = isTildePath(location.value)
+			? window.vomp.invoke("app:info").then(info => expandLocationPath(location.value, info.homeDir), () => location.value)
+			: Promise.resolve(location.value);
+		void resolveTarget.then(target => {
+			if (cancelled) return;
+			setResolvedPath(target);
+			return window.vomp.invoke("fs:exists", target).then(
 				value => { if (!cancelled) setExists(value); },
 				() => { if (!cancelled) setExists(false); },
 			);
-		}
+		});
 		return () => { cancelled = true; };
 	}, [location.kind, location.value]);
 	return (
@@ -45,8 +67,8 @@ function CommandResultLocation({ location }: { location: ResultLocation }): Reac
 				)}>
 					{t(location.kind === "url" ? "commandResult.copyUrl" : "commandResult.copyPath")}
 				</Button>
-				{location.kind === "path" && exists && (
-					<Button size="sm" variant="ghost" icon={<FolderOpen />} onClick={() => void window.vomp.invoke("app:showItem", location.value).catch(
+				{location.kind === "path" && exists && resolvedPath && (
+					<Button size="sm" variant="ghost" icon={<FolderOpen />} onClick={() => void window.vomp.invoke("app:showItem", resolvedPath).catch(
 						() => toast({ tone: "err", message: t("commandResult.revealFailed") }),
 					)}>
 						{t("commandResult.showInFolder")}

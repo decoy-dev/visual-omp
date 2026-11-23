@@ -147,6 +147,19 @@ describe("command result locations", () => {
 		expect(fake.invoke).toHaveBeenLastCalledWith("app:showItem", value);
 	});
 
+	it("expands a leading tilde path for existence and reveal while keeping the displayed and copied path literal", async () => {
+		const value = "~/.omp/agent/rules/omfg.md";
+		const expanded = "/Users/example/.omp/agent/rules/omfg.md";
+		fake.invoke.mockImplementation(async (channel: string) => channel === "app:info" ? { homeDir: "/Users/example" } : channel === "fs:exists" ? true : undefined);
+		await paint({ ...base, command: "/omfg", locations: [{ kind: "path", value }] });
+		expect(container.querySelector("code")?.textContent).toBe(value);
+		expect(fake.invoke).toHaveBeenCalledWith("fs:exists", expanded);
+		await act(async () => button("Copy path")!.click());
+		expect(fake.copy).toHaveBeenCalledExactlyOnceWith(value);
+		await act(async () => button("Show in folder")!.click());
+		expect(fake.invoke).toHaveBeenLastCalledWith("app:showItem", expanded);
+	});
+
 	it("leaves missing paths selectable and copyable without a reveal control", async () => {
 		const value = "/tmp/missing report.html";
 		await paint({ ...base, locations: [{ kind: "path", value }] });

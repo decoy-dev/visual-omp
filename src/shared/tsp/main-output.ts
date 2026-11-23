@@ -65,8 +65,8 @@ export function outputLocations(text: string): OutputLocation[] {
 	};
 	for (const match of text.matchAll(/https?:\/\/[^\s<>"`]+/g)) add("url", match[0]);
 	for (const line of text.split("\n")) {
-		const path = /^(?:Moved to (?:worktree )?|(?:Session exported to|LLM request JSON|Wrote todos to|Path|File|Output|Saved to|Recording to):?\s*)(\/[^\r\n]+|[A-Za-z]:[\\/][^\r\n]+)/i.exec(line.trim())?.[1]
-			?? /^(\/[^\r\n]+|[A-Za-z]:[\\/][^\r\n]+)$/.exec(line.trim())?.[1];
+		const path = /^(?:Moved to (?:worktree )?|(?:Session exported to|LLM request JSON|Wrote todos to|Path|File|Output|Saved TTSR rule to|Saved to|Recording to):?\s*)((?:~[\\/]|\/|[A-Za-z]:[\\/])[^\r\n]+)/i.exec(line.trim())?.[1]
+			?? /^((?:~[\\/]|\/|[A-Za-z]:[\\/])[^\r\n]+)$/.exec(line.trim())?.[1];
 		if (path) {
 			const branch = line.trim().startsWith("Moved to worktree ") ? path.lastIndexOf(" on branch ") : -1;
 			add("path", branch < 0 ? path : path.slice(0, branch));

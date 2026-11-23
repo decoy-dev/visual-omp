@@ -298,4 +298,7 @@ it("keeps path spaces and branch-like path segments without trimming the local d
 	expect(outputLocations("Moved to worktree /tmp/project on branch notes/wt/new on branch fixture (checked out, uncommitted changes carried over).")).toEqual([
 		{ kind: "path", value: "/tmp/project on branch notes/wt/new" },
 	]);
+	expect(outputLocations("Saved TTSR rule to ~/.omp/agent/rules/no-raw-sql.md")).toEqual([
+		{ kind: "path", value: "~/.omp/agent/rules/no-raw-sql.md" },
+	]);
 });
