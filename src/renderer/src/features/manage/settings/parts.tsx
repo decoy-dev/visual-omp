@@ -37,10 +37,10 @@ export function SettingRow({
 	);
 }
 
-/** Group of rows inside a Settings section, with an optional heading. */
-export function SettingsSection({ title, description, children }: { title?: ReactNode; description?: ReactNode; children: ReactNode }) {
+/** Group of rows inside a Settings section, with an optional heading. `busy` while some of its values are still loading. */
+export function SettingsSection({ title, description, busy = false, children }: { title?: ReactNode; description?: ReactNode; busy?: boolean; children: ReactNode }) {
 	return (
-		<section className="mb-8">
+		<section className="mb-8" aria-busy={busy || undefined}>
 			{title && <h2 className="text-md font-semibold text-fg">{title}</h2>}
 			{description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
 			<div className="relative mt-2 divide-y divide-border">{children}</div>

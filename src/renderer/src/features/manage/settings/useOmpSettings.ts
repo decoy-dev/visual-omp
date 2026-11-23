@@ -9,6 +9,8 @@ export interface OmpSettings {
 	scope: SettingScope;
 	snapshot: Resource<ConfigSnapshot>;
 	byKey: ReadonlyMap<string, SettingInfo>;
+	/** omp has not reported its settings yet and has not failed to: rows show placeholders until it does. */
+	pending: boolean;
 	/** Writes into the selected scope; resolves false (after a toast) when omp refused it. */
 	write(key: string, value: JsonValue): Promise<boolean>;
 	/** Removes the key from the selected scope's file. */
@@ -66,5 +68,5 @@ export function useOmpSettings(cwd: string | null, scope: SettingScope): OmpSett
 		[apply, target, cwd],
 	);
 
-	return { cwd, scope: target, snapshot, byKey, write, reset, reportShadow, reportError };
+	return { cwd, scope: target, snapshot, byKey, pending: !snapshot.data && !snapshot.error, write, reset, reportShadow, reportError };
 }

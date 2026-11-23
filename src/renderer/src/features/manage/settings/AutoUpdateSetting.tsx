@@ -5,7 +5,7 @@ import { useOmpSettings, type OmpSettings } from "./useOmpSettings";
 export function AutoUpdateSwitch({ omp }: { omp: OmpSettings }) {
 	const { t } = useDeferredTranslation("settings");
 	const setting = omp.byKey.get("update.auto");
-	if (!setting) return null;
+	if (!setting) return omp.pending ? <Switch pending className="py-3" label={t("general.autoUpdate.label")} description={t("general.autoUpdate.description")} /> : null;
 	return <Switch className="py-3" label={t("general.autoUpdate.label")} description={t("general.autoUpdate.description")}
 		checked={setting.value === true} onCheckedChange={value => void omp.write(setting.key, value)} />;
 }

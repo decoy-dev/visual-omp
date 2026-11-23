@@ -1,6 +1,7 @@
 import * as RS from "@radix-ui/react-switch";
 import { type ComponentPropsWithRef, type ReactNode, useId } from "react";
 import { cn } from "./cn";
+import { Skeleton } from "./Display";
 import { disabledNative, focusRing } from "./styles";
 
 export interface SwitchProps extends Omit<ComponentPropsWithRef<typeof RS.Root>, "children"> {
@@ -8,6 +9,8 @@ export interface SwitchProps extends Omit<ComponentPropsWithRef<typeof RS.Root>,
 	label?: ReactNode;
 	/** Helper text under the label (wired via aria-describedby). */
 	description?: ReactNode;
+	/** The value is not known yet: the row keeps its label and help text, with a placeholder track and no control. */
+	pending?: boolean;
 }
 
 const switchTrack = "group relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full bg-control p-0.5 transition-colors duration-(--dur) ease-(--ease-out) data-[state=checked]:bg-accent";
@@ -24,11 +27,11 @@ export function SwitchIndicator({ checked }: { checked: boolean }) {
 }
 
 /** 40×22 track, 18px knob. With `label` it renders a full settings row: label/description left, switch right. */
-export function Switch({ label, description, id, className, ...rest }: SwitchProps) {
+export function Switch({ label, description, id, className, pending = false, ...rest }: SwitchProps) {
 	const autoId = useId();
 	const switchId = id ?? autoId;
 	const descId = description ? `${switchId}-desc` : undefined;
-	const control = (
+	const control = pending ? <Skeleton shape="pill" width={40} height={22} className={label ? undefined : className} /> : (
 		<RS.Root
 			id={switchId}
 			aria-describedby={descId}
@@ -51,11 +54,13 @@ export function Switch({ label, description, id, className, ...rest }: SwitchPro
 	);
 	if (!label) return control;
 	return (
-		<div className={cn("flex items-start justify-between gap-4", className)}>
+		<div aria-busy={pending || undefined} className={cn("flex items-start justify-between gap-4", className)}>
 			<div className="min-w-0 pt-px">
-				<label htmlFor={switchId} className="block text-md text-fg">
-					{label}
-				</label>
+				{pending ? <span className="block text-md text-fg">{label}</span> : (
+					<label htmlFor={switchId} className="block text-md text-fg">
+						{label}
+					</label>
+				)}
 				{description && (
 					<p id={descId} className="mt-1 text-sm text-fg-muted">
 						{description}

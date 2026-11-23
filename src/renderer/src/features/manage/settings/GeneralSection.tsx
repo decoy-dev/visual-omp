@@ -5,7 +5,7 @@ import { useDeferredTranslation } from "@/i18n";
 import { lazyView, LoadFailed } from "@/registry/lazy";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Button, PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
+import { Button, PageHeader, Segmented, Select, SelectItem, Skeleton, Switch } from "@/ui";
 import { useResource } from "../shared";
 import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
@@ -16,6 +16,8 @@ import { pickNewChatFolder, saveNewChatFolder } from "../../projects/newChatFold
 import { useState } from "react";
 
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
+/** The width of the permission mode's four options, so the row keeps its layout while they load. */
+const APPROVAL_PLACEHOLDER_WIDTH = 340;
 const ProofsSetting = lazyView(() => import("../../live-preview/ProofsSetting").then(m => m.ProofsSetting), null, LoadFailed);
 
 export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
@@ -37,6 +39,7 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 	const inheritedCompactAt = omp.scope === "project" ? compactAtValue(compactAt?.globalValue) : null;
 	const personality = omp.byKey.get("personality");
 	const mode = approval.data?.mode;
+	const approvalPending = !approval.data && !approval.error;
 
 	const setMode = async (next: ApprovalMode) => {
 		try {
@@ -61,28 +64,28 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 					void approval.reload();
 				}}
 			/>
-			<SettingsSection title={t("general.safety")}>
+			<SettingsSection title={t("general.safety")} busy={approvalPending}>
 				<SettingRow
 					label={t("general.approvalMode.label")}
 					description={t(`general.approvalMode.help.${approval.data && !mode ? "unknown" : mode ?? "none"}`, { value: JSON.stringify(approval.data?.rawMode) })}
 					meta={approval.data && <SourceChip source={approval.data.modeSource} />}
 					control={
-						approval.data && (
+						approval.data ? (
 							<Segmented<ApprovalMode | "">
 								aria-label={t("general.approvalMode.label")}
 								value={mode ?? ""}
 								onValueChange={value => { if (value) void setMode(value); }}
 								options={approvalModes(approval.data).map(value => ({ value, label: t(`general.approvalMode.${value}`) }))}
 							/>
-						)
+						) : approvalPending && <Skeleton shape="control" width={APPROVAL_PLACEHOLDER_WIDTH} height={32} />
 					}
 				/>
 			</SettingsSection>
-			{omp.byKey.has("update.auto") && <SettingsSection title={t("general.updates")}>
+			{(omp.pending || omp.byKey.has("update.auto")) && <SettingsSection title={t("general.updates")} busy={omp.pending}>
 				<AutoUpdateSwitch omp={omp} />
 			</SettingsSection>}
 
-			<SettingsSection title={t("general.chats")}>
+			<SettingsSection title={t("general.chats")} busy={omp.pending}>
 				{prefs && (
 					<SettingRow
 						label={t("general.newChatFolder.label")}
@@ -142,6 +145,15 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 						onCheckedChange={voiceInput => void setPrefs({ voiceInput })}
 					/>
 				)}
+				{omp.pending && <Switch pending className="py-3" label={t("general.compaction.label")} description={t("general.compaction.description")} />}
+				{omp.pending && <CompactAtPlaceholder label={t("general.compactAt.label")} />}
+				{omp.pending && (
+					<SettingRow
+						label={t("general.personality.label")}
+						description={t("general.personality.description")}
+						control={<Skeleton shape="control" width={176} height={28} />}
+					/>
+				)}
 				{compaction && (
 					<Switch
 						className="py-3"
@@ -188,5 +200,25 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 				)}
 			</SettingsSection>
 		</>
+	);
+}
+
+/**
+ * The compaction point's field while omp's settings load, laid out like `CompactAtField`: label, field and help text
+ * in one column with Save at its foot. The help text depends on the value, so it is two placeholder lines.
+ */
+function CompactAtPlaceholder({ label }: { label: string }) {
+	return (
+		<div aria-busy className="flex items-end gap-2 py-3">
+			<div className="flex min-w-0 flex-1 flex-col gap-2">
+				<span className="text-md font-medium text-fg">{label}</span>
+				<Skeleton shape="control" height={32} className="w-full" />
+				<div className="flex flex-col gap-2 py-1">
+					<Skeleton shape="text" />
+					<Skeleton shape="text" width="70%" />
+				</div>
+			</div>
+			<Skeleton shape="control" width={60} height={32} />
+		</div>
 	);
 }

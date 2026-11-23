@@ -37,6 +37,8 @@ vi.mock("../../ui", () => {
 		PresenceSwap: ({ children }: PropsWithChildren) => e("div", null, children),
 		Notice: ({ children, actions }: PropsWithChildren<{ actions?: ReactNode }>) => e("aside", { role: "alert" }, children, actions),
 		SearchInput: ({ value, onValueChange, ...props }: { value: string; onValueChange(value: string): void }) => e("input", { ...props, value, onChange: (event: { currentTarget: HTMLInputElement }) => onValueChange(event.currentTarget.value) }),
+		// The setup screen's omp update row shows its label while omp's settings load.
+		Switch: ({ label }: { label?: ReactNode }) => e("div", null, label),
 	};
 });
 

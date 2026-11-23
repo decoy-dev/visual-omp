@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
-import { Button, Dialog, DialogContent, IconButton, Input, Notice, PageHeader, SectionHeader, Segmented } from "@/ui";
+import { Button, Dialog, DialogContent, IconButton, Input, Notice, PageHeader, SectionHeader, Segmented, Skeleton } from "@/ui";
 import { listRowMotion } from "../listMotion";
 import { useResource } from "../shared";
 import { ConfigNotices, SectionScope, SourceChip } from "./parts";
@@ -29,6 +29,9 @@ const COMMON_TOOLS: readonly { tool: string; icon: Icon }[] = [
 
 type PolicyChoice = ApprovalPolicy | "default";
 const CHOICES: readonly PolicyChoice[] = ["default", "prompt", "allow", "deny"];
+/** The widths of a tool's four choices and the forget button, so rows keep their layout while they load. */
+const POLICY_PLACEHOLDER_WIDTH = 188;
+const FORGET_PLACEHOLDER_WIDTH = 195;
 
 export function PermissionsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useDeferredTranslation("settings");
@@ -40,6 +43,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 	const [forgetting, setForgetting] = useState(false);
 	const [forgotten, setForgotten] = useState<string | null>(null);
 	const state = approval.data;
+	const approvalPending = !state && !approval.error;
 
 	const rows = useMemo(() => {
 		const known = new Set(COMMON_TOOLS.map(entry => entry.tool));
@@ -109,12 +113,14 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 					{t("permissions.unrecognized", { tools: state.unrecognized.map(entry => entry.tool).join(", ") })}
 				</Notice>
 			)}
-			{state && (
-				<div className="mt-4 flex flex-wrap items-center gap-3">
+			{(state || approvalPending) && (
+				<div aria-busy={approvalPending || undefined} className="mt-4 flex flex-wrap items-center gap-3">
 					<p className="min-w-0 flex-1 text-sm text-fg-muted">{t("permissions.forget.help")}</p>
+					{approvalPending ? <Skeleton shape="control" width={FORGET_PLACEHOLDER_WIDTH} height={28} /> : (
 					<Button size="sm" variant="secondary" disabled={forgetting} onClick={() => setConfirmForget(true)}>
 						{t(forgetting ? "permissions.forget.busy" : "permissions.forget.action")}
 					</Button>
+					)}
 				</div>
 			)}
 			{forgotten && <Notice tone="info" className="mt-3">{forgotten}</Notice>}
@@ -132,7 +138,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 				/>
 			</Dialog>
 			<p className="mt-4 text-sm text-fg-muted">{t("permissions.computerHelp")}</p>
-			<ul className="relative mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
+			<ul aria-busy={approvalPending || undefined} className="relative mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
 				<AnimatePresence initial={false} mode="popLayout">
 				{rows.map(({ tool, icon: Icon }) => {
 					const policy = state?.policies.find(entry => entry.tool === tool);
@@ -147,6 +153,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 								</div>
 								{plainName && <span className="block truncate font-mono text-xs text-fg-faint">{tool}</span>}
 							</div>
+							{approvalPending ? <Skeleton shape="control" width={POLICY_PLACEHOLDER_WIDTH} height={30} className="ml-auto" /> : (
 							<Segmented
 								className="ml-auto"
 								size="sm"
@@ -156,6 +163,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 								onValueChange={choice => void setPolicy(tool, choice)}
 								options={CHOICES.map(value => ({ value, label: t(`permissions.choice.${value}`) }))}
 							/>
+							)}
 						</motion.li>
 					);
 				})}
@@ -202,7 +210,7 @@ function RestrictedFolders({ omp }: { omp: OmpSettings }) {
 		finally { setBusy(false); }
 	};
 	return (
-		<section className="mt-8" aria-labelledby="restricted-folders-title">
+		<section className="mt-8" aria-labelledby="restricted-folders-title" aria-busy={omp.pending || undefined}>
 			<SectionHeader id="restricted-folders-title" title={t("permissions.restricted.title")} description={t("permissions.restricted.help")}
 				actions={<Button size="sm" icon={<Plus />} disabled={!setting || busy} onClick={() => void add()}>{t("permissions.restricted.add")}</Button>} />
 			{folders.length > 0 ? (
@@ -213,7 +221,7 @@ function RestrictedFolders({ omp }: { omp: OmpSettings }) {
 						<IconButton size="sm" icon={<Trash />} label={t("permissions.restricted.remove", { folder })} disabled={busy} onClick={() => void save(folders.filter(value => value !== folder))} />
 					</li>)}
 				</ul>
-			) : <p className="text-sm text-fg-muted">{t("permissions.restricted.empty")}</p>}
+			) : omp.pending ? <Skeleton shape="control" height={36} className="w-full" /> : <p className="text-sm text-fg-muted">{t("permissions.restricted.empty")}</p>}
 			{omp.scope === "project" && raw == null && folders.length > 0 && <Notice tone="info" className="mt-3">{t("permissions.restricted.inherited")}</Notice>}
 			{omp.scope === "global" && setting?.source === "project" && <Notice tone="info" className="mt-3">{t("permissions.restricted.overridden")}</Notice>}
 			{raw != null && <Button className="mt-3" size="sm" variant="ghost" disabled={busy} onClick={() => void omp.reset("tools.restrictedFolders")}>{t("permissions.restricted.reset")}</Button>}

@@ -4,8 +4,11 @@ import { cn } from "./cn";
 export interface SkeletonProps {
 	width?: number | string;
 	height?: number | string;
-	/** `text` = a 12px line, `circle` = avatar, `block` = rounded rect. */
-	shape?: "text" | "circle" | "block";
+	/**
+	 * `text` = a 12px line, `circle` = avatar, `block` = rounded rect, `control` = a field, menu or button of
+	 * `width` × `height`, `pill` = a switch track of `width` × `height`.
+	 */
+	shape?: "text" | "circle" | "block" | "control" | "pill";
 	className?: string;
 }
 
@@ -18,7 +21,7 @@ export function Skeleton({ width, height, shape = "block", className }: Skeleton
 			style={style}
 			className={cn(
 				"vo-skeleton block",
-				shape === "circle" ? "size-8 rounded-full" : shape === "text" ? "h-3 w-full rounded-sm" : "h-16 w-full rounded-sm",
+				shape === "circle" ? "size-8 rounded-full" : shape === "text" ? "h-3 w-full rounded-sm" : shape === "control" ? "shrink-0 rounded-md" : shape === "pill" ? "shrink-0 rounded-full" : "h-16 w-full rounded-sm",
 				className,
 			)}
 		/>

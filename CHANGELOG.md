@@ -4,6 +4,16 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Highlights
+
+- **Improved:** Settings → General and Permissions name the settings omp stores while omp reads them, with a placeholder where each control will appear.
+
+### Detailed changes
+
+#### Improved
+
+- While omp reads its settings, Settings → General and Permissions show each affected setting's name with a placeholder for its control, and help text that depends on the value is a placeholder too. These controls used to be missing until omp answered, and each tool in Permissions showed Default.
+
 ## [0.8.5] - 2026-11-23
 
 visual-omp 0.8.5 keeps a message you send with Send now in view until omp adds it to the chat, and works with omp 19.1, whose bash commands can call omp's own tools. It requires omp 18.15.0 or later.
