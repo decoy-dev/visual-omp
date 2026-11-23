@@ -144,4 +144,10 @@ describe("allSessions", () => {
 		expect(sessions.find(session => session.file === latest)?.previousSessionFiles).toEqual([join(bucket, "chat.jsonl")]);
 		expect(await resolveSessionFile(duplicate)).toBe(duplicate);
 	});
+
+	it("excludes Chrome side-panel sessions tagged with origin chrome and tolerates non-string origins", async () => {
+		await writeFile(join(bucket, "chrome.jsonl"), `${JSON.stringify({ type: "session", id: "chrome-1", cwd: "/project", origin: "chrome" })}\n`);
+		await writeFile(join(bucket, "obj-origin.jsonl"), `${JSON.stringify({ type: "session", id: "obj-1", cwd: "/project", origin: { source: "api" } })}\n`);
+		expect((await allSessions()).map(session => session.id).sort()).toEqual(["obj-1", "s1"]);
+	});
 });

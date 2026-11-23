@@ -37,6 +37,7 @@ const Header = z.object({
 	title: z.string().optional(),
 	parentSession: z.string().optional(),
 	continuationOf: z.string().optional(),
+	origin: z.unknown().optional(),
 });
 const UserMessage = z.object({
 	type: z.literal("message"),
@@ -116,6 +117,8 @@ async function summarize(file: string, mtimeMs: number): Promise<SessionSummary 
 		}
 	}
 	if (!header) return null;
+	// omp 19.1 tags Chrome side-panel sessions with `origin: "chrome"` and excludes them from recent lists.
+	if (header.origin === "chrome") return null;
 	if (!preview && Buffer.byteLength(head, "utf8") >= HEAD_BYTES) preview = await scanPreview(file);
 	const createdAt = header.timestamp ? Date.parse(header.timestamp) : mtimeMs;
 	return {
