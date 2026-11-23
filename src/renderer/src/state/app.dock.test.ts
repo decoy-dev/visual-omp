@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Loaded once while the file is collected: the first load transforms the module graphs of the store and the terminal
+// starter, which took more than a test's five seconds on loaded CI runners. Tests still import fresh copies after
+// vi.resetModules, which reuses the transformed modules.
+import "./app";
+import "../features/panes/terminal";
 
 const env = vi.hoisted(() => {
 	const storage = new Map<string, string>();

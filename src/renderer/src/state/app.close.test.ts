@@ -2,6 +2,10 @@ import type { AgentSnapshot } from "@oh-my-pi/pi-wire";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type ChatWork, workInFlight } from "./chatWork";
 import type { SessionView } from "./session";
+// Loaded once while the file is collected: the first load transforms the store's whole module graph, which took more
+// than a test's five seconds on loaded CI runners. Tests still import a fresh store after vi.resetModules, which
+// reuses the transformed modules.
+import "./app";
 
 const env = vi.hoisted(() => {
 	const storage = new Map<string, string>();
