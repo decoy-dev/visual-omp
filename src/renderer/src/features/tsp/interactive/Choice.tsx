@@ -1,5 +1,6 @@
 import type { TspNode, TspPickerItem, TspText, TspTreeNode } from "@shared/tsp";
-import { isKnownAction, selectionCommits, TSP_ACTIONS } from "@shared/tsp/roles";
+import { Check } from "@phosphor-icons/react";
+import { isKnownAction, selectionCommits, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
@@ -8,7 +9,7 @@ import { rawKey } from "../keys";
 import type { NodeProps } from "../nodes/context";
 import { useTranslation } from "react-i18next";
 
-interface ChoiceRow { id: string; label: TspText; detail?: TspText; disabled?: string | boolean; depth?: number; child?: TspNode; title?: string }
+interface ChoiceRow { id: string; label: TspText; detail?: TspText; disabled?: string | boolean; depth?: number; child?: TspNode; title?: string; chosen?: boolean; value?: TspText }
 function treeRows(nodes: readonly TspTreeNode[], depth = 0): ChoiceRow[] {
 	return nodes.flatMap(node => [{ id: node.id, label: node.label, depth }, ...(node.open === false ? [] : treeRows(node.children ?? [], depth + 1))]);
 }
@@ -22,11 +23,19 @@ export function Choice({ node, context }: NodeProps) {
 		if (typeof entry !== "string") return [{ id: `group:${entry.group}`, label: entry.label, disabled: true }];
 		const item = picker.items?.find(item => item.id === entry);
 		return item ? [item as TspPickerItem] : [];
-	}) : tree ? treeRows(tree.nodes ?? []) : (node.c ?? []).map(child => ({ id: child.p?.key ?? child.id, label: child.k === "item" ? child.p?.label ?? "" : "", detail: child.k === "item" ? child.p?.detail : undefined, disabled: child.k === "item" && child.p?.disabled, child }));
+	}) : tree ? treeRows(tree.nodes ?? []) : (node.c ?? []).map(child => ({ id: child.p?.key ?? child.id, label: child.k === "item" ? child.p?.label ?? "" : "", detail: child.k === "item" ? child.p?.detail : undefined, disabled: child.k === "item" && child.p?.disabled, child, chosen: child.p?.tone === "accent", value: child.k === "item" ? child.p?.value : undefined }));
 	const selectedFromOmp = picker?.selected ?? list?.selected ?? null;
 	const [selected, setSelected] = useState<string | null>(selectedFromOmp);
 	useEffect(() => setSelected(selectedFromOmp), [selectedFromOmp]);
 	const localFirst = selectionCommits(p?.role ?? context.role, picker?.layout) || node.k === "tree";
+	// omp's question card treats a click on an answer row as Enter on it, so a click picks the answer; the arrow keys
+	// still only move the highlight, and Enter confirms it.
+	const askOptions = p?.role === TSP_ROLES.askOptions;
+	const pick = (row: ChoiceRow) => {
+		if (row.disabled || context.readOnly) return;
+		setSelected(row.id);
+		event("select", row.id);
+	};
 	const prefix = useId();
 	const listRef = useRef<HTMLDivElement>(null);
 	const event = (ev: "select" | "activate", item: string) => { if (!context.readOnly) context.send({ ev, sf: context.sf, id: node.id, item }); };
@@ -72,8 +81,11 @@ export function Choice({ node, context }: NodeProps) {
 				if (next) { choose(next); document.getElementById(`${prefix}-${next.id}`)?.scrollIntoView?.({ block: "nearest" }); }
 			}
 		}}>
-			{rows.map(row => <div id={`${prefix}-${row.id}`} role="option" aria-selected={selected === row.id} aria-disabled={!!row.disabled || context.readOnly} key={row.id} className="tsp-option" style={row.depth ? { paddingInlineStart: `${row.depth + 1}rem` } : undefined} title={rowTitle(row)} onClick={() => { listRef.current?.focus(); choose(row); }} onDoubleClick={() => doubleClick(row)}>
+			{rows.map(row => <div id={`${prefix}-${row.id}`} role="option" aria-selected={selected === row.id} aria-checked={askOptions ? !!row.chosen : undefined} aria-disabled={!!row.disabled || context.readOnly} key={row.id} className="tsp-option" style={row.depth ? { paddingInlineStart: `${row.depth + 1}rem` } : undefined} title={rowTitle(row)} onClick={() => { listRef.current?.focus(); if (askOptions) pick(row); else choose(row); }} onDoubleClick={() => doubleClick(row)}>
+				{/* omp tones a chosen answer `accent`; the highlighted row is only where the cursor is. */}
+				{askOptions && <span className="tsp-option-mark" aria-hidden>{row.chosen && <Check weight="bold" />}</span>}
 				<div className="min-w-0 flex-1"><div className="break-words font-medium">{row.child && row.child.k !== "item" ? context.render(row.child) : plain(row.label)}</div>{row.detail && <div className="break-words text-sm text-fg-muted">{plain(row.detail)}</div>}</div>
+				{askOptions && row.value && <span className="shrink-0 text-sm text-fg-muted">{plain(row.value)}</span>}
 			</div>)}
 			{rows.length === 0 && <p className="p-card text-fg-muted">{plain(picker?.empty ?? list?.empty) || t("tsp.empty")}</p>}
 		</div>
@@ -87,7 +99,7 @@ export function Choice({ node, context }: NodeProps) {
 				action(button.id);
 			}
 		}}>{button.label}</Button>)}</div>}
-		{(!picker || !picker.actions?.length) && <Button variant="primary" disabled={!selectedRow || context.readOnly} onClick={() => selectedRow && choose(selectedRow, true)}>{t("tsp.confirm")}</Button>}
+		{(!picker || !picker.actions?.length) && !askOptions && <Button variant="primary" disabled={!selectedRow || context.readOnly} onClick={() => selectedRow && choose(selectedRow, true)}>{t("tsp.confirm")}</Button>}
 		{node.c && picker && <div className="space-y-stack">{node.c.map(child => context.render(child))}</div>}
 	</div>;
 }

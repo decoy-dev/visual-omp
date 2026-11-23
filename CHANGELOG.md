@@ -25,7 +25,7 @@ visual-omp 0.8.5 keeps a message you send with Send now in view until omp adds i
 - With omp 19.1, a bash card's command view works in steps. Clicking a step shows that step's output in place of the command's output until you choose Show all output, the step whose output is shown is highlighted, and the arrow keys move between steps. Replay stays available on the card.
 - The omp screen shows the source menu in omp 19.1's Jobs panel.
 - Tool cards, background jobs, helper activity and Live preview show the short label at the start of an intent, as omp 19.1 does, instead of the whole description.
-- With omp 19.0.0 and later, omp's own question card works in the omp screen. Choose an answer's button to pick it, and choose Answer this question to open a question. These buttons used to be unavailable there, although Submit and Cancel already worked.
+- With omp 19.0.0 and later, omp's own question card works in the omp screen. Click an answer to pick it, use a folded question's answer buttons to change its answer, or choose Answer this question to open it. Chosen answers show a check mark. Picking an answer used to need a separate Confirm selection, and the fold buttons were unavailable, although Submit and Cancel already worked.
 - Usage & limits shows credit balances and spending that a provider reports without a percentage limit, and lists organization accounts that share an email address separately.
 
 #### Fixed

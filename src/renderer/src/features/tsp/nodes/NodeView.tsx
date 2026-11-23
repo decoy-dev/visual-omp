@@ -1,7 +1,7 @@
 import type { TspKind, TspMenuItem, TspNode } from "@shared/tsp";
 import { shellProps } from "@shared/tsp/shell";
 import type { TerminalColors } from "@shared/contracts/native";
-import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS } from "@shared/tsp/roles";
+import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { HookDialog } from "../interactive/HookDialog";
 import { CaretDown, CheckCircle, Circle, DotsThree, File, Globe, Image, Info, Warning } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -106,8 +106,8 @@ function Body({ node, context }: NodeProps) {
 	const children = node.c?.map(child => context.render(child));
 	switch (node.k) {
 		case "overlay": return <section role="dialog" aria-label={plain(node.p?.head) || t("tsp.title")} className="space-y-stack">{children}</section>;
-		case "col": return <div className="space-y-stack">{children}</div>;
-		case "row": return <div className="flex flex-wrap items-center gap-3">{children}</div>;
+		case "col": return <div className={node.p?.role === TSP_ROLES.askCard ? "tsp-ask-card" : node.p?.role === TSP_ROLES.askOpen ? "tsp-ask-open" : "space-y-stack"}>{children}</div>;
+		case "row": return <div className={node.p?.role === TSP_ROLES.askCardHead ? "tsp-ask-head" : "flex flex-wrap items-center gap-3"}>{children}</div>;
 		case "card": case "section": {
 			const p = node.p;
 			if (p?.collapsible) return <details open={!p.collapsed} onToggle={event => { const collapsed = !event.currentTarget.open; if (!context.readOnly && collapsed !== !!p.collapsed) context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed }); }}><summary className="cursor-pointer py-2 font-semibold">{plain(p.head)}</summary><div className="space-y-stack">{children}</div></details>;
@@ -115,7 +115,7 @@ function Body({ node, context }: NodeProps) {
 		}
 		case "rule": return <div className="flex items-center gap-3 py-2 text-sm text-fg-muted"><hr className="flex-1 border-border" />{plain(node.p?.label)}{node.p?.label && <hr className="flex-1 border-border" />}</div>;
 		case "spacer": return <div className={node.p?.size === "lg" ? "h-section" : "h-stack"} />;
-		case "text": return <p className="whitespace-pre-wrap break-words">{plain(node.p?.spans ?? node.p?.text)}</p>;
+		case "text": return <p className={node.p?.role === TSP_ROLES.askLegend ? "whitespace-pre-wrap break-words font-semibold" : "whitespace-pre-wrap break-words"}>{plain(node.p?.spans ?? node.p?.text)}</p>;
 		case "seg": return <span className="whitespace-pre-wrap">{plain(node.p?.spans)}</span>;
 		case "md": case "doc": return <Markdown text={node.p?.text ?? ""} />;
 		case "code": return <Code p={node.p} />;
@@ -230,12 +230,24 @@ export function NodeView({ node, context }: NodeProps) {
 	const unsupportedClick = !!click && !isKnownAction(click);
 	const content = <Body node={node} context={childContext} />;
 	const actionable = click && !["button", "buttons", "menu", "list", "picker", "tree", "item", "tool", "agent", "json", "shell"].includes(node.k);
+	// omp's working row repeats its Esc hint as a click that interrupts the reply; the app's Stop button does that, so
+	// the hint stays text instead of gaining an unavailable button.
+	if (actionable && unsupportedClick && role === TSP_ROLES.workingStop) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{content}</div>;
 	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
 	const activate = () => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));
 		else if (click === "toggle") context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed: node.k === "card" || node.k === "section" ? !node.p?.collapsed : true });
 		else if (click) context.send({ ev: "action", sf: context.sf, id: node.id, act: click });
 	};
+	// omp 19's folded question: its head and the button that opens it share one line, and its summary (option pills or
+	// the answer) follows, so the fold's click never wraps the pills or the answer text.
+	if (actionable && role === TSP_ROLES.askFold) {
+		const [head, ...summary] = node.c ?? [];
+		return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="tsp-ask-fold min-w-0">
+			<div className="tsp-ask-fold-head"><div className="min-w-0">{head && childContext.render(head)}</div><Button size="sm" variant="ghost" disabled={readOnly} onClick={activate}>{node.p?.title ?? t("tsp.openAction")}</Button></div>
+			{summary.map(child => childContext.render(child))}
+		</div>;
+	}
 	// A button inside a button would send both clicks and hide the inner one from assistive technology, so a container
 	// with its own controls keeps them and offers its click as a separate button named by omp's title.
 	if (actionable && hasOwnControls(node)) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button size="sm" variant="secondary" disabled={readOnly} onClick={activate}>{node.p?.title ?? t("tsp.openAction")}</Button></div>;

@@ -12,6 +12,15 @@
 .tsp-tab:hover { background: var(--bg-inset); }
 .tsp-tab[aria-selected="true"] { color: var(--accent); border-color: var(--accent); }
 .tsp-screen input[type="checkbox"] { accent-color: var(--accent); }
+/* omp 19's question card: a framed card, its tag and progress on one muted line, and each folded question under a rule. */
+.tsp-ask-card { display: grid; gap: var(--spacing-stack); max-width: 48rem; padding: var(--spacing-card); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); }
+.tsp-ask-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--spacing-stack); color: var(--fg-muted); font-size: var(--text-sm); }
+.tsp-ask-fold, .tsp-ask-open { display: grid; gap: var(--spacing-toolbar); padding-block-start: var(--spacing-stack); border-block-start: 1px solid var(--border); }
+.tsp-ask-fold > .tsp-ask-fold-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-toolbar) var(--spacing-stack); }
+/* Inside the card, each fold's rule already separates the answers, and omp's spacer would only indent the action row. */
+.tsp-ask-card .tsp-list { max-height: none; border-block: 0; }
+.tsp-ask-card [data-tsp-kind="spacer"] { display: none; }
+.tsp-option-mark { display: inline-flex; flex-shrink: 0; width: 1rem; color: var(--accent); }
 
 /* Transcript table anatomy, with a compact density and one shared two-column measure. */
 .tsp-table { width: 100%; max-width: 60rem; }
