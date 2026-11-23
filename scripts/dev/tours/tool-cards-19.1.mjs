@@ -2,7 +2,8 @@
 // Sources in omp v19.1.1: coding-agent/src/tools/tool-commands.ts (ToolCommandDispatch),
 // coding-agent/src/tools/bash.ts (BashToolDetails recorder), tui/src/tools/bash.ts (BashToolDetails),
 // tui/src/tools/tool-commands.ts (execute and help dispatches), tui/src/tools/edit.ts and
-// tui/src/tools/magic-sections.ts (magic edit payloads), and wire/src/index.ts (intent labels).
+// tui/src/tools/magic-sections.ts (magic edit payloads), wire/src/index.ts (intent labels), and
+// coding-agent/src/tools/wait.ts with async/job-control.ts (`wait` details and job snapshots).
 // App tests: src/renderer/src/tool-render/tools/bash.test.ts, grep.test.ts, job.test.ts, edit.test.ts,
 // and src/renderer/src/features/panes/derive.test.ts.
 const text = value => value ? [{ type: "text", text: value }] : [];
@@ -50,11 +51,12 @@ export default [
     result: { content: text("") },
   },
   {
-    name: "job",
-    args: { i: "Polling the tour job: checking its status", poll: ["bg_19_1"] },
+    name: "wait",
+    args: { i: "Waiting for the tour job: checking its status" },
     result: {
       content: text("1 job completed."),
       details: {
+        op: "wait",
         jobs: [{
           id: "bg_19_1", type: "bash", status: "completed", label: "grep --pattern toolCommands",
           intent: "Preparing the release: checking recorded output", durationMs: 1840,

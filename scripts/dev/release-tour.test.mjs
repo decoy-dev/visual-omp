@@ -224,7 +224,8 @@ test("0.8.5 is the default and checks Send now, omp 19.1 plan review and bash st
   assert.match(byId["bash-step-mode"].prompts[0], /Show all output/);
   // Saved calls open as history, so the live step output needs a new run of the fixture.
   assert.match(byId["bash-step-mode"].prompts[0], /Send `fixture bash-visualization` again/);
-  assert.match(byId["bash-step-mode"].prompts[0], /below the Folder and Exit badges/);
+  assert.match(byId["bash-step-mode"].prompts[0], /replaces the bash run output under the command view/);
+  assert.deepEqual(release085.config.bash, { autoBackground: { enabled: false } });
   assert.match(byId["bash-step-mode"].prompts[0], /Left and Right arrow keys/);
   assert.match(byId["bash-step-mode"].prompts[0], /Enter or Space/);
   assert.equal(byId["nested-tools"].prompts[0].split("\n")[0], "fixture notes");
