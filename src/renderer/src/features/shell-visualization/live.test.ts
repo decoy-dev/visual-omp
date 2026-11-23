@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import i18next from "i18next";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import type { TspShellProps } from "@shared/tsp/shell";
 import { LiveShellProvider, type LiveShellScope } from "./context";
@@ -36,6 +37,9 @@ const scope: LiveShellScope = { hostId: "host", generation: 2, epoch: 3, readOnl
 async function render(next: LiveShellScope | null = scope) {
 	await act(async () => root.render(next ? createElement(LiveShellProvider, { ...next, children: createElement(Probe) }) : createElement(Probe)));
 }
+// The step output's texts load on demand; a render that reaches them before they load suspends the whole root and
+// shows an empty card.
+beforeAll(async () => { await i18next.loadNamespaces("shellVisualization"); });
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	fixture.snapshot = snapshot(); fixture.invoke.mockReset().mockResolvedValue(undefined);
