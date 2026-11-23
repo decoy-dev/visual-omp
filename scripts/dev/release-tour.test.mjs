@@ -20,13 +20,14 @@ import release081 from "./tours/0.8.1.mjs";
 import release082 from "./tours/0.8.2.mjs";
 import release083 from "./tours/0.8.3.mjs";
 import release084 from "./tours/0.8.4.mjs";
+import release085 from "./tours/0.8.5.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, padSession, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools, seedExpiredSignIn } from "./tour-fixtures.mjs";
 import { fixtureEnvironment, initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.8.4");
+  assert.equal(parseArguments([]).release, "0.8.5");
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
@@ -191,8 +192,7 @@ test("0.8.3 remains available and checks the helpers mark, sidebar order, the pr
   assert.equal(tourLayout(release083.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 8);
 });
 
-test("0.8.4 is the default and checks the form series, pictures in replies, file links from an earlier folder and side questions with ?", () => {
-  assert.equal(defaultRelease, "0.8.4");
+test("0.8.4 remains available and checks the form series, pictures in replies, file links from an earlier folder and side questions with ?", () => {
   assert.equal(release084.version, "0.8.4");
   assert.deepEqual(release084.chats.map(chat => chat.id), ["question-form", "reply-pictures", "earlier-folder", "side-question"]);
   const byId = Object.fromEntries(release084.chats.map(chat => [chat.id, chat]));
@@ -203,6 +203,41 @@ test("0.8.4 is the default and checks the form series, pictures in replies, file
   assert.match(byId["side-question"].prompts[0], /\? fixture notes/);
   assert.ok(release084.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
   assert.equal(tourLayout(release084.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 4);
+});
+
+test("0.8.5 is the default and checks Send now, omp 19.1 plan review and bash steps, recorded tool cards and the omp screen question card", () => {
+  assert.equal(defaultRelease, "0.8.5");
+  assert.equal(release085.version, "0.8.5");
+  assert.deepEqual(release085.chats.map(chat => chat.id), ["send-now-tray", "plan-review-191", "bash-step-mode", "nested-tools", "question-card-screen"]);
+  const byId = Object.fromEntries(release085.chats.map(chat => [chat.id, chat]));
+  assert.match(byId["send-now-tray"].prompts[0], /fixture helper-work/);
+  assert.match(byId["send-now-tray"].prompts[0], /Check the running step\.\nRestore both lines after Escape\./);
+  assert.match(byId["send-now-tray"].prompts[0], /Sending at omp's next step/);
+  assert.match(byId["send-now-tray"].prompts[0], /Sending next/);
+  assert.equal((byId["send-now-tray"].prompts[0].match(/fixture helper-work/g) ?? []).length, 2);
+  assert.match(byId["send-now-tray"].prompts[0], /Sending 4 messages at omp's next step\./);
+  assert.match(byId["send-now-tray"].prompts[0], /Show 1 more/);
+  assert.match(byId["send-now-tray"].prompts[0], /Show fewer messages/);
+  assert.match(byId["plan-review-191"].prompts[0], /\/plan fixture plan-review/);
+  assert.match(byId["plan-review-191"].prompts[0], /propose/);
+  assert.equal(byId["bash-step-mode"].prompts[0].split("\n")[0], "fixture bash-visualization");
+  assert.match(byId["bash-step-mode"].prompts[0], /Show all output/);
+  // Saved calls open as history, so the live step output needs a new run of the fixture.
+  assert.match(byId["bash-step-mode"].prompts[0], /Send `fixture bash-visualization` again/);
+  assert.match(byId["bash-step-mode"].prompts[0], /below the Folder and Exit badges/);
+  assert.match(byId["bash-step-mode"].prompts[0], /Left and Right arrow keys/);
+  assert.match(byId["bash-step-mode"].prompts[0], /Enter or Space/);
+  assert.equal(byId["nested-tools"].prompts[0].split("\n")[0], "fixture notes");
+  assert.equal(byId["nested-tools"].recordedTools.length, 4);
+  assert.match(byId["nested-tools"].prompts[0], /read --help/);
+  assert.match(byId["nested-tools"].prompts[0], /# <path>/);
+  assert.match(byId["nested-tools"].prompts[0], /Preparing the release/);
+  assert.match(byId["question-card-screen"].prompts[0], /fixture form/);
+  assert.match(byId["question-card-screen"].prompts[0], /omp 19's question card/);
+  assert.match(byId["question-card-screen"].prompts[0], /Answer this question/);
+  assert.match(byId["question-card-screen"].prompts[0], /Beta/);
+  assert.ok(release085.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  assert.equal(tourLayout(release085.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` }))).tabs.length, 5);
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {

@@ -333,14 +333,30 @@ function grepPatternCalls(messages) {
   ];
 }
 
+function mentionsXdPropose(messages) {
+  return messages.some(message => message.role !== "assistant" && message.role !== "tool" && textOf(message).includes("xd://propose"));
+}
+
 /**
- * Sent after `/plan fixture plan-review`: writes the plan, then submits it for approval through omp's
- * `xd://propose` device (title `tour` names `local://tour-plan.md`), then stops once omp answers.
+ * Sent after `/plan fixture plan-review`: writes the plan, then submits it for approval through
+ * `xd://propose` when the plan-mode prompt asks for it (omp <= 19.0), or omp 19.1+'s `propose`
+ * tool / bash command, then stops once omp answers.
  */
-function planReviewCalls(messages) {
-  const writes = messages.flatMap(message => message.tool_calls ?? []).filter(call => call.function?.name === "write").length;
+function planReviewCalls(messages, tools = [], allMessages = messages) {
+  const calls = messages.flatMap(message => message.tool_calls ?? []);
+  const writes = calls.filter(call => call.function?.name === "write").length;
+  const proposed = calls.some(call =>
+    call.function?.name === "propose"
+    || (call.function?.name === "bash" && /\bpropose\b/.test(call.function?.arguments ?? ""))
+    || (call.function?.name === "write" && call.function?.arguments?.includes("xd://propose")),
+  );
   if (writes === 0) return [{ name: "write", args: { path: "local://tour-plan.md", content: TOUR_PLAN }, slow: false }];
-  if (writes === 1) return [{ name: "write", args: { path: "xd://propose", content: "tour" }, slow: false }];
+  if (!proposed) {
+    if (mentionsXdPropose(allMessages)) return [{ name: "write", args: { path: "xd://propose", content: "tour" }, slow: false }];
+    if (tools.includes("propose")) return [{ name: "propose", args: { title: "tour" }, slow: false }];
+    if (tools.includes("bash")) return [{ name: "bash", args: { command: "propose tour" }, slow: false }];
+    return [{ name: "write", args: { path: "xd://propose", content: "tour" }, slow: false }];
+  }
   return [];
 }
 
@@ -377,7 +393,8 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
           catch { return false; }
         }));
-      onRequest({ id, fixture, afterTool, tools: (body.tools ?? []).map(tool => tool.function?.name) });
+      const toolNames = (body.tools ?? []).map(tool => tool.function?.name);
+      onRequest({ id, fixture, afterTool, tools: toolNames });
       const send = (delta, finish_reason = null) => {
         if (response.destroyed) return;
         response.write(`data: ${JSON.stringify({ id: `fixture-${id}`, object: "chat.completion.chunk", created: 1, model: "preview", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
@@ -525,7 +542,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.end("data: [DONE]\n\n");
         return;
       }
-      if (fixture === "plan-review" && planReviewCalls(turnMessages).length === 0) {
+      if (fixture === "plan-review" && planReviewCalls(turnMessages, toolNames, messages).length === 0) {
         send({ role: "assistant", content: "The plan review closed. The local fixture model has no further work for this plan." });
         send({}, "stop");
         response.end("data: [DONE]\n\n");
@@ -538,7 +555,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "plan-review" ? planReviewCalls(turnMessages) : fixture === "bash-visualization" ? bashVisualizationCalls() : fixture === "cfg-save" ? [
+      const calls = fixture === "grep-patterns" ? grepPatternCalls(turnMessages) : fixture === "plan-review" ? planReviewCalls(turnMessages, toolNames, messages) : fixture === "bash-visualization" ? bashVisualizationCalls() : fixture === "cfg-save" ? [
         // omp 18.18+ asks before a cfg:// write; the dialog's title quotes the setting path in Markdown code marks.
         { name: "write", args: { path: "cfg://compaction/enabled/save", content: "false" }, slow: false },
       ] : fixture === "link" ? [{ name: "bash", args: { i: "Creating reply link samples", command: linkCommand(), timeout: 30 }, slow: false }] : fixture === "embeds" ? [{ name: "bash", args: { i: "Creating reply pictures", command: embedsCommand(), timeout: 30 }, slow: false }] : fixture === "earlier-folder" ? [{ name: "bash", args: { i: "Preparing a folder beside this chat", command: earlierFolderCommand(), timeout: 30 }, slow: false }] : fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bigmedia" ? [{ name: "bash", args: { i: "Creating large local media", command: bigMediaCommand(), timeout: 180 }, slow: false }] : fixture === "many-files" ? [{ name: "bash", args: { i: "Writing many small files", command: manyFilesCommand(), timeout: 120, async: true }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [

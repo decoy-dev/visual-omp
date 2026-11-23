@@ -8,12 +8,12 @@ import { COLOR_FORM, FORM_CONTEXT_FORM, RELEASE_FORM, bigMediaCommand, manyFiles
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
-async function replyFor(prompt, messages = [{ role: "user", content: prompt }], { durationMs = 0, setup } = {}) {
+async function replyFor(prompt, messages = [{ role: "user", content: prompt }], { durationMs = 0, setup, tools } = {}) {
   const root = await mkdtemp(join(tmpdir(), "vomp-video-fixture-")); roots.push(root);
   const server = await startFixture({ root, port: 0, durationMs });
   try {
     await setup?.(root);
-    const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }) });
+    const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages, ...(tools ? { tools } : {}) }) });
     assert.equal(response.status, 200);
     const calls = new Map();
     let content = "";
@@ -140,6 +140,24 @@ test("plan review writes the plan, proposes it once, then stops after omp answer
   assert.deepEqual(done.calls, []);
   assert.equal(done.finishReason, "stop");
   assert.match(done.content, /plan review closed/);
+
+  const omp191 = await replyFor("", turn, { tools: [{ type: "function", function: { name: "bash" } }] });
+  assert.deepEqual(omp191.calls, [{ name: "bash", args: { command: "propose tour" } }]);
+  const done191 = await replyFor("", [...turn, { role: "assistant", tool_calls: [{ function: { name: "bash", arguments: JSON.stringify({ command: "propose tour" }) } }] }, { role: "tool", content: "Plan approved." }], { tools: [{ type: "function", function: { name: "bash" } }] });
+  assert.deepEqual(done191.calls, []);
+  assert.equal(done191.finishReason, "stop");
+
+  const topLevel = await replyFor("", turn, { tools: [{ type: "function", function: { name: "propose" } }] });
+  assert.deepEqual(topLevel.calls, [{ name: "propose", args: { title: "tour" } }]);
+
+  // omp 19.0.x exposes `bash` in plan mode and sends its plan-mode reminder (plan-mode-active.md:7, with
+  // `{{writeToolName}}` rendered as `write`) as a user message to OpenAI-compatible providers it does not know.
+  const legacyTurn = [
+    { role: "user", content: "Implementing: write the plan `<slug>`/title, plain text, to `xd://propose` with `write`; `<slug>` MUST match `local://<slug>-plan.md`, allowed characters: letters, numbers, underscores, hyphens. User then selects an execution option; full write access restored." },
+    ...turn,
+  ];
+  const legacyWithBash = await replyFor("", legacyTurn, { tools: [{ type: "function", function: { name: "bash" } }, { type: "function", function: { name: "write" } }] });
+  assert.deepEqual(legacyWithBash.calls, [{ name: "write", args: { path: "xd://propose", content: "tour" } }]);
 });
 
 test("ask fixtures send an HTML form when omp's ask tool takes one", async () => {
