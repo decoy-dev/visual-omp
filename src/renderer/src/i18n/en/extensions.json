@@ -141,6 +141,17 @@
 				"monthly": "Monthly limit"
 			},
 			"used": "{{percent}}% used",
+			"amountRemaining": "{{amount}} remaining",
+			"amountUsed": "{{amount}} used",
+			"amountRemainingUnit": "{{amount}} {{unit}} remaining",
+			"amountUsedUnit": "{{amount}} {{unit}} used",
+			"unit": {
+				"tokens": "tokens",
+				"requests": "requests",
+				"credits": "credits",
+				"minutes": "minutes",
+				"bytes": "bytes"
+			},
 			"resetsIn": "Resets in {{time}}",
 			"resetVerbIn": "{{verb}} in {{time}}",
 			"resetsAt": "Resets {{date}}",

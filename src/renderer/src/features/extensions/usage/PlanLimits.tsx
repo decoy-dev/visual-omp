@@ -17,6 +17,7 @@ import { checkUsageLimits, refreshUsageLimits, useUsageLimits, useUsageLimitsSta
 import {
 	type AccountLimits,
 	type AccountRow,
+	type BarlessLimitAmount,
 	type LimitRow,
 	planLimits,
 	type ProviderLimits,
@@ -52,6 +53,23 @@ function resetText(row: LimitRow, now: number, t: TFunction<"extensions">): stri
 	if (row.resetsAt <= now) return t("usage.limits.awaiting");
 	const time = formatDuration(row.resetsAt - now);
 	return row.resetLabel ? t("usage.limits.resetVerbIn", { verb: row.resetLabel[0].toUpperCase() + row.resetLabel.slice(1), time }) : t("usage.limits.resetsIn", { time });
+}
+
+const TRANSLATED_UNITS = new Set(["tokens", "requests", "credits", "minutes", "bytes"]);
+
+export function formatBarlessAmount(amount: BarlessLimitAmount | null, language: string, t: TFunction<"extensions">): string | null {
+	if (!amount) return null;
+	const key = amount.kind === "remaining" ? "usage.limits.amountRemaining" : "usage.limits.amountUsed";
+	if (amount.unit === "usd") {
+		const formatted = new Intl.NumberFormat(language, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount.value);
+		return t(key, { amount: formatted });
+	}
+	const count = new Intl.NumberFormat(language, { maximumFractionDigits: 2 }).format(amount.value);
+	if (amount.unit === "percent") return t(key, { amount: `${count}%` });
+	if (amount.unit === "unknown") return t(key, { amount: count });
+	const unit = TRANSLATED_UNITS.has(amount.unit) ? t(`usage.limits.unit.${amount.unit}` as "usage.limits.unit.credits") : amount.unit;
+	const unitKey = amount.kind === "remaining" ? "usage.limits.amountRemainingUnit" : "usage.limits.amountUsedUnit";
+	return t(unitKey, { amount: count, unit });
 }
 
 const accountName = (account: AccountLimits, t: TFunction<"extensions">) => account.name ?? t("usage.limits.unnamedAccount");
@@ -127,7 +145,7 @@ function windowCaption({ account, row }: AccountRow, named: boolean, t: TFunctio
 }
 
 function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number }) {
-	const { t } = useTranslation("extensions");
+	const { t, i18n } = useTranslation("extensions");
 	const open = useUsageView(state => state.expanded.has(provider.provider));
 	const setExpanded = useUsageView(state => state.setExpanded);
 	const summary = useMemo(() => providerSummary(provider), [provider]);
@@ -137,8 +155,9 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 	const row = binding?.row ?? null;
 	const percent = row?.fraction != null ? Math.round(row.fraction * 100) : null;
 	const reset = row ? resetText(row, now, t) : null;
-	// A provider without a usable figure names the window it reports, if any, and reads "Unknown".
-	const unknownRow = binding ? undefined : summary.unknown.flatMap(account => account.rows.map((entry): AccountRow => ({ account, row: entry })))[0];
+	// A provider without a percentage window shows its first bar-less amount row, else names an unknown window.
+	const amountRow = binding ? undefined : provider.accounts.flatMap(account => account.rows.filter(entry => entry.amount !== null).map((entry): AccountRow => ({ account, row: entry })))[0];
+	const unknownRow = binding || amountRow ? undefined : summary.unknown.flatMap(account => account.rows.map((entry): AccountRow => ({ account, row: entry })))[0];
 	const badge: { tone: StatusBadgeTone; label: string } | null =
 		row?.state === "reached"
 			? { tone: "err", label: t("usage.limits.state.reached") }
@@ -220,7 +239,7 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 						)}
 					</span>
 					<span className="truncate text-sm text-fg-muted">
-						{binding ? windowCaption(binding, named, t) : unknownRow ? windowCaption(unknownRow, named, t) : t("usage.limits.noFigure")}
+						{binding ? windowCaption(binding, named, t) : amountRow ? windowCaption(amountRow, named, t) : unknownRow ? windowCaption(unknownRow, named, t) : t("usage.limits.noFigure")}
 					</span>
 				</span>
 				<span aria-hidden className="min-w-0 [grid-area:meter]">
@@ -229,8 +248,8 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 					)}
 				</span>
 				<span className="flex min-w-0 items-baseline gap-3 text-sm tabular-nums [grid-area:info] @min-[46rem]/limits:justify-end">
-					<span className={cn("font-medium", row === null ? "text-fg-muted" : row.tone === "ok" ? "text-fg" : stateInks[row.tone])}>
-						{percent === null ? t("usage.limits.unknown") : t("usage.limits.used", { percent })}
+					<span className={cn("font-medium", row === null && !amountRow ? "text-fg-muted" : (row?.tone ?? "ok") === "ok" ? "text-fg" : stateInks[row!.tone])}>
+						{percent === null ? (formatBarlessAmount(amountRow?.row.amount ?? null, i18n.language, t) ?? t("usage.limits.unknown")) : t("usage.limits.used", { percent })}
 					</span>
 					{reset && <span className="truncate text-fg-muted">{reset}</span>}
 				</span>
@@ -411,7 +430,7 @@ function LimitRowView({ row, provider, now }: { row: LimitRow; provider: string;
 	const { t, i18n } = useTranslation("extensions");
 	const name = rowName(row, t);
 	const percent = row.fraction === null ? null : Math.round(row.fraction * 100);
-	const used = percent === null ? null : t("usage.limits.used", { percent });
+	const used = percent === null ? formatBarlessAmount(row.amount, i18n.language, t) : t("usage.limits.used", { percent });
 	const passed = row.resetsAt !== null && row.resetsAt <= now;
 	const reset = resetText(row, now, t);
 	const exact =

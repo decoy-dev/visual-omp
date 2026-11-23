@@ -352,6 +352,12 @@ export function planUsage(snapshot: UsageLimitsSnapshot | null, models: readonly
 /** How a limit row reads on the Usage & limits page. */
 export type LimitState = "ok" | "near" | "reached" | "unavailable";
 
+export interface BarlessLimitAmount {
+	kind: "remaining" | "used";
+	value: number;
+	unit: UsageLimit["amount"]["unit"];
+}
+
 export interface LimitRow {
 	/** {@link UsageLimit.id}. */
 	id: string;
@@ -367,6 +373,8 @@ export interface LimitRow {
 	qualifier: string | null;
 	/** 0..1 (above 1 means overage); null when the provider reports nothing usable. */
 	fraction: number | null;
+	/** Structured non-percentage amount (such as add-on credits or prepaid spend) when `fraction` is null. */
+	amount: BarlessLimitAmount | null;
 	state: LimitState;
 	tone: "ok" | "warn" | "err";
 	resetsAt: number | null;
@@ -466,10 +474,21 @@ export function soonestExpiry(resets: SavedResets, now: number): number | null {
 	return resets.expiries.find(at => at > now) ?? null;
 }
 
+function barlessAmount(amount: UsageLimit["amount"]): BarlessLimitAmount | null {
+	if (typeof amount.remaining === "number" && Number.isFinite(amount.remaining)) {
+		return { kind: "remaining", value: amount.remaining, unit: amount.unit };
+	}
+	if (typeof amount.used === "number" && Number.isFinite(amount.used)) {
+		return { kind: "used", value: amount.used, unit: amount.unit };
+	}
+	return null;
+}
+
 function limitRows(report: UsageReport): LimitRow[] {
 	const prefix = `${providerName(report.provider)} `;
 	const rows = report.limits.map((limit): LimitRow => {
 		const fraction = usedFraction(limit);
+		const amount = fraction === null ? barlessAmount(limit.amount) : null;
 		const tone = limitTone(fraction, limit.status);
 		const durationMs = windowDurationMs(limit);
 		const reached = limit.status === "exhausted" || (fraction ?? 0) >= 1;
@@ -484,7 +503,8 @@ function limitRows(report: UsageReport): LimitRow[] {
 			label: limit.label.startsWith(prefix) ? limit.label.slice(prefix.length) : limit.label,
 			qualifier: tier ? tier[0].toUpperCase() + tier.slice(1) : modelId ? bareModelId(modelId) : null,
 			fraction,
-			state: reached ? "reached" : near ? "near" : fraction === null ? "unavailable" : "ok",
+			amount,
+			state: reached ? "reached" : near ? "near" : fraction === null && amount === null ? "unavailable" : "ok",
 			tone,
 			resetsAt: limit.window?.resetsAt ?? null,
 			resetLabel: limit.window?.resetLabel ?? null,
@@ -537,7 +557,7 @@ export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
 		const meta = report.metadata ?? {};
 		const identity: AccountIdentity = { accountId: metaText(meta.accountId), email: metaText(meta.email), orgId: metaText(meta.orgId), orgName: metaText(meta.orgName) };
 		add(report.provider, {
-			key: `report:${report.provider}:${identity.accountId ?? identity.email ?? index}`,
+			key: `report:${report.provider}:${identity.accountId ?? identity.email ?? index}${identity.orgId ? `:${identity.orgId}` : ""}`,
 			...known(identity),
 			kind: "report",
 			fetchedAt: report.fetchedAt,
@@ -551,7 +571,7 @@ export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
 	}
 	for (const [index, account] of snapshot.accountsWithoutUsage.entries()) {
 		add(account.provider, {
-			key: `unavailable:${account.provider}:${account.accountId ?? account.email ?? index}`,
+			key: `unavailable:${account.provider}:${account.accountId ?? account.email ?? index}${account.orgId ? `:${account.orgId}` : ""}`,
 			...known(account),
 			kind: "unavailable",
 			fetchedAt: null,
@@ -614,6 +634,6 @@ export function providerSummary(provider: ProviderLimits): ProviderSummary {
 		binding,
 		alerts: rows.filter(entry => entry !== binding && (entry.row.state === "reached" || entry.row.state === "near")).sort((a, b) => rowSeverity(a.row) - rowSeverity(b.row)),
 		disabled: provider.accounts.filter(account => account.disabled.length > 0),
-		unknown: provider.accounts.filter(account => account.kind !== "disabled" && account.rows.every(row => row.fraction === null)),
+		unknown: provider.accounts.filter(account => account.kind !== "disabled" && account.rows.every(row => row.fraction === null && row.amount === null)),
 	};
 }

@@ -4,6 +4,8 @@ import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contr
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
 import litellmSnapshot from "../../../../../main/features/usage/fixtures/usage-litellm-18.18.7.json";
 import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage, providerSummary, rememberModels, type SeenModels, soonestExpiry, withSeenProviders } from "./planUsage";
+import { formatBarlessAmount } from "./PlanLimits";
+import { i18n } from "@/i18n";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
 const fixture = realSnapshot as unknown as UsageLimitsSnapshot;
@@ -499,6 +501,46 @@ describe("providerSummary", () => {
 		);
 		expect(claude.binding).toBeNull();
 		expect(claude.unknown.map(account => account.name)).toEqual(["first@example.com", "second@example.com"]);
+	});
+
+	it("preserves bar-less credit balances and spend amounts, disambiguates org-scoped keys, and formats localized units", () => {
+		// Shapes from omp 19.1.1 packages/ai/src/usage: charm-hyper.ts (balance), devin.ts `devinCreditLimit` (a credit
+		// bucket without a limit, one user in two organizations) and claude.ts `buildExtraUsageAmount` (spend without a limit).
+		const devinBucket = (orgId: string, used: number, remaining: number): UsageReport => ({
+			...report("devin", [{
+				id: "devin:credits:flex", label: "Flex Credits", scope: { provider: "devin", accountId: "user-1", orgId, windowId: "plan" },
+				amount: { used, remaining, unit: "unknown" },
+			}]),
+			metadata: { source: "seat-management", email: "user@example.com", accountId: "user-1", orgId },
+		});
+		const providers = planLimits(
+			snapshot([
+				{
+					...report("charm-hyper", [{ id: "charm-hyper:credits", label: "Credit balance", scope: { provider: "charm-hyper", windowId: "balance", shared: true }, amount: { remaining: 42.5, unit: "credits" }, status: "ok" }]),
+				},
+				devinBucket("org-a", 12, 88),
+				devinBucket("org-b", 30, 70),
+				report("anthropic", [{ id: "anthropic:extra", label: "Claude Extra Usage", scope: { provider: "anthropic", windowId: "extra" }, amount: { used: 12.5, unit: "usd" } }]),
+			]),
+		);
+		const hyper = providers.find(provider => provider.provider === "charm-hyper")!;
+		const devin = providers.find(provider => provider.provider === "devin")!;
+		const claude = providers.find(provider => provider.provider === "anthropic")!;
+		expect(new Set(devin.accounts.map(account => account.key)).size).toBe(2);
+		expect(hyper.accounts[0]?.rows[0]).toMatchObject({ fraction: null, amount: { kind: "remaining", value: 42.5, unit: "credits" }, state: "ok" });
+		expect(devin.accounts[0]?.rows[0]).toMatchObject({ fraction: null, amount: { kind: "remaining", value: 88, unit: "unknown" }, state: "ok" });
+		expect(claude.accounts[0]?.rows[0]).toMatchObject({ fraction: null, amount: { kind: "used", value: 12.5, unit: "usd" }, state: "ok" });
+		expect(providerSummary(hyper).unknown).toEqual([]);
+		expect(providerSummary(devin).unknown).toEqual([]);
+		expect(providerSummary(claude).unknown).toEqual([]);
+
+		const t = i18n.getFixedT("en", "extensions");
+		expect(formatBarlessAmount(null, "en-US", t)).toBeNull();
+		expect(formatBarlessAmount({ kind: "remaining", value: 42.5, unit: "credits" }, "en-US", t)).toBe("42.5 credits remaining");
+		expect(formatBarlessAmount({ kind: "used", value: 12.5, unit: "usd" }, "en-US", t)).toBe("$12.50 used");
+		expect(formatBarlessAmount({ kind: "remaining", value: 80, unit: "percent" }, "en-US", t)).toBe("80% remaining");
+		expect(formatBarlessAmount({ kind: "used", value: 1200, unit: "requests" }, "en-US", t)).toBe("1,200 requests used");
+		expect(formatBarlessAmount({ kind: "remaining", value: 5, unit: "unknown" }, "en-US", t)).toBe("5 remaining");
 	});
 
 });
