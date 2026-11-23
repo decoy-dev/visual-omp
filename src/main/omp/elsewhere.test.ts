@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 	env: {} as NodeJS.ProcessEnv,
 	hosts: [] as { pid: number; sessionId: string; phase: string }[],
 	run: vi.fn(),
-	sockets: null as string | null,
+	sockets: null as string | Error | null,
 	leases: "",
 	leaseMode: 0o700,
 	actualExecutableSearch: false,
@@ -30,7 +30,9 @@ vi.mock("node:fs/promises", async importOriginal => {
 			return args[0] === mocks.leases ? Object.assign(entry, { mode: (Number(entry.mode) & ~0o777) | mocks.leaseMode }) : entry;
 		},
 		readFile: (...args: Parameters<typeof FsPromisesModule.readFile>) =>
-			args[0] === "/proc/net/unix" && mocks.sockets !== null ? Promise.resolve(mocks.sockets) : actual.readFile(...args) };
+			args[0] === "/proc/net/unix" && mocks.sockets !== null
+				? (mocks.sockets instanceof Error ? Promise.reject(mocks.sockets) : Promise.resolve(mocks.sockets))
+				: actual.readFile(...args) };
 });
 vi.mock("../env", () => ({ userEnv: async () => mocks.env }));
 vi.mock("../services/executable", async importOriginal => {
@@ -128,6 +130,30 @@ it("reads Linux abstract socket names without treating a persistent sidecar as h
 	mocks.sockets = `Num RefCount Protocol Flags Type St Inode Path\n000: 2 0 0 0002 01 42 @${leaseMemoryName(join(leases, "source-id.lock"))}\n`;
 	expect((await sessionOwnership([file])).get(file)).toBe("elsewhere");
 	expect(mocks.run).not.toHaveBeenCalled();
+});
+
+it("detects omp 19.0.1+ Linux sidecar file locks when no legacy abstract socket exists", async () => {
+	Object.defineProperty(process, "platform", { value: "linux" });
+	mocks.sockets = "Num RefCount Protocol Flags Type St Inode Path\n";
+	await writeFile(join(leases, "source-id.lock"), "");
+	mocks.run.mockImplementation((_command, _args, _options, callback) => callback(null, "p93412\n", ""));
+	expect((await sessionOwnership([file])).get(file)).toBe("elsewhere");
+	expect(mocks.run.mock.calls.map(call => call[0])).toEqual(["/system-tools/lsof"]);
+});
+
+it("treats an unheld Linux sidecar lock file as free", async () => {
+	Object.defineProperty(process, "platform", { value: "linux" });
+	mocks.sockets = "Num RefCount Protocol Flags Type St Inode Path\n";
+	await writeFile(join(leases, "source-id.lock"), "");
+	expect((await sessionOwnership([file])).get(file)).toBe("free");
+});
+
+it("still detects an active Linux sidecar holder when /proc/net/unix is unreadable", async () => {
+	Object.defineProperty(process, "platform", { value: "linux" });
+	mocks.sockets = new Error("EACCES");
+	await writeFile(join(leases, "source-id.lock"), "");
+	mocks.run.mockImplementation((_command, _args, _options, callback) => callback(null, "p93412\n", ""));
+	expect((await sessionOwnership([file])).get(file)).toBe("elsewhere");
 });
 
 it("observes the Windows global mutex without creating or waiting on it", async () => {

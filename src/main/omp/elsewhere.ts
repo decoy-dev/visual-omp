@@ -3,7 +3,8 @@
  * writers must never share one session file).
  *
  * omp 18.14 holds an OS lease keyed by the session header id. Read that lease first:
- * a flock sidecar on macOS, an abstract socket on Linux, or a named mutex on Windows.
+ * a lock sidecar on macOS (`flock`) and Linux (`F_OFD_SETLK` OFD record locks in omp 19.0.1+,
+ * with legacy abstract-socket check on Linux for omp 18.14 through 19.0.0), or a named mutex on Windows.
  * Lease sidecars are persistent, so their existence alone never establishes ownership.
  * If the header or lease cannot be read, use writable descriptors and terminal breadcrumbs
  * as a conservative fallback. An unreadable fallback keeps the answer unknown.
@@ -108,6 +109,23 @@ async function ownersDir(env: NodeJS.ProcessEnv): Promise<string | null> {
 	return join(homedir(), env.PI_CONFIG_DIR || ".omp", "run", "session-owners");
 }
 
+/** Check a POSIX lock sidecar (`flock` on macOS, `F_OFD_SETLK` on Linux) without acquiring or modifying it; null requests fallback. */
+async function sidecarOwnership(dir: string, sidecar: string, env: NodeJS.ProcessEnv, ours: ReadonlySet<number>): Promise<SessionOwnership | null> {
+	try {
+		const parent = await lstat(dir);
+		if (!parent.isDirectory() || (process.getuid && parent.uid !== process.getuid()) || (parent.mode & 0o077) !== 0) return null;
+		await stat(sidecar);
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") return "free";
+		return null;
+	}
+	// Darwin's lsof does not expose flock state and Linux OFD record locks are per-open-file-description.
+	// omp retains this descriptor only while holding the lease; failed contenders immediately close theirs.
+	const reply = await run("lsof", ["-w", "-F", "p", "--", sidecar], env);
+	if ((reply.code !== 0 && reply.code !== 1) || reply.stderr.trim()) return null;
+	return reply.stdout.split("\n").some(line => /^p\d+$/.test(line) && !ours.has(Number(line.slice(1)))) ? "elsewhere" : "free";
+}
+
 /** null requests the descriptor/breadcrumb fallback, without acquiring or modifying any lease. */
 async function leaseOwnership(file: string, dir: string, env: NodeJS.ProcessEnv, ours: ReadonlySet<number>): Promise<SessionOwnership | null> {
 	try {
@@ -116,10 +134,22 @@ async function leaseOwnership(file: string, dir: string, env: NodeJS.ProcessEnv,
 		if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) return null;
 		const sidecar = resolve(dir, `${id}.lock`);
 		if (process.platform === "linux") {
-			const sockets = await readFile("/proc/net/unix", "utf8");
-			if (!/^\s*Num\s+RefCount\s+Protocol\s+Flags\s+Type\s+St\s+Inode\s+Path/.test(sockets)) return null;
-			const name = `@${leaseMemoryName(sidecar)}`;
-			return sockets.split("\n").some(line => line.trim().split(/\s+/).at(7) === name) ? "elsewhere" : "free";
+			// Check legacy abstract sockets (omp 18.14 through 19.0.0) and sidecar lock files (omp 19.0.1+) independently,
+			// so an unreadable /proc/net/unix does not mask an active sidecar holder, while "free" requires both checks.
+			let unixOk = false;
+			try {
+				const sockets = await readFile("/proc/net/unix", "utf8");
+				if (/^\s*Num\s+RefCount\s+Protocol\s+Flags\s+Type\s+St\s+Inode\s+Path/.test(sockets)) {
+					unixOk = true;
+					const name = `@${leaseMemoryName(sidecar)}`;
+					if (sockets.split("\n").some(line => line.trim().split(/\s+/).at(7) === name)) return "elsewhere";
+				}
+			} catch {
+				unixOk = false;
+			}
+			const sidecarState = await sidecarOwnership(dir, sidecar, env, ours);
+			if (sidecarState === "elsewhere") return "elsewhere";
+			return unixOk && sidecarState === "free" ? "free" : null;
 		}
 		if (process.platform === "win32") {
 			// omp's mutex is held by object lifetime, without thread-affine mutex ownership.
@@ -130,19 +160,7 @@ async function leaseOwnership(file: string, dir: string, env: NodeJS.ProcessEnv,
 			if (reply.code !== 0 || reply.stderr.trim()) return null;
 			return reply.stdout.trim() === "held" ? "elsewhere" : reply.stdout.trim() === "free" ? "free" : null;
 		}
-		try {
-			const parent = await lstat(dir);
-			if (!parent.isDirectory() || (process.getuid && parent.uid !== process.getuid()) || (parent.mode & 0o077) !== 0) return null;
-			await stat(sidecar);
-		} catch (error) {
-			if (error instanceof Error && "code" in error && error.code === "ENOENT") return "free";
-			return null;
-		}
-		// Darwin's lsof does not expose flock state. omp retains this descriptor only
-		// while holding the lease; failed contenders immediately close theirs.
-		const reply = await run("lsof", ["-w", "-F", "p", "--", sidecar], env);
-		if ((reply.code !== 0 && reply.code !== 1) || reply.stderr.trim()) return null;
-		return reply.stdout.split("\n").some(line => /^p\d+$/.test(line) && !ours.has(Number(line.slice(1)))) ? "elsewhere" : "free";
+		return sidecarOwnership(dir, sidecar, env, ours);
 	} catch {
 		return null;
 	}
