@@ -49,6 +49,8 @@ export interface ToolRenderHost {
 	openAgent?(id: string): void;
 	/** Optional app-owned command pane. Ordinary output and metadata remain in the bash renderer. */
 	renderShellCommand?(command: string, fallback: ReactNode, envPrefix: string, context?: ShellCommandContext): ReactNode;
+	/** Optional app-owned output slot: a live command shows the output of the step chosen in its command pane in place of `output`. */
+	renderShellOutput?(output: ReactNode): ReactNode;
 }
 
 export interface ToolRenderProps {

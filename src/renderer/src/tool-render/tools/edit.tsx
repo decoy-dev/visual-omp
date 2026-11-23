@@ -1,8 +1,10 @@
 /** `edit` / `apply_patch` — hashline patch application rendered as colored diffs. */
 import type { ReactNode } from "react";
+import { Markdown } from "../../transcript/Markdown";
 import { Badge, DiffBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
+import { isMagicInput, mergeMagicSections, splitMagicSections } from "./magicSections";
 
 /** Path from a hashline `[path#TAG]` / `[path]` header line, or null. */
 function headerPath(line: string): string | null {
@@ -20,7 +22,7 @@ function headerPath(line: string): string | null {
 
 const APPLY_PATCH_HEADER_RE = /^\*{3} (?:Update|Add|Delete) File:\s*(.+)$/;
 
-/** File paths named by hashline or apply_patch section headers, in order. */
+/** File paths named by hashline, apply_patch, or omp 19.1 magic section headers, in order. */
 function inputPaths(input: string): string[] {
 	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
 	const paths: string[] = [];
@@ -34,12 +36,18 @@ function inputPaths(input: string): string[] {
 		const fromApplyPatch = APPLY_PATCH_HEADER_RE.exec(line.trim());
 		if (fromApplyPatch) paths.push(fromApplyPatch[1].trim());
 	}
+	if (paths.length === 0 && isMagicInput(stripped)) {
+		for (const run of splitMagicSections(stripped).runs) {
+			if (!paths.includes(run.path)) paths.push(run.path);
+		}
+	}
 	return paths;
 }
 
 const OP_HEADER_RE = /^(?:replace|insert|delete)\b/;
 
 function countOps(input: string): number {
+	if (isMagicInput(input)) return 0;
 	let count = 0;
 	for (const line of input.split("\n")) if (OP_HEADER_RE.test(line)) count++;
 	return count;
@@ -213,9 +221,29 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		outcome = <ResultText result={result} maxLines={8} />;
 	}
 
+	const magicRuns = input !== null && isMagicInput(input) ? mergeMagicSections(splitMagicSections(input).runs) : null;
+	const hasDiffOutcome = perFile.length > 0 || (details !== null && result?.isError !== true && (() => {
+		const top = fileEntry(details);
+		return top.diff !== null || top.diagnostics !== null || top.move !== null;
+	})());
+
 	return (
 		<>
 			{outcome}
+			{magicRuns && !hasDiffOutcome && (
+				<div className="tv-list">
+					{magicRuns.map((run, index) => (
+						<div key={`${run.path}:${index}`}>
+							<div className="tv-row">
+								<span className="tv-row-val">
+									<PathText path={run.path} />
+								</span>
+							</div>
+							{run.text && <Markdown text={run.text} />}
+						</div>
+					))}
+				</div>
+			)}
 			{Array.isArray(args.edits) && args.edits.length > 0 && (
 				<KvGrid>
 					{args.edits.map((e, i) =>
@@ -231,7 +259,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					)}
 				</KvGrid>
 			)}
-			{input !== null && input.length > 0 && <Output text={input} variant="code" maxLines={10} title="input" />}
+			{!magicRuns && input !== null && input.length > 0 && <Output text={input} variant="code" maxLines={10} title="input" />}
 			{input === null && (args.input !== undefined || args._input !== undefined) && <InvalidArg what="input" />}
 		</>
 	);

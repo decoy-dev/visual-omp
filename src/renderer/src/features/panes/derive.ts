@@ -4,7 +4,7 @@
  * checkbox steps, and helpers at work. Tolerant of partial/unknown shapes, since everything here comes from omp's
  * JSON over the wire.
  */
-import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePayload, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import { type AgentProgress, type AgentSnapshot, type SessionEntry, type SubagentLifecyclePayload, toolIntentLabel, type ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { NativeJob } from "@shared/contracts/native";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
 import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
@@ -13,6 +13,7 @@ import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import { isReplyWrite, resolveToolCall } from "../../chat/friendly";
 import { type JobStatus, parseNotice } from "../../chat/transcript/notices";
 import type { SessionView } from "../../state/session";
+import { extractSavedImagePaths, partitionToolCommandImages, toolCommandRecords } from "../../tool-render/toolCommands";
 import { isRecord, num, str } from "../../tool-render/util";
 import { completionPercentOf, jobWidgetOf, type JobWidgetView } from "./jobWidgets";
 
@@ -64,6 +65,10 @@ type TranscriptItem =
 			start: number;
 			/** The call's intent (omp's `i` argument), when the model gave one. */
 			intent: string | null;
+			/** True for synthetic sub-command items expanded from `bash` `details.toolCommands`. */
+			fromToolCommand?: true;
+			/** True for a `bash` item whose images moved to its lone `generate_image` sub-command item. */
+			imagesMoved?: true;
 	  }
 	| { kind: "custom"; customType: string; details: unknown; time: number; entry: Extract<SessionEntry, { type: "custom_message" }> }
 	/**
@@ -85,8 +90,8 @@ function startTime(recorded: number | undefined, called: number | undefined, end
 
 /** A call's intent: omp records it on the call, and the model sends it as the `i` argument. */
 function callIntent(call: { intent?: string; arguments?: unknown }): string | null {
-	const intent = call.intent ?? (isRecord(call.arguments) ? str(call.arguments.i) : null);
-	return intent?.trim() || null;
+	const raw = (call.intent ?? (isRecord(call.arguments) ? str(call.arguments.i) : null))?.trim();
+	return raw ? toolIntentLabel(raw) : null;
 }
 
 /**
@@ -132,7 +137,36 @@ function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 		});
 		const details = view.result?.details;
 		const start = startTime(starts.get(message.toolCallId), call?.time, message.timestamp);
-		items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message, start, intent: call?.intent ?? null });
+		const commands = view.name === "bash" ? toolCommandRecords(view.result) : [];
+		if (commands.length > 0) {
+			const { byIndex, remaining } = partitionToolCommandImages(str(view.args.command), view.result, commands);
+			const textBlocks = message.content.filter(block => block.type === "text");
+			const imagesMoved = byIndex.size > 0;
+			const outerMessage: ToolResultMessage = imagesMoved
+				? { ...message, content: [...textBlocks, ...(remaining as ToolResultMessage["content"])] }
+				: message;
+			items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message: outerMessage, start, intent: call?.intent ?? null, ...(imagesMoved ? { imagesMoved: true as const } : {}) });
+			for (const [index, record] of commands.entries()) {
+				if (record.mode !== "execute") continue;
+				items.push({
+					kind: "result",
+					name: record.tool,
+					args: record.args,
+					details: isRecord(record.inner) ? record.inner : null,
+					message: {
+						...message,
+						toolName: record.tool,
+						content: (byIndex.get(index) ?? []) as ToolResultMessage["content"],
+						isError: record.exitCode !== 0,
+					},
+					start,
+					intent: call?.intent ?? null,
+					fromToolCommand: true,
+				});
+			}
+		} else {
+			items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message, start, intent: call?.intent ?? null });
+		}
 	}
 	return items;
 }
@@ -299,7 +333,7 @@ function jobReports(item: TranscriptItem): JobReport[] {
 				id,
 				type: str(job.type),
 				label: str(job.agentUrlId) ?? str(job.label),
-				intent: str(job.intent)?.trim() || null,
+				intent: (() => { const raw = str(job.intent)?.trim(); return raw ? toolIntentLabel(raw) : null; })(),
 				state,
 				output: str(job.resultText) || str(job.errorText),
 				durationMs: durationMs !== null && durationMs >= 0 ? durationMs : null,
@@ -460,7 +494,8 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 				if (existing && existing.state !== "running") continue;
 				const output = str(raw.resultText) || str(raw.errorText);
 				const widget = jobWidgetOf(raw.widget);
-				const intent = str(raw.intent)?.trim();
+				const rawIntent = str(raw.intent)?.trim();
+				const intent = rawIntent ? toolIntentLabel(rawIntent) : undefined;
 				upsert(id, {
 					command: existing?.command || str(raw.label) || "",
 					...(intent ? { intent } : {}),
@@ -984,8 +1019,12 @@ export function madeCandidates(entries: readonly SessionEntry[], context: Output
 			}
 			continue;
 		}
-		if (item.kind !== "result" || !Object.hasOwn(COMMAND_TOOLS, item.name)) continue;
-		const paths = commandPaths(item.args, resultText(item.message), context);
+		if (item.kind !== "result" || item.fromToolCommand || !Object.hasOwn(COMMAND_TOOLS, item.name)) continue;
+		// A bash call whose images moved to its `generate_image` item lists them under the generator's own paths, so
+		// bash's `Image saved:` copies are not candidates.
+		const rawText = resultText(item.message);
+		const scanText = item.imagesMoved ? rawText.replace(/^Image saved: .+$/gm, "") : rawText;
+		const paths = commandPaths(item.args, scanText, context);
 		if (paths.length === 0) continue;
 		const candidate = { id: item.message.toolCallId, paths, start: item.start, end: item.message.timestamp };
 		candidates.push(candidate);
@@ -1053,6 +1092,11 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 				images.length = 0;
 				if (!message.isError) add({ key: path, kind: "pdf", path, tool: name, action: "viewed", time, inline: null });
 			} else if (images.length === 1) paths = [path];
+		} else if (name === "bash" && !item.fromToolCommand && images.length > 0) {
+			// Pair bash kitty/sixel image blocks with omp 19.1's `Image saved: <path>` lines so Outputs does not duplicate them.
+			// Only pair when counts match 1:1 (so a call mixing `generate_image` with another terminal image cannot mislabel it).
+			const saved = extractSavedImagePaths(resultText(message)).map(raw => resolveOutputPath(raw, context));
+			if (saved.length === images.length) paths = saved;
 		}
 		const imageAction: OutputAction = name === "read" ? "viewed" : name === "generate_image" ? "generated" : "captured";
 		for (let n = 0; n < Math.max(images.length, paths.length); n++) {
@@ -1064,7 +1108,23 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 			add({ key, kind: "image", path, tool: name, action: imageAction, time, inline });
 		}
 		// Main returns a call's files newest first; adding them oldest first keeps that order in the result.
-		for (const file of [...(made[message.toolCallId] ?? [])].reverse()) addFile(file.path, name, "made", time, context);
+		if (!item.fromToolCommand) {
+			const ignoredSaved = item.imagesMoved
+				? new Set(
+					extractSavedImagePaths(resultText(message))
+						.map(raw => resolveOutputPath(raw, context))
+						.filter((path): path is string => path !== null)
+						.map(path => outputPathKey(path, context.platform)),
+				)
+				: null;
+			for (const file of [...(made[message.toolCallId] ?? [])].reverse()) {
+				if (ignoredSaved) {
+					const resolved = resolveOutputPath(file.path, context);
+					if (resolved && ignoredSaved.has(outputPathKey(resolved, context.platform))) continue;
+				}
+				addFile(file.path, name, "made", time, context);
+			}
+		}
 		if (message.isError) continue;
 		if (name === "write" && details?.touchesNoFiles !== true) {
 			const raw = str(details?.resolvedPath) ?? str(args.path);
@@ -1151,7 +1211,10 @@ export function fileEdits(entries: readonly SessionEntry[], context: OutputConte
 			}
 			staged = null;
 		}
-		if (files.length > 0) edits.set(id, files);
+		if (files.length > 0) {
+			const prior = edits.get(id);
+			edits.set(id, prior ? [...prior, ...files] : files);
+		}
 	}
 	return edits;
 }
@@ -1410,11 +1473,15 @@ export interface ActivitySource {
  */
 export function activityOf(progress: ActivitySource | undefined): string {
 	if (!progress) return "";
+	const intent = (value: string | null | undefined) => {
+		const line = firstLine(value);
+		return line ? toolIntentLabel(line) : "";
+	};
 	return (
 		firstLine(progress.stage) ||
-		firstLine(progress.currentToolIntent) ||
-		firstLine(progress.lastIntent) ||
-		firstLine(progress.recentTools?.find(tool => tool.intent)?.intent) ||
+		intent(progress.currentToolIntent) ||
+		intent(progress.lastIntent) ||
+		intent(progress.recentTools?.find(tool => tool.intent)?.intent) ||
 		firstLine(progress.recentOutput?.[0]) ||
 		firstLine(progress.description) ||
 		firstLine(progress.task && stripAssignmentPreamble(progress.task))

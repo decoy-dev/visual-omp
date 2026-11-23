@@ -395,3 +395,25 @@ describe("Office preview file discovery", () => {
 		expect(deriveSubjects(input({ stream: null, changes: [{ watchId: "office", path: "/project/work/macro.pptm", size: 100, mtimeMs: 500 }] }), [])).toEqual([]);
 	});
 });
+
+describe("omp 19.1 bash generate_image and inline bash images", () => {
+	it("recognizes bash generate_image calls while running and displays their outer image blocks", () => {
+		expect(isVisualCall("bash", { command: "generate_image --subject \"A red boat\"" })).toBe(true);
+		const runningSubjects = deriveSubjects(input({
+			stream: null,
+			activeTools: new Map([["img", running("img", { command: "generate_image --subject boat" }, "bash")]]),
+		}), []);
+		expect(runningSubjects).toHaveLength(1);
+		expect(runningSubjects[0]).toMatchObject({ kind: "request", format: "generate-image", toolName: "generate_image" });
+
+		const finished = deriveSubjects(input({
+			stream: null,
+			entries: [
+				{ id: "a", parentId: null, timestamp: "2026-11-23T00:00:00Z", type: "message", message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "img", name: "bash", arguments: { command: "generate_image --subject boat" } }] } },
+				{ id: "r", parentId: "a", timestamp: "2026-11-23T00:00:01Z", type: "message", message: { role: "toolResult", toolCallId: "img", toolName: "bash", isError: false, timestamp: 20, content: [{ type: "image", mimeType: "image/png", data: "AAAA" }], details: { exitCode: 0, toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 0, args: { subject: "boat" }, inner: { imageCount: 1 } }] } } },
+			],
+		}), runningSubjects);
+		expect(finished).toHaveLength(1);
+		expect(finished[0]).toMatchObject({ kind: "images", format: "result-images", toolName: "generate_image", images: [{ mimeType: "image/png", data: "AAAA" }] });
+	});
+});

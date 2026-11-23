@@ -2,7 +2,7 @@
  * Tool card chrome + per-tool dispatch. Works in the collab-web app and inside
  * the `<omp-tool-view>` web component embedded in HTML session exports.
  */
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import { INTENT_FIELD, toolIntentLabel } from "@oh-my-pi/pi-wire";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { resolveToolRenderer } from "./registry";
@@ -80,7 +80,8 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	const [open, setOpen] = useState(props.defaultOpen ?? false);
 	const xdev = executeXdevDispatch(props);
 	const { args, intent: argIntent } = normalizeArgs(props.args);
-	const intent = props.intent?.trim() || argIntent;
+	const rawIntent = props.intent?.trim() || argIntent;
+	const intent = rawIntent ? toolIntentLabel(rawIntent) : undefined;
 	const name = xdev?.tool ?? props.name;
 	const result = xdev
 		? { content: props.result!.content, details: xdev.inner, isError: props.result!.isError }

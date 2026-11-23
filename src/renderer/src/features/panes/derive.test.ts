@@ -1328,3 +1328,130 @@ describe("helper names", () => {
 		expect(helpersOf(guest, true).map(helper => helper.name).sort()).toEqual(["Lead>Scout", "Rollback"]);
 	});
 });
+
+describe("omp 19.1 tool commands, bash image dedup, and intent labels", () => {
+	const ctx = { cwd: "/project", home: "/Users/test" };
+
+	it("expands bash details.toolCommands for generate_image and ast_edit without duplicating bash images", () => {
+		const imgCall: SessionEntry = {
+			id: "a1", parentId: null, timestamp: "2026-11-23T00:00:00Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 100, content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "generate_image --subject cat" } }] },
+		};
+		const imgRes: SessionEntry = {
+			id: "r1", parentId: "a1", timestamp: "2026-11-23T00:00:01Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c1", toolName: "bash", isError: false, timestamp: 110,
+				content: [{ type: "text", text: "Image saved: /tmp/gen-cat.png" }, { type: "image", mimeType: "image/png", data: "AAAA" }],
+				details: { exitCode: 0, toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 0, args: { subject: "cat" }, inner: { imagePaths: ["/tmp/gen-cat.png"], imageCount: 1 } }] },
+			},
+		};
+		const outputs = chatOutputs([imgCall, imgRes], ctx, { c1: [{ path: "/tmp/gen-cat.png", mtime: 110, size: 100 }] });
+		expect(outputs).toHaveLength(1);
+		expect(outputs[0]).toMatchObject({ path: "/tmp/gen-cat.png", tool: "generate_image", action: "generated", inline: { kind: "data", mimeType: "image/png", data: "AAAA" } });
+
+		const astCall: SessionEntry = {
+			id: "a2", parentId: "r1", timestamp: "2026-11-23T00:00:02Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 200, content: [{ type: "toolCall", id: "c2", name: "bash", arguments: { command: "ast_edit && resolve ok" } }] },
+		};
+		const astRes: SessionEntry = {
+			id: "r2", parentId: "a2", timestamp: "2026-11-23T00:00:03Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c2", toolName: "bash", isError: false, timestamp: 210,
+				content: [{ type: "text", text: "Applied" }],
+				details: {
+					exitCode: 0,
+					toolCommands: [
+						{ tool: "ast_edit", mode: "execute", exitCode: 0, args: {}, inner: { applied: false, fileReplacements: [{ path: "src/foo.ts" }] } },
+						{ tool: "resolve", mode: "execute", exitCode: 0, args: { action: "apply" }, inner: { action: "apply", sourceToolName: "ast_edit" } },
+					],
+				},
+			},
+		};
+		expect(fileEdits([astCall, astRes], ctx).get("c2")).toEqual([{ path: "/project/src/foo.ts", action: "edited", added: null, removed: null }]);
+	});
+
+	it("pairs bash Image saved lines with inline image blocks to avoid duplicate outputs", () => {
+		const call: SessionEntry = {
+			id: "a1", parentId: null, timestamp: "2026-11-23T00:00:00Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 100, content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "render-kitty" } }] },
+		};
+		const res: SessionEntry = {
+			id: "r1", parentId: "a1", timestamp: "2026-11-23T00:00:01Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c1", toolName: "bash", isError: false, timestamp: 110,
+				content: [{ type: "text", text: "Image saved: /tmp/kitty.png\n" }, { type: "image", mimeType: "image/png", data: "AAAA" }],
+				details: { exitCode: 0 },
+			},
+		};
+		const outputs = chatOutputs([call, res], ctx, { c1: [{ path: "/tmp/kitty.png", mtime: 110, size: 100 }] });
+		expect(outputs).toHaveLength(1);
+		expect(outputs[0]?.path).toBe("/tmp/kitty.png");
+	});
+
+	it("deduplicates generate_image when bash Image saved writes a second temp path, and preserves successful ast_edit under a failing bash call", () => {
+		const imgCall: SessionEntry = {
+			id: "a3", parentId: null, timestamp: "2026-11-23T00:00:00Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 300, content: [{ type: "toolCall", id: "c3", name: "bash", arguments: { command: "generate_image --subject owl" } }] },
+		};
+		const imgRes: SessionEntry = {
+			id: "r3", parentId: "a3", timestamp: "2026-11-23T00:00:01Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c3", toolName: "bash", isError: false, timestamp: 310,
+				content: [{ type: "text", text: "Image saved: /tmp/bash-decoded-owl.png\n" }, { type: "image", mimeType: "image/png", data: "BBBB" }],
+				details: { exitCode: 0, toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 0, args: { subject: "owl" }, inner: { imagePaths: ["/tmp/original-owl.png"], imageCount: 1 } }] },
+			},
+		};
+		expect(madeCandidates([imgCall, imgRes], ctx)).toEqual([]);
+		const outputs = chatOutputs([imgCall, imgRes], ctx, { c3: [{ path: "/tmp/bash-decoded-owl.png", mtime: 310, size: 100 }] });
+		expect(outputs).toHaveLength(1);
+		expect(outputs[0]).toMatchObject({ path: "/tmp/original-owl.png", tool: "generate_image", action: "generated" });
+
+		const astFailCall: SessionEntry = {
+			id: "a4", parentId: "r3", timestamp: "2026-11-23T00:00:02Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 400, content: [{ type: "toolCall", id: "c4", name: "bash", arguments: { command: "ast_edit ...; npm test" } }] },
+		};
+		const astFailRes: SessionEntry = {
+			id: "r4", parentId: "a4", timestamp: "2026-11-23T00:00:03Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c4", toolName: "bash", isError: true, timestamp: 410,
+				content: [{ type: "text", text: "test failed" }],
+				details: {
+					exitCode: 1,
+					toolCommands: [{ tool: "ast_edit", mode: "execute", exitCode: 0, args: {}, inner: { applied: true, fileReplacements: [{ path: "src/bar.ts" }] } }],
+				},
+			},
+		};
+		expect(fileEdits([astFailCall, astFailRes], ctx).get("c4")).toEqual([{ path: "/project/src/bar.ts", action: "edited", added: null, removed: null }]);
+		expect(chatOutputs([astFailCall, astFailRes], ctx)).toMatchObject([{ path: "/project/src/bar.ts", tool: "ast_edit", action: "edited" }]);
+
+		// A bash call mixing generate_image with another terminal image cannot prove which image the generator made, so both
+		// stay with bash's own `Image saved:` paths and the generator keeps the path from its details.
+		const mixCall: SessionEntry = {
+			id: "a5", parentId: "r4", timestamp: "2026-11-23T00:00:04Z", type: "message",
+			message: { role: "assistant", model: "m", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "toolUse", timestamp: 500, content: [{ type: "toolCall", id: "c5", name: "bash", arguments: { command: "generate_image --subject owl && render-kitty" } }] },
+		};
+		const mixRes: SessionEntry = {
+			id: "r5", parentId: "a5", timestamp: "2026-11-23T00:00:05Z", type: "message",
+			message: {
+				role: "toolResult", toolCallId: "c5", toolName: "bash", isError: false, timestamp: 510,
+				content: [
+					{ type: "text", text: "Image saved: /tmp/gen-temp.png\nImage saved: /tmp/kitty-extra.png\n" },
+					{ type: "image", mimeType: "image/png", data: "GEN1" },
+					{ type: "image", mimeType: "image/png", data: "KIT2" },
+				],
+				details: { exitCode: 0, toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 0, args: { subject: "owl" }, inner: { imagePaths: ["/tmp/original-owl.png"], imageCount: 1 } }] },
+			},
+		};
+		const mixedOutputs = chatOutputs([mixCall, mixRes], ctx);
+		expect(mixedOutputs.filter(output => output.tool === "bash").map(output => [output.path, output.inline && "data" in output.inline ? output.inline.data : null])).toEqual([
+			["/tmp/kitty-extra.png", "KIT2"],
+			["/tmp/gen-temp.png", "GEN1"],
+		]);
+		expect(mixedOutputs.find(output => output.tool === "generate_image")).toMatchObject({ path: "/tmp/original-owl.png" });
+	});
+
+	it("trims spotlight ranking instructions from helper intents", () => {
+		expect(activityOf({ currentToolIntent: "Reading config: prefer user overrides" })).toBe("Reading config");
+		expect(activityOf({ lastIntent: "Inspecting src/a.ts:12" })).toBe("Inspecting src/a.ts:12");
+	});
+});

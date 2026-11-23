@@ -2,6 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { bashRenderer } from "./bash";
+import "../registry";
+import { isSoleInvocation, toolCommandRecords } from "../toolCommands";
 
 describe("bash async status", () => {
 	it("shows a cancelled job with a neutral badge", () => {
@@ -99,5 +101,45 @@ describe("bash minimized output metadata", () => {
 		const html = renderDetails(undefined, "Full output\n[raw output: local://7.log]");
 		expect(html).toContain("Artifact 7");
 		expect(html).not.toContain("<a");
+	});
+});
+
+describe("omp 19.1 nested bash toolCommands", () => {
+	it("suppresses the provisional exitCode 1 error badge on the running last toolCommand", () => {
+		const html = renderToStaticMarkup(createElement(bashRenderer.Body!, {
+			name: "bash",
+			args: { command: "generate_image --subject owl" },
+			result: {
+				content: [],
+				details: { toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 1, args: { subject: "owl" }, inner: undefined }] },
+			},
+			running: true,
+		}));
+		expect(html).not.toContain("Exit 1");
+		expect(html).not.toContain("tv-badge--err");
+	});
+
+	it("keeps outer bash text output visible for compound commands containing one toolCommand", () => {
+		expect(isSoleInvocation("generate_image --subject 'a && b'", "generate_image")).toBe(true);
+		expect(isSoleInvocation("generate_image --subject owl && ls -la", "generate_image")).toBe(false);
+		expect(isSoleInvocation('generate_image --subject "$(date)"', "generate_image")).toBe(false);
+		expect(toolCommandRecords({ details: { toolCommands: [{ tool: "grep", mode: "execute", args: {} }] } })).toEqual([]);
+		const html = renderToStaticMarkup(createElement(bashRenderer.Body!, {
+			name: "bash",
+			args: { command: "generate_image --subject owl && ls -la" },
+			result: {
+				content: [
+					{ type: "text", text: "ls-output-sentinel.txt" },
+					{ type: "image", mimeType: "image/png", data: "AAAA" },
+				],
+				details: {
+					exitCode: 0,
+					toolCommands: [{ tool: "generate_image", mode: "execute", exitCode: 0, args: { subject: "owl" }, inner: { imagePaths: ["/tmp/owl.png"], imageCount: 1 } }],
+				},
+			},
+			running: false,
+		}));
+		// Because generate_image already renders its image, ls output only appears when the compound command is not treated as sole.
+		expect(html).toContain("ls-output-sentinel.txt");
 	});
 });

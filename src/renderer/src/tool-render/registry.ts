@@ -3,6 +3,7 @@
  * Unknown tools fall back to the generic JSON renderer.
  */
 import { genericRenderer } from "./generic";
+import { registerToolRendererResolver } from "./lookup";
 import { askRenderer } from "./tools/ask";
 import { astEditRenderer } from "./tools/ast-edit";
 import { astGrepRenderer } from "./tools/ast-grep";
@@ -59,6 +60,7 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	reflect: reflectRenderer,
 	retain: retainRenderer,
 	read: readRenderer,
+	report_issue: reportToolIssueRenderer,
 	report_tool_issue: reportToolIssueRenderer,
 	resolve: resolveRenderer,
 	reject: resolveRenderer,
@@ -75,3 +77,5 @@ const RENDERERS: Record<string, ToolRenderer> = {
 export function resolveToolRenderer(name: string, details?: unknown): ToolRenderer {
 	return RENDERERS[name] ?? (name.startsWith("mcp_") || isMcpResult(details) ? mcpRenderer : genericRenderer);
 }
+
+registerToolRendererResolver(resolveToolRenderer);

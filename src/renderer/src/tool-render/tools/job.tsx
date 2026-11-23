@@ -6,6 +6,7 @@
  * then cancelled/completed) with type badge, label, duration, and a one-line
  * result preview; we mirror that as rows plus the raw snapshot text.
  */
+import { toolIntentLabel } from "@oh-my-pi/pi-wire";
 import type { ReactNode } from "react";
 import { fmtDuration } from "../../collab/lib/format";
 import { JobWidget } from "../../features/panes/JobWidget";
@@ -142,7 +143,7 @@ function stripTaskResultEnvelope(text: string): string {
 
 function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	const tone = statusTone(job.status);
-	const intent = normalizeWs(job.intent);
+	const intent = normalizeWs(toolIntentLabel(job.intent));
 	const command = normalizeWs(job.label);
 	const label = intent || command || "(no label)";
 	// Task jobs label themselves with their agent id — drop the id column

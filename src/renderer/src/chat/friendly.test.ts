@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import tools from "../i18n/en/tools.json";
-import { activityKey, type FriendlySummary, friendlySummary, resolveToolCall } from "./friendly";
+import { activityKey, type FriendlySummary, friendlySummary, resolveToolCall, toolContextReference } from "./friendly";
 
 function hasKey(path: string): boolean {
 	let node: unknown = tools;
@@ -139,5 +139,20 @@ describe("activityKey", () => {
 		expect(activityKey(summarize({ name: "read", running: true, args: { path: "src/a.ts" } }))).toBe("activity.reading");
 		expect(activityKey(summarize({ name: "eval", running: true, args: { code: "await browser.open({})" } }))).toBe("activity.browser");
 		expect(activityKey(summarize({ name: "eval", running: true, args: { code: "print(1)" } }))).toBe("activity.code");
+	});
+
+	it("handles omp 19.1 intent labels, magic edit headers, help:// links, and nested bash lsp failures", () => {
+		expect(resolveToolCall({ name: "read", args: { i: "Inspecting parser: prioritize syntax error handling" }, running: false }).intent).toBe("Inspecting parser");
+		expect(resolveToolCall({ name: "read", args: { i: "Checking src/app.ts:42" }, running: false }).intent).toBe("Checking src/app.ts:42");
+		expect(summarize({ name: "edit", running: true, args: { input: "# src/app.ts\n- Rename foo to bar\n```\n# not-a-file.ts\n```" } })).toMatchObject({
+			key: "edit.one.running", values: { file: "app.ts" }, status: "running",
+		});
+		expect(toolContextReference(resolveToolCall({ name: "read", args: { path: "help://bash/tools" }, running: false }))).toEqual({});
+		expect(toolContextReference(resolveToolCall({ name: "read", args: { path: "src/app.ts" }, running: false }))).toEqual({ path: "src/app.ts" });
+		expect(summarize({
+			name: "bash",
+			args: { command: "lsp hover src/app.ts" },
+			result: ok({ exitCode: 0, toolCommands: [{ tool: "lsp", mode: "execute", exitCode: 0, args: { action: "hover" }, inner: { success: false } }] }),
+		}).status).toBe("error");
 	});
 });

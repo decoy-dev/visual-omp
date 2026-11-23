@@ -3,6 +3,7 @@ import type { PreviewChange, PreviewSequencePattern } from "@shared/contracts/pr
 import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
 import { resolveToolCall } from "../../chat/friendly";
 import type { ActiveTool } from "../../collab/lib/client";
+import { commandLeadsWithTool, toolCommandRecords } from "../../tool-render/toolCommands";
 import { isRecord, resultTextOf, str } from "../../tool-render/util";
 import { type BackgroundJob, commandPaths, IMAGE_EXT, isIntactBase64, type JobState, resolveOutputPath } from "../panes/derive";
 import type { LiveFormat, LiveImage, LiveRequest, LiveSubject, LiveSubjectState } from "./types";
@@ -66,7 +67,11 @@ function fileFormat(path: string): LiveFormat | null {
 /** Device calls have the same identity and argument shape as their transcript card. */
 export function isVisualCall(toolName: string, args: unknown): boolean {
 	const call = resolveToolCall({ name: toolName, args, running: true });
-	return call.name === "generate_image" || call.name === "eval" || (call.name === "bash" && parseRenderCommand(str(call.args.command) ?? "", "") !== null) || (call.name === "write" && sourceFormat(str(call.args.path ?? call.args.file_path) ?? "") !== null);
+	const command = call.name === "bash" ? str(call.args.command) ?? "" : "";
+	return call.name === "generate_image"
+		|| call.name === "eval"
+		|| (call.name === "bash" && (parseRenderCommand(command, "") !== null || commandLeadsWithTool(command, "generate_image")))
+		|| (call.name === "write" && sourceFormat(str(call.args.path ?? call.args.file_path) ?? "") !== null);
 }
 
 function turnStart(input: SubjectInput): { index: number; time: number } {
@@ -298,13 +303,18 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		const pathArg = str(call.args.path ?? call.args.file_path);
 		const path = pathArg ? resolveOutputPath(pathArg, { cwd: input.folder, home: null, platform: input.platform }) : null;
 		const format = call.name === "write" ? sourceFormat(pathArg ?? "") : null;
+		const bashImageCommand = call.name === "bash"
+			? toolCommandRecords(call.result).find(record => record.mode === "execute" && record.tool === "generate_image")
+				?? (isRecord(call.partial) ? toolCommandRecords(call.partial).find(record => record.mode === "execute" && record.tool === "generate_image") : undefined)
+			: undefined;
+		const isBashImageGen = call.name === "bash" && (bashImageCommand !== undefined || commandLeadsWithTool(str(call.args.command) ?? "", "generate_image"));
 		const partialImages = imagesOf(call.partial);
-		const images = partialImages.length ? partialImages : prior?.kind === "images" || call.name === "eval" || call.name === "generate_image" ? imagesOf(call.result) : [];
+		const images = partialImages.length ? partialImages : prior?.kind === "images" || call.name === "eval" || call.name === "generate_image" || call.name === "bash" ? imagesOf(call.result) : [];
 		const retainedImages = !images.length && prior?.kind === "images" ? prior.images : null;
-		if (!format && call.name !== "generate_image" && !images.length && !retainedImages) continue;
+		if (!format && call.name !== "generate_image" && !isBashImageGen && !images.length && !retainedImages) continue;
 		const text = format ? str(call.args.content) ?? "" : null;
 		const kind = format ? "source" : images.length || retainedImages ? "images" : "request";
-		subjects.set(id, { id, kind, format: format ?? (kind === "images" ? "result-images" : "generate-image"), toolCallId: call.id, toolName: call.name, path, text, revision: 1, state: stateOf(call, input.working), elided: text !== null && ELIDED.test(text), intent: call.intent, request: kind === "request" ? requestOf(call.args) : null, images: kind === "images" ? (images.length ? images : retainedImages) : null, progress: null, sequence: null, size: text === null ? null : prior?.text === text ? prior.size : new TextEncoder().encode(text).length, startedAt: prior?.startedAt ?? call.start, updatedAt: input.now });
+		subjects.set(id, { id, kind, format: format ?? (kind === "images" ? "result-images" : "generate-image"), toolCallId: call.id, toolName: isBashImageGen ? "generate_image" : call.name, path, text, revision: 1, state: stateOf(call, input.working), elided: text !== null && ELIDED.test(text), intent: call.intent, request: kind === "request" ? requestOf(bashImageCommand?.args ?? call.args) : null, images: kind === "images" ? (images.length ? images : retainedImages) : null, progress: null, sequence: null, size: text === null ? null : prior?.text === text ? prior.size : new TextEncoder().encode(text).length, startedAt: prior?.startedAt ?? call.start, updatedAt: input.now });
 		const subject = subjects.get(id);
 		if (subject?.elided && subject.state === "saved" && subject.path) {
 			subjects.set(id, { ...subject, kind: "file", text: null, elided: false, size: null, updatedAt: call.end ?? input.now });

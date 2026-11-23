@@ -3,9 +3,11 @@
  * Returns an i18n key in the `tools` namespace plus values, so every string stays translatable.
  * Tolerates partial args and missing results: calls stream in before they finish.
  */
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import { INTENT_FIELD, toolIntentLabel } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
+import { toolCommandRecords } from "../tool-render/toolCommands";
 import { parseAskForm } from "../tool-render/tools/askForm";
+import { isMagicInput, splitMagicSections } from "../tool-render/tools/magicSections";
 import { detailsRecord, isAskClosedByMessage, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
 
 /** `neutral` is an unknown outcome or one that is neither success nor failure, such as a stopped helper. */
@@ -61,7 +63,8 @@ export function resolveToolCall(raw: { name: string; args: unknown; result?: Too
 	const source = isRecord(raw.args) ? raw.args : {};
 	const args: Record<string, unknown> = {};
 	for (const key in source) if (key !== INTENT_FIELD) args[key] = source[key];
-	const intent = raw.intent?.trim() || (typeof source[INTENT_FIELD] === "string" ? source[INTENT_FIELD].trim() : undefined) || undefined;
+	const rawIntent = raw.intent?.trim() || (typeof source[INTENT_FIELD] === "string" ? source[INTENT_FIELD].trim() : undefined) || undefined;
+	const intent = rawIntent ? toolIntentLabel(rawIntent) : undefined;
 	const call: ToolCallView = { name: raw.name, args, result: raw.result, running: raw.running, intent };
 	if (call.name !== "write") return call;
 	const xdev = isRecord(raw.result?.details) ? raw.result.details.xdev : undefined;
@@ -107,7 +110,7 @@ function diffCounts(diff: string): { added: number; removed: number } {
 	return { added, removed };
 }
 
-/** Hashline `[path#TAG]` and apply_patch `*** Update File: path` headers in an edit input. */
+/** Hashline `[path#TAG]`, apply_patch `*** Update File: path`, and omp 19.1 magic `# path` headers in an edit input. */
 function editInputPaths(input: string): string[] {
 	const paths: string[] = [];
 	for (const raw of input.split("\n")) {
@@ -117,13 +120,21 @@ function editInputPaths(input: string): string[] {
 		const path = hashline?.[1] ?? patch?.[1];
 		if (path && !paths.includes(path)) paths.push(path);
 	}
+	if (paths.length === 0 && isMagicInput(input)) {
+		for (const run of splitMagicSections(input).runs) {
+			if (!paths.includes(run.path)) paths.push(run.path);
+		}
+	}
 	return paths;
 }
 
 function statusOf(call: ToolCallView): ToolStatus {
 	if (call.running) return "running";
 	if (!call.result) return "neutral";
-	return call.result?.isError || (call.name === "lsp" && detailsRecord(call.result)?.success === false) ? "error" : "ok";
+	const nestedLspFailed = call.name === "bash" && toolCommandRecords(call.result).some(
+		record => record.mode === "execute" && record.tool === "lsp" && isRecord(record.inner) && record.inner.success === false,
+	);
+	return call.result?.isError || (call.name === "lsp" && detailsRecord(call.result)?.success === false) || nestedLspFailed ? "error" : "ok";
 }
 
 /** The complete path behind a one-file edit summary. Shared with its context menu. */
@@ -136,16 +147,20 @@ function editedPaths(call: ToolCallView): string[] {
 	return paths.length > 0 ? paths : fromInput.length > 0 ? fromInput : [str(call.args.path) ?? ""].filter(Boolean);
 }
 
+const INTERNAL_URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
 /** Only a row naming one destination gets a target; a multi-file row keeps its disclosure behavior. */
 export function toolContextReference(call: ToolCallView): { path?: string; url?: string } {
 	if (call.name === "edit" || call.name === "apply_patch") {
 		const paths = editedPaths(call);
-		return paths.length === 1 && !/^out:\/\//i.test(paths[0] ?? "") ? { path: paths[0] } : {};
+		return paths.length === 1 && !INTERNAL_URL_SCHEME.test(paths[0] ?? "") ? { path: paths[0] } : {};
 	}
 	const rawPath = call.name === "fetch" ? str(call.args.url) : ["read", "write"].includes(call.name) ? str(call.args.path) ?? str(call.args.file_path) : null;
 	const path = rawPath && call.name === "read" ? splitReadQuery(rawPath).path : rawPath;
-	if (path && /^out:\/\//i.test(path)) return {};
-	return path ? /^(https?|mailto):/i.test(path) ? { url: path } : { path } : {};
+	if (!path) return {};
+	if (/^(https?|mailto):/i.test(path)) return { url: path };
+	if (INTERNAL_URL_SCHEME.test(path)) return {};
+	return { path };
 }
 
 function editSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
