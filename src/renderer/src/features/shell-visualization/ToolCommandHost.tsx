@@ -4,6 +4,7 @@ import { FileRefContext } from "../../chat/transcript/fileRefScope";
 import { SavedToolOutputContext } from "../../chat/transcript/savedBashOutput";
 import { SavedShellCommand } from "./SavedShellCommand";
 import { LiveShellCommand, ShellAvailability, useLiveShell } from "./live";
+import { LiveShellOutput } from "./LiveShellOutput";
 import { useObservedShell } from "./observed";
 
 export interface ToolCommandHost {
@@ -26,6 +27,7 @@ export function useShellCommandHost(name: string, toolCallId: string | undefined
 			key={`${projection.hostId}:${projection.generation}:${projection.epoch}:${projection.surfaceId}:${projection.nodeId}`}
 			projection={projection} act={act} command={command} fallback={fallback} envPrefix={envPrefix} context={context}
 		/>,
+		renderShellOutput: output => <LiveShellOutput toolCallId={projection.toolCallId} output={output} />,
 	} : observed && toolCallId ? {
 		...original,
 		renderShellCommand: (command, fallback, envPrefix, context) => <SavedShellCommand

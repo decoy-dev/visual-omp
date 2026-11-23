@@ -61,9 +61,14 @@ function sameTarget(a: ShellProjection, b: ShellProjection): boolean {
 	return a.hostId === b.hostId && a.generation === b.generation && a.epoch === b.epoch
 		&& a.surfaceId === b.surfaceId && a.nodeId === b.nodeId && a.toolCallId === b.toolCallId;
 }
+function sameStep(a: ShellProjection["step"], b: ShellProjection["step"]): boolean {
+	if (a === b) return true;
+	if (!a || !b) return false;
+	return a.label === b.label && a.note === b.note && a.unpinId === b.unpinId && a.output === b.output && a.empty === b.empty;
+}
 
 /** One exact call reads the shared document. There is no command-text or most-recent-call fallback. */
-export function useLiveShell(toolCallId: string | undefined, identityOnly = false): { projection: ShellProjection | null; act(value: string): void } {
+export function useLiveShell(toolCallId: string | undefined, identityOnly = false): { projection: ShellProjection | null; act(value: string): void; unpin(): void } {
 	const scope = useLiveShellScope();
 	const store = useMemo(() => scope && toolCallId && !scope.readOnly ? tspHost(scope.hostId) : absent, [scope?.hostId, scope?.readOnly, toolCallId]);
 	const readProjection = useMemo(() => {
@@ -72,7 +77,7 @@ export function useLiveShell(toolCallId: string | undefined, identityOnly = fals
 			const snapshot = store.getSnapshot();
 			const next = scope && toolCallId && snapshot?.epoch === scope.epoch
 				? projectShell(snapshot, scope.hostId, scope.generation, toolCallId) : null;
-			if (previous && next && sameTarget(previous, next) && (identityOnly || previous.props === next.props)) return previous;
+			if (previous && next && sameTarget(previous, next) && (identityOnly || (previous.props === next.props && sameStep(previous.step, next.step)))) return previous;
 			return previous = next;
 		};
 	}, [store, scope?.hostId, scope?.generation, scope?.epoch, toolCallId, identityOnly]);
@@ -93,7 +98,20 @@ export function useLiveShell(toolCallId: string | undefined, identityOnly = fals
 				if (stillCurrent && stillCurrent.nodeId === target.nodeId) toast({ tone: "err", message: errorText(error) });
 			});
 	}, [bound, store]);
-	return { projection: scope?.readOnly ? null : projection, act };
+	const unpin = useCallback(() => {
+		if (!bound) return;
+		const fresh = store.getSnapshot();
+		const target = fresh?.epoch === bound.epoch ? projectShell(fresh, bound.hostId, bound.generation, bound.toolCallId) : null;
+		const unpinId = target?.step?.unpinId;
+		if (!target || !unpinId || target.surfaceId !== bound.surfaceId || target.nodeId !== bound.nodeId) return;
+		void window.vomp.invoke("host:tsp-event", target.hostId, target.generation,
+			{ ev: "action", sf: target.surfaceId, id: unpinId, act: "unpin" }, target.epoch).catch(error => {
+				const now = store.getSnapshot();
+				const stillCurrent = now?.epoch === target.epoch && projectShell(now, target.hostId, target.generation, target.toolCallId);
+				if (stillCurrent && stillCurrent.nodeId === target.nodeId) toast({ tone: "err", message: errorText(error) });
+			});
+	}, [bound, store]);
+	return { projection: scope?.readOnly ? null : projection, act, unpin };
 }
 
 /** Availability suppresses automatic fallback while a matching tool row represents the command. */

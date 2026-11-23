@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TspNode } from "../tsp";
 import type { TspHostSnapshot } from "../tsp-host";
 import { isClaimable, isClaimed, isKnownAction } from "./roles";
-import { isShellAction, projectShell, shellPresentation, shellProps, type ShellVizPresentation } from "./shell";
+import { assertShellEvent, isShellAction, projectShell, shellPresentation, shellProps, type ShellVizPresentation } from "./shell";
 
 function presentation(): ShellVizPresentation {
 	return {
@@ -176,5 +176,37 @@ describe("canonical shell action vocabulary", () => {
 	});
 	it.each([undefined, "", "view:python", "layer:syntax", "seek:-1", "seek:11", "seek:1.5", "seek:01", "seek:1e1", "seek:Infinity", "seek:9007199254740992", "speed:3", "speed:1.0", "select:row:0", "expand:unknown", "select:", "play:now"])("rejects %s", action => {
 		expect(isShellAction(presentation(), action)).toBe(false);
+	});
+
+	it("validates omp 19.1 step-mode props, projects pinned step output, and allows jobs-overlay shell actions", () => {
+		const value = presentation();
+		expect(shellProps({ presentation: value, steps: true, focus: ["opaque:execution:1"] })).toMatchObject({ steps: true, focus: ["opaque:execution:1"] });
+		expect(shellProps({ presentation: value, steps: "yes" })).toBeNull();
+		expect(shellProps({ presentation: value, focus: [1] })).toBeNull();
+		const steppedTool = tool();
+		steppedTool.c = [
+			...steppedTool.c!,
+			{ id: "step-hdr", k: "row", p: { role: "omp.tool.bash.step" }, c: [
+				{ id: "step-lbl", k: "text", p: { role: "omp.tool.bash.step.label", text: "echo café" } },
+				{ id: "step-note", k: "text", p: { role: "omp.tool.bash.step.note", text: "exit 0" } },
+				{ id: "step-unpin", k: "button", p: { text: "All output", actions: { click: "unpin" } } },
+			] },
+			{ id: "step-out", k: "code", p: { role: "omp.tool.bash.output", text: "café\n" } },
+		];
+		expect(projectShell(snapshot([steppedTool]), "host", 3, "call:a")?.step).toEqual({
+			label: "echo café", note: "exit 0", unpinId: "step-unpin", output: "café\n",
+		});
+		const jobsOverlay: TspNode = { id: "overlay", k: "overlay", p: { role: "omp.overlay.jobs" }, c: [
+			{ id: "jobs-shell", k: "shell", p: { role: "omp.jobs.command", presentation: value, steps: true } },
+		] };
+		const jobsSurface = snapshot([jobsOverlay]).surfaces[0]!;
+		expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: "select:opaque:execution:1" })).not.toThrow();
+		expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: "view:raw" })).not.toThrow();
+		expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: "layer:color" })).not.toThrow();
+		expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: "expand:opaque:node:1" })).not.toThrow();
+		expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: "split" })).not.toThrow();
+		for (const disallowed of ["play", "pause", "seek:0", "step", "reset", "live", "speed:2", "inspect"]) {
+			expect(() => assertShellEvent(jobsSurface, { ev: "action", sf: "surface", id: "jobs-shell", act: "shell-viz", value: disallowed })).toThrow("not available");
+		}
 	});
 });

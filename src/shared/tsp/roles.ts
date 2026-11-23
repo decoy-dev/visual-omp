@@ -51,7 +51,8 @@ export const TSP_ACTIONS = {
 	thinkingCycle: "thinking.cycle", use: "use",
 	copyPlan: "copyPlan", externalEditor: "externalEditor", save: "save",
 	btwFollowUp: "follow-up", btwSend: "send", btwDiscard: "discard", btwStop: "stop", btwCopy: "copy-answer", btwInject: "inject",
-	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
+	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path", usage: "status.usage", tree: "status.tree",
+	unpin: "unpin", follow: "follow",
 	shellViz: "shell-viz",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
@@ -61,7 +62,11 @@ export function isAskFormAction(action: string): boolean {
 	const match = /^edit:(0|[1-9]\d*)$/.exec(action);
 	return match !== null && match[0] === action && Number.isSafeInteger(Number(match[1]));
 }
-export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action) || isAskCardAction(action); }
+/** omp 19.1.0's jobs sheet source menu picks one stream source (`source:<id>`). */
+export function isJobsSourceAction(action: string): boolean {
+	return /^source:[^\u0000-\u001f\u007f]+$/.test(action);
+}
+export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action) || isAskCardAction(action) || isJobsSourceAction(action); }
 /** Recorded actions without an app interaction path stay display-only. */
 // The BTW note controls (omp 18.21.0) stay omp's own: the app opens the side-question history with `/btw` instead.
 export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
@@ -260,6 +265,12 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.ask.intro", "omp.ask.legend", "omp.ask.open", "omp.ask.pill", "omp.ask.pill.more", "omp.ask.pills", "omp.ask.group", "omp.ask.header", "omp.ask.preview", "omp.ask.skip",
 	// omp 19.0.0's composer line while a question waits: sending the draft would skip it.
 	"omp.composer.skip",
+	// Jobs sheet, status-line and usage dashboard roles already present in omp 19.0.x.
+	"omp.jobs.command", "omp.jobs.facts", "omp.jobs.label", "omp.jobs.master", "omp.jobs.nooutput", "omp.jobs.out", "omp.jobs.output", "omp.jobs.split",
+	"omp.status.usage", "omp.usage.amount", "omp.usage.section.meta",
+	// omp 19.1.0-19.1.1 additions: status tree, compaction HUD, and the jobs step and source sheet.
+	"omp.status.tree", "omp.hud.compaction",
+	"omp.jobs.about", "omp.jobs.follow", "omp.jobs.source", "omp.jobs.sources", "omp.jobs.stream",
 ]);
 export function isKnownRole(role?: string): boolean {
 	return !role || knownRoles.has(role) || role.startsWith(`${TSP_ROLES.planToc}.`) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));

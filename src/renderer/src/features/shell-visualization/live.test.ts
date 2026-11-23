@@ -6,6 +6,9 @@ import type { TspHostSnapshot } from "@shared/tsp-host";
 import type { TspShellProps } from "@shared/tsp/shell";
 import { LiveShellProvider, type LiveShellScope } from "./context";
 import { useLiveShell } from "./live";
+import { LiveShellOutput } from "./LiveShellOutput";
+import { bashRenderer } from "../../tool-render/tools/bash";
+import type { ToolRenderHost } from "../../tool-render/types";
 
 const fixture = vi.hoisted(() => ({ snapshot: null as TspHostSnapshot | null, invoke: vi.fn(), listeners: new Set<() => void>() }));
 const source = { getSnapshot: () => fixture.snapshot, subscribe: (listener: () => void) => { fixture.listeners.add(listener); return () => { fixture.listeners.delete(listener); }; }, failed: () => false, hostId: "host" };
@@ -92,4 +95,45 @@ it("keeps presentation notifications below outer cards and isolates unrelated ca
 	expect(renders.other).toBe(before.other);
 	expect(renders.matching).toBe(before.matching + 1);
 	expect(element.textContent).toBe("new frame");
+});
+it("shows a chosen step's output in place of the bash card's output, and the card's own output without a live step", async () => {
+	// omp's bash card in step mode: the step head (label and Show all output) and the step's output beside the shell.
+	const withStep = (): TspHostSnapshot => {
+		const next = snapshot();
+		const tool = next.surfaces[0]!.document.c![0]!.c![0]!;
+		next.surfaces[0]!.document = { id: "surface", k: "col", c: [{ id: "main", k: "col", c: [{ ...tool, c: [
+			...tool.c!,
+			{ id: "step", k: "row", p: { role: "omp.tool.bash.step" }, c: [
+				{ id: "step-label", k: "text", p: { role: "omp.tool.bash.step.label", text: "printf fixture" } },
+				{ id: "unpin", k: "button", p: { actions: { click: "unpin" } } },
+			] },
+			{ id: "step-output", k: "text", p: { role: "omp.tool.bash.output", text: "step output" } },
+		] }] }] };
+		return next;
+	};
+	const notify = async () => act(async () => { for (const listener of fixture.listeners) listener(); });
+	const host: ToolRenderHost = { renderShellOutput: output => createElement(LiveShellOutput, { toolCallId: "call", output }) };
+	const body = createElement(bashRenderer.Body!, { name: "bash", args: { command: "printf fixture" }, result: { content: [{ type: "text", text: "run output" }] }, running: true, host });
+	fixture.snapshot = withStep();
+	await act(async () => root.render(createElement(LiveShellProvider, { ...scope, children: body })));
+	expect(element.textContent).toContain("step output");
+	expect(element.textContent).not.toContain("run output");
+	await act(async () => element.querySelector<HTMLButtonElement>(".shell-step-header button")!.click());
+	expect(fixture.invoke).toHaveBeenCalledExactlyOnceWith("host:tsp-event", "host", 2, { ev: "action", sf: "surface", id: "unpin", act: "unpin" }, 3);
+
+	// omp removes the step once Show all output is chosen.
+	fixture.snapshot = snapshot();
+	await notify();
+	expect(element.textContent).toContain("run output");
+	expect(element.textContent).not.toContain("step output");
+
+	// A live view that goes away keeps the card's own output.
+	fixture.snapshot = withStep();
+	await notify();
+	expect(element.textContent).toContain("step output");
+	const gone = snapshot();
+	gone.surfaces[0]!.document = { id: "surface", k: "col" };
+	fixture.snapshot = gone;
+	await notify();
+	expect(element.textContent).toContain("run output");
 });

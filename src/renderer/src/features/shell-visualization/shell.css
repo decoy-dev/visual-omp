@@ -59,6 +59,9 @@
 .shell-status[data-state="fail"], .shell-segment-failure { color: var(--err); }
 .shell-segment-failure { display: inline-flex; vertical-align: middle; margin-inline-end: 3px; }
 .shell-row [data-active] { font-weight: 600; }
+.shell-row [role="button"] { cursor: pointer; border-radius: var(--radius-xs, 2px); }
+.shell-row [data-step-hover] { background: var(--hover); }
+.shell-row [data-step-focus] { background: var(--selected); }
 .shell-row [data-syntax="comment"] { color: var(--syn-comment); }
 .shell-row [data-syntax="keyword"] { color: var(--syn-keyword); }
 .shell-row [data-syntax="type"] { color: var(--syn-type); }

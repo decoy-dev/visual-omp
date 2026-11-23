@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TSP_KINDS, type TspEvent, type TspNode, type TspOp } from "../../../shared/tsp";
-import { TspSession } from "./session";
+import { composerFacts } from "./composer";
+import { TspSession, TSP_ADVERTISED_KINDS } from "./session";
 import { TspStream, type TspMessage } from "./stream";
 
 function harness(write?: (data: string) => void | Promise<void>) {
@@ -50,9 +51,12 @@ describe("TSP session", () => {
 		expect(h.messages).toEqual([]);
 		h.hello();
 		await h.flush();
-		expect(h.bodies()[0]).toEqual({ r: "hello", v: 1, term: "visual-omp", kinds: [...TSP_KINDS], features: [], apc: 65536, credits: 2, cols: 110, dark: true, reduceMotion: true });
-		expect(TSP_KINDS).toHaveLength(46);
+		expect(h.bodies()[0]).toEqual({ r: "hello", v: 1, term: "visual-omp", kinds: [...TSP_ADVERTISED_KINDS], features: [], apc: 65536, credits: 2, cols: 110, dark: true, reduceMotion: true });
+		expect(TSP_KINDS).toHaveLength(50);
 		expect(TSP_KINDS).toContain("button");
+		expect(TSP_KINDS).toContain("menu");
+		expect(TSP_ADVERTISED_KINDS).toContain("menu");
+		expect(TSP_ADVERTISED_KINDS).not.toContain("doc");
 		await h.session.resize(120);
 		await h.session.theme(false);
 		await h.session.motion(false);

@@ -32,10 +32,11 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
 it("enumerates every advertised kind, failing when the wire vocabulary grows", () => {
 	expect(Object.keys(KIND_GROUPS).sort()).toEqual([...TSP_KINDS].sort());
-	expect(Object.keys(KIND_GROUPS)).toHaveLength(46);
+	expect(Object.keys(KIND_GROUPS)).toHaveLength(50);
 	expect(KIND_GROUPS.button).toBe("form");
+	expect(KIND_GROUPS.menu).toBe("choice");
 });
-it("mounts a renderer for all 46 kinds without invoking application input", async () => {
+it("mounts a renderer for all 50 kinds without invoking application input", async () => {
 	for (const k of TSP_KINDS) {
 		await render({ id: `kind-${k}`, k } as TspNode);
 		expect(element.querySelector("[data-tsp-kind]")?.getAttribute("data-tsp-kind")).toBe(k);
@@ -487,4 +488,36 @@ it("shows an inert readable fallback when a button has no label, icon or keys", 
 	expect(element.querySelector("button")?.disabled).toBe(true);
 	expect(element.textContent).toContain("Unavailable action");
 	await click("button"); expect(send).not.toHaveBeenCalled();
+});
+it("renders string menu items, separators, and radio groups without crashing", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({
+		id: "src-menu", k: "menu", p: {
+			text: "Sources",
+			items: [
+				"-",
+				{ header: "Streams" },
+				"source:stdout",
+				"unknown-string-act",
+				{ id: "source:a", label: "Stream A", radio: "stream", checked: true },
+				{ id: "source:b", label: "Stream B", radio: "stream", checked: false, detail: "Standard error only" },
+			],
+		},
+	});
+	const trigger = element.querySelector("button")!;
+	expect(trigger.textContent).toContain("Sources");
+	await act(async () => {
+		trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
+	});
+	const radios = [...document.body.querySelectorAll('[role="menuitemradio"]')];
+	expect(radios).toHaveLength(2);
+	expect(radios.map(radio => [radio.textContent, radio.getAttribute("aria-checked")])).toEqual([
+		["Stream A", "true"],
+		["Stream BStandard error only", "false"],
+	]);
+	await act(async () => { (radios[1] as HTMLElement).click(); });
+	expect(send).toHaveBeenCalledWith(expect.objectContaining({ ev: "action", act: "source:b", checked: true }));
+	expect(document.body.querySelectorAll('[role="menuitemcheckbox"]')).toHaveLength(0);
+	expect(fallbackWarnings(warning)).toEqual([["TSP screen fallback: action:unknown-string-act"]]);
+	warning.mockRestore();
 });

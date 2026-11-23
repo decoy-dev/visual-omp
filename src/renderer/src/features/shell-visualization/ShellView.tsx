@@ -48,35 +48,60 @@ function Value({ watch, expanded = false, t }: { watch: Watch; expanded?: boolea
 	return <span className="shell-value"><bdi>{watch.name}</bdi> = <bdi>{open || !long ? watch.value : `${watch.value.slice(0, 240)}…`}</bdi>{watch.scope && <span className="shell-meta"> ({watch.scope})</span>}{truncated && <span className="shell-meta">{t("retainedValue", { length: watch.fullLength })}</span>}{expanded && long && <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>{t(open ? "showLessValue" : "showRetainedValue")}</Button>}{!expanded && long && <span className="shell-meta">{t("inspectValue")}</span>}</span>;
 }
 
-function Rows({ rows, label, showLabel = false, presentation, limit, start = 0, disabled, action, inspect, localRow, annotationLimit, t }: { rows: Row[]; label: string; showLabel?: boolean; presentation: ShellVizPresentation; limit: number; start?: number; disabled: boolean; action: (value: string) => void; inspect: (id: string | undefined) => void; localRow?: string; annotationLimit: number; t: Translate }) {
+function Rows({ rows, label, showLabel = false, presentation, limit, start = 0, disabled, action, inspect, localRow, annotationLimit, steps = false, focusedSteps, t }: { rows: Row[]; label: string; showLabel?: boolean; presentation: ShellVizPresentation; limit: number; start?: number; disabled: boolean; action: (value: string) => void; inspect: (id: string | undefined) => void; localRow?: string; annotationLimit: number; steps?: boolean; focusedSteps?: ReadonlySet<string>; t: Translate }) {
 	const list = useRef<HTMLDivElement>(null);
 	const selected = presentation.preferences.selectedNode;
 	const [focus, setFocus] = useState<string>();
-	const [commandFocus, setCommandFocus] = useState<{ row: string; key: string }>();
+	const [hoveredStep, setHoveredStep] = useState<string>();
+	const [commandFocus, setCommandFocus] = useState<{ row: string; target: string }>();
 	const dragged = useRef(false);
 	const pointer = useRef<{ x: number; y: number } | undefined>(undefined);
 	const hintId = useId();
 	const visible = rows.slice(start, start + limit);
-	const focusRow = visible.find(row => row.id === focus) ?? visible.find(row => selected !== undefined && rowCommands(row).includes(selected)) ?? visible[0];
-	const activeKey = (row: Row) => commandFocus?.row === row.id && rowCommands(row).includes(commandFocus.key) ? commandFocus.key : nodeKey(row);
-	const choose = (row: Row, key = activeKey(row)) => {
+	// omp's step mode (wire `TspShellProps.steps`): a segment belongs to step `executionNode ?? node ?? row.node`, and every
+	// segment with a step is a button sending `select:<step>`, except an expandable chip, which sends only `expand:<node>`.
+	// Chips are still highlighted with their step.
+	const isExpandChip = (segment: Segment) => segment.expanded !== undefined && segment.node !== undefined;
+	const stepKeyOf = (row: Row, segment: Segment) => segment.executionNode ?? segment.node ?? row.node;
+	/** The action a click on `segment` sends, which is also its target for the arrow keys and Enter or Space. */
+	const segmentAction = (row: Row, segment: Segment): string | undefined => {
+		if (!steps) return segment.node ? `select:${segment.node}` : undefined;
+		if (isExpandChip(segment)) return `expand:${segment.node}`;
+		const key = stepKeyOf(row, segment);
+		return key ? `select:${key}` : undefined;
+	};
+	const rowTargets = (row: Row): string[] => {
+		if (!steps) return rowCommands(row).map(key => `select:${key}`);
+		const targets = row.segments.map(segment => segmentAction(row, segment)).filter((target): target is string => target !== undefined);
+		return [...new Set(targets.length > 0 ? targets : row.node ? [`select:${row.node}`] : [])];
+	};
+	const focusRow = visible.find(row => row.id === focus) ?? visible.find(row => selected !== undefined && rowTargets(row).includes(`select:${selected}`)) ?? visible[0];
+	const activeTarget = (row: Row) => {
+		const targets = rowTargets(row);
+		if (commandFocus?.row === row.id && targets.includes(commandFocus.target)) return commandFocus.target;
+		return targets[0];
+	};
+	const run = (row: Row, target: string | undefined) => {
+		if (target && !disabled) {
+			if (target.startsWith("select:")) inspect(undefined);
+			action(target);
+		} else inspect(row.id);
+	};
+	const choose = (row: Row, target = activeTarget(row)) => {
 		if (dragged.current || window.getSelection()?.toString()) return;
-		if (key && !disabled) { inspect(undefined); action(`select:${key}`); }
-		else inspect(row.id);
+		run(row, target);
 	};
 	const navigate = (event: KeyboardEvent<HTMLDivElement>, row: Row) => {
 		if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-			const keys = rowCommands(row);
-			const index = keys.indexOf(activeKey(row) ?? "");
-			const key = keys[Math.max(0, Math.min(keys.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)))];
-			if (key) { event.preventDefault(); event.stopPropagation(); setCommandFocus({ row: row.id, key }); }
+			const targets = rowTargets(row);
+			const index = targets.indexOf(activeTarget(row) ?? "");
+			const target = targets[Math.max(0, Math.min(targets.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)))];
+			if (target) { event.preventDefault(); event.stopPropagation(); setCommandFocus({ row: row.id, target }); }
 			return;
 		}
 		if (event.key === "Enter" || event.key === " ") {
-			const key = activeKey(row);
 			event.preventDefault(); event.stopPropagation();
-			if (key && !disabled) { inspect(undefined); action(`select:${key}`); }
-			else inspect(row.id);
+			run(row, activeTarget(row));
 			return;
 		}
 		if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -90,21 +115,40 @@ function Rows({ rows, label, showLabel = false, presentation, limit, start = 0, 
 		}
 	};
 	let annotationsLeft = annotationLimit;
-	return <section className="shell-pane" aria-label={label}>{showLabel && <h4 className="shell-pane-label">{label}</h4>}<p id={hintId} className="sr-only">{t("commandNavigation")}</p><div ref={list} role="listbox" aria-label={t("commandRows", { label })} aria-disabled={disabled}>
+	return <section className="shell-pane" aria-label={label}>{showLabel && <h4 className="shell-pane-label">{label}</h4>}<p id={hintId} className="sr-only">{t("commandNavigation")}</p><div ref={list} role="listbox" aria-label={t("commandRows", { label })} aria-disabled={disabled} onMouseLeave={steps ? () => setHoveredStep(undefined) : undefined}>
 		{visible.map(row => {
-			const picked = localRow ? localRow === row.id : selected !== undefined && (row.node === selected || row.segments.some(segment => segment.node === selected));
+			const picked = localRow ? localRow === row.id : selected !== undefined && (row.node === selected || row.segments.some(segment => segment.node === selected || (steps && segment.executionNode === selected)));
 			const annotations = (row.annotations ?? []).slice(0, annotationsLeft);
 			annotationsLeft -= annotations.length;
 			let failedExecutions: Set<string> | undefined;
-			const keys = rowCommands(row);
-			const target = activeKey(row);
-			const targetText = row.segments.filter(segment => segment.node === target).map(segment => segment.text).join("").trim() || row.segments.map(segment => segment.text).join("");
-			return <div key={row.id} data-shell-row={row.id} role="option" aria-selected={picked} aria-describedby={hintId} aria-label={keys.length > 1 ? t("commandTarget", { position: keys.indexOf(target!) + 1, total: keys.length, command: targetText, state: row.state ? t(`state.${row.state}`) : "" }) : undefined} tabIndex={row === focusRow ? 0 : -1} className="shell-row" data-selected={picked || undefined} data-inactive={presentation.running && !row.active || row.state === "skipped" || undefined} onFocus={() => setFocus(row.id)} onKeyDown={event => navigate(event, row)} onPointerDown={event => { dragged.current = false; pointer.current = { x: event.clientX, y: event.clientY }; }} onPointerMove={event => { if (pointer.current && event.buttons && Math.hypot(event.clientX - pointer.current.x, event.clientY - pointer.current.y) > 4) dragged.current = true; }} onClick={() => choose(row)}>
+			const keys = rowTargets(row);
+			const target = activeTarget(row);
+			const targetText = row.segments.filter(segment => segmentAction(row, segment) === target).map(segment => segment.text).join("").trim() || row.segments.map(segment => segment.text).join("");
+			return <div key={row.id} data-shell-row={row.id} role="option" aria-selected={picked} aria-describedby={hintId} aria-label={keys.length > 1 ? t("commandTarget", { position: Math.max(1, keys.indexOf(target!) + 1), total: keys.length, command: targetText, state: row.state ? t(`state.${row.state}`) : "" }) : undefined} tabIndex={row === focusRow ? 0 : -1} className="shell-row" data-selected={picked || undefined} data-inactive={presentation.running && !row.active || row.state === "skipped" || undefined} onFocus={() => setFocus(row.id)} onKeyDown={event => navigate(event, row)} onPointerDown={event => { dragged.current = false; pointer.current = { x: event.clientX, y: event.clientY }; }} onPointerMove={event => { if (pointer.current && event.buttons && Math.hypot(event.clientX - pointer.current.x, event.clientY - pointer.current.y) > 4) dragged.current = true; }} onClick={steps ? undefined : () => choose(row)}>
 				<Status state={row.state === "fail" && row.segments.some(segment => segment.state === "fail") ? undefined : row.state} t={t} /><div className="shell-row-body" style={{ "--shell-depth": Math.min(row.depth, 24) } as CSSProperties}><code dir="auto">{row.segments.map((segment, index) => {
 					const execution = segment.executionNode ?? segment.node ?? row.node ?? row.id;
+					const stepKey = stepKeyOf(row, segment);
+					const segmentTarget = segmentAction(row, segment);
 					const failed = segment.state === "fail" && !failedExecutions?.has(execution);
 					if (failed) (failedExecutions ??= new Set()).add(execution);
-					return <span key={index} data-syntax={syntax(segment, presentation.preferences.layers.color)} data-state={segment.state} data-active={segment.active || undefined} data-keyboard-target={commandFocus?.row === row.id && segment.node === target || undefined} data-inactive={presentation.running && !(segment.active ?? row.active) || segment.state === "skipped" || undefined} title={segment.tip} onClick={event => { if (segment.node && !disabled) { event.stopPropagation(); choose(row, segment.node); } }}>{failed && <span className="shell-segment-failure"><XCircle aria-hidden /><span className="sr-only">{t("segmentFailed")}</span></span>}{segment.text}</span>;
+					return <span
+						key={index}
+						role={steps && segmentTarget ? "button" : undefined}
+						data-syntax={syntax(segment, presentation.preferences.layers.color)}
+						data-state={segment.state}
+						data-active={segment.active || undefined}
+						data-step-focus={stepKey && focusedSteps?.has(stepKey) ? "true" : undefined}
+						data-step-hover={steps && stepKey && hoveredStep === stepKey ? "true" : undefined}
+						data-keyboard-target={commandFocus?.row === row.id && segmentTarget === target || undefined}
+						data-inactive={presentation.running && !(segment.active ?? row.active) || segment.state === "skipped" || undefined}
+						title={segment.tip}
+						onMouseEnter={steps && stepKey ? () => setHoveredStep(stepKey) : undefined}
+						onClick={event => {
+							if (disabled || !segmentTarget) return;
+							event.stopPropagation();
+							choose(row, segmentTarget);
+						}}
+					>{failed && <span className="shell-segment-failure"><XCircle aria-hidden /><span className="sr-only">{t("segmentFailed")}</span></span>}{segment.text}</span>;
 				})}</code>{row.meta && <span className="shell-meta"> {row.meta}</span>}
 					{annotations.map((watch, index) => <div key={index} className="shell-annotation"><Value watch={watch} t={t} /></div>)}{(row.annotations?.length ?? 0) > annotations.length && <span className="shell-meta">{t("moreValues")}</span>}
 					{presentation.preferences.layers.effects && row.effects.length > 0 && <span className="shell-effects">{row.effects.slice(0, 50).map((effect, index) => <span key={index} title={effect.why}><Warning aria-hidden />{effect.label}</span>)}{row.effects.length > 50 && <span>{t("moreEffects")}</span>}</span>}
@@ -150,7 +194,7 @@ function Details({ presentation, command, disabled, action, localRow, t }: { pre
 function Output({ text, replay, t }: { text: string | undefined; replay: boolean; t: Translate }) {
 	return <section className="shell-output" aria-label={t(replay ? "replayOutput" : "output")}><h4>{t(replay ? "replayOutput" : "output")}</h4>{text === undefined ? <p>{t("returnLatest")}</p> : text ? <TextOutput text={text} maxLines={20} bare /> : <p>{t("noOutput")}</p>}</section>;
 }
-export function ShellView({ props, command, context, disabled = false, onAction, showOutput = true }: { props: TspShellProps; command?: string; context?: ShellCommandContext; disabled?: boolean; onAction?: (value: string) => void; showOutput?: boolean }) {
+export function ShellView({ props, command, context, disabled = false, onAction, showOutput = true, allowReplay = true }: { props: TspShellProps; command?: string; context?: ShellCommandContext; disabled?: boolean; onAction?: (value: string) => void; showOutput?: boolean; allowReplay?: boolean }) {
 	const { t } = useDeferredTranslation("shellVisualization");
 	const presentation = shellPresentation(props?.presentation);
 	const [replay, setReplay] = useState(!!props?.inspector || !!presentation && presentation.preferences.cursor !== undefined);
@@ -168,7 +212,7 @@ export function ShellView({ props, command, context, disabled = false, onAction,
 	const sliderId = useId();
 	const replayButton = useRef<HTMLButtonElement>(null);
 	const latest = useRef<{ callback?: (value: string) => void; disabled: boolean; replay: boolean; playing: boolean }>({ disabled, replay, playing: false });
-	latest.current = { callback: presentation ? onAction : undefined, disabled, replay: replay || !!props?.inspector, playing: !!presentation?.preferences.playing };
+	latest.current = { callback: presentation && allowReplay ? onAction : undefined, disabled, replay: allowReplay && (replay || !!props?.inspector), playing: allowReplay && !!presentation?.preferences.playing };
 	const latestOutput = useRef<string | undefined>(undefined);
 	if (presentation && presentation.preferences.cursor === undefined) latestOutput.current = presentation.output;
 	const blocked = disabled || !onAction;
@@ -212,7 +256,8 @@ export function ShellView({ props, command, context, disabled = false, onAction,
 	}, [presentation, t]);
 	if (!presentation) return <div className="shell-view shell-unavailable"><p>{t("unavailable")}</p>{command !== undefined && <pre dir="auto">{command}</pre>}</div>;
 	const { preferences, timeline } = presentation;
-	const replayOpen = replay || !!props.inspector;
+	const stepsMode = !!props.steps;
+	const replayOpen = allowReplay && (replay || !!props.inspector);
 	const held = preferences.cursor !== undefined;
 	const split = preferences.split && preferences.view === "pseudo";
 	const paneLimit = split ? 100 : 200;
@@ -262,6 +307,7 @@ export function ShellView({ props, command, context, disabled = false, onAction,
 		cancelSeek(); pendingNavigation.current = undefined;
 		action("pause"); action("live"); setReplay(false); setOriginalOutput(false); replayButton.current?.focus();
 	};
+	const focusedSteps = props.focus?.length ? new Set(props.focus) : undefined;
 	return <div ref={view} className="shell-view" data-replay-epoch={props.replayEpoch} aria-live="off" onFocusCapture={event => { focusedRow.current = event.target.closest<HTMLElement>("[data-shell-row]"); }}>
 		<div className="shell-toolbar"><div className="shell-view-switch"><Segmented aria-label={t("presentation")} indicatorMotion={false} value={preferences.view} options={[{ value: "raw", label: t("raw") }, { value: "pseudo", label: t("pseudo") }]} size="sm" disabled={blocked} onValueChange={value => action(`view:${value}`)} /><IconButton size="sm" label={t("aboutPseudo")} tooltip={t("pseudoExplanation")} icon={<Info />} /></div>
 			<Button size="sm" variant="ghost" icon={<Copy />} disabled={command === undefined} title={t(command === undefined ? "copyUnavailable" : "copyHint")} onClick={() => void copy()}>{t("copyCommand")}</Button>
@@ -269,16 +315,16 @@ export function ShellView({ props, command, context, disabled = false, onAction,
 				{layers.map(name => <MenuCheckboxItem key={name} checked={preferences.layers[name]} disabled={blocked} onCheckedChange={() => action(`layer:${name}`)} onSelect={event => event.preventDefault()}>{t(`layer.${name}`)}</MenuCheckboxItem>)}
 				<MenuSeparator /><MenuCheckboxItem checked={split} disabled={blocked || preferences.view === "raw"} onCheckedChange={() => action("split")}>{t("split")}</MenuCheckboxItem>{preferences.view === "raw" && <p className="px-2 py-1 text-xs text-fg-muted">{t("splitUnavailable")}</p>}
 			</MenuContent></Menu>
-			{!props.inspector && <Button ref={replayButton} size="sm" variant="ghost" icon={<CaretRight />} aria-expanded={replayOpen} onClick={() => replayOpen ? closeReplay() : setReplay(true)}>{t("replay")}</Button>}
+			{!props.inspector && allowReplay && <Button ref={replayButton} size="sm" variant="ghost" icon={<CaretRight />} aria-expanded={replayOpen} onClick={() => replayOpen ? closeReplay() : setReplay(true)}>{t("replay")}</Button>}
 		</div>
 		{(props.cwd ?? context?.cwd) && <pre className="shell-meta whitespace-pre-wrap break-words font-mono" data-shell-context><bdi>{`$ cd ${props.cwd ?? context?.cwd}${context?.cdSeparator ?? " &&"}`}</bdi></pre>}{presentation.message && <p className="shell-meta">{presentation.message}</p>}
 		<div className="shell-panes" data-split={split || undefined}>
-			{split && <Rows rows={presentation.original} label={t("original")} showLabel presentation={presentation} limit={preview} start={pageOffset} disabled={blocked} action={action} inspect={setLocalRow} localRow={localRow} annotationLimit={25} t={t} />}
-			<Rows rows={presentation.rows} label={t(preferences.view)} showLabel={split} presentation={presentation} limit={preview} start={pageOffset} disabled={blocked} action={action} inspect={setLocalRow} localRow={localRow} annotationLimit={split ? 25 : 50} t={t} />
+			{split && <Rows rows={presentation.original} label={t("original")} showLabel presentation={presentation} limit={preview} start={pageOffset} disabled={blocked} action={action} inspect={setLocalRow} localRow={localRow} annotationLimit={25} steps={stepsMode} focusedSteps={focusedSteps} t={t} />}
+			<Rows rows={presentation.rows} label={t(preferences.view)} showLabel={split} presentation={presentation} limit={preview} start={pageOffset} disabled={blocked} action={action} inspect={setLocalRow} localRow={localRow} annotationLimit={split ? 25 : 50} steps={stepsMode} focusedSteps={focusedSteps} t={t} />
 		</div>
 		{showingPreview && maxRows > preview && <Button size="sm" variant="ghost" onClick={() => setExpanded(true)}>{t("moreRows", { count: maxRows - preview })}</Button>}
 		{!showingPreview && maxRows > paneLimit && <div className="shell-replay-buttons"><Button size="sm" variant="ghost" disabled={pageOffset === 0} onClick={() => setRowPage(Math.max(0, rowPage - 1))}>{t("previousRows")}</Button><Button size="sm" variant="ghost" disabled={pageOffset + paneLimit >= maxRows} onClick={() => setRowPage(rowPage + 1)}>{t("nextRows")}</Button><span className="shell-meta">{t("rowsPage", { start: pageOffset + 1, end: Math.min(maxRows, pageOffset + paneLimit), total: maxRows })}</span></div>}
-		<Details presentation={presentation} command={command} disabled={blocked} action={action} localRow={localRow} t={t} />
+		{!stepsMode && <Details presentation={presentation} command={command} disabled={blocked} action={action} localRow={localRow} t={t} />}
 		<RunByteValues trace={context?.trace} />
 		{replayOpen && <section className="shell-replay" aria-label={t("replayControls")}><h4>{t("replay")}</h4><p className="shell-meta">{t("replayExplanation")}</p>
 			{timeline.trimmed && <p>{t("trimmed")}</p>}

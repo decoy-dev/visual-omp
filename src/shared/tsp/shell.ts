@@ -88,6 +88,8 @@ export interface TspShellProps {
 	cwd?: string;
 	lang?: "bash" | "zsh";
 	preview?: { lines: number };
+	steps?: boolean;
+	focus?: readonly string[];
 }
 
 const RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -217,10 +219,20 @@ export function shellProps(value: unknown): TspShellProps | null {
 		&& optional(value.replayEpoch, integer) && optional(value.cwd, text)
 		&& optional(value.lang, lang => lang === "bash" || lang === "zsh")
 		&& optional(value.preview, preview => object(preview) && integer(preview.lines) && preview.lines > 0)
+		&& optional(value.steps, boolean)
+		&& optional(value.focus, focus => Array.isArray(focus) && focus.every(identity))
 		&& shellPresentation(value.presentation) !== null;
 	const result = valid ? value as unknown as TspShellProps : null;
 	propsCache.set(value, result);
 	return result;
+}
+
+export interface ShellStepOutput {
+	label: string;
+	note?: string;
+	unpinId?: string;
+	output?: string;
+	empty?: string;
 }
 
 export type ShellProjection = {
@@ -231,8 +243,42 @@ export type ShellProjection = {
 	nodeId: string;
 	toolCallId: string;
 	props: TspShellProps;
+	step?: ShellStepOutput;
 };
 const bashAncestor = (node: TspNode): boolean => (node.k === "tool" || node.k === "card") && node.p?.role === "omp.tool.bash" && identity(node.p.key);
+function nodeText(node: TspNode | undefined): string {
+	if (!node || node.p?.hidden) return "";
+	if (node.k === "text") {
+		const raw = node.p?.spans ?? node.p?.text;
+		return typeof raw === "string" ? raw : raw?.map(span => span.t).join("") ?? "";
+	}
+	if (node.k === "code" || node.k === "md" || node.k === "ansi") return node.p?.text ?? "";
+	if (node.k === "rows") return node.p?.lines.join("\n") ?? "";
+	return node.c?.map(nodeText).filter(Boolean).join("\n") ?? "";
+}
+function projectBashStep(ancestor: TspNode): ShellStepOutput | undefined {
+	let stepHead: TspNode | undefined;
+	let stepOutput: TspNode | undefined;
+	let stepEmpty: TspNode | undefined;
+	const scan = (node: TspNode): void => {
+		if (node.p?.hidden) return;
+		if (node.p?.role === "omp.tool.bash.step") stepHead = node;
+		else if (node.p?.role === "omp.tool.bash.output") stepOutput = node;
+		else if (node.p?.role === "omp.tool.bash.nooutput") stepEmpty = node;
+		for (const child of node.c ?? []) scan(child);
+	};
+	for (const child of ancestor.c ?? []) scan(child);
+	if (!stepHead) return undefined;
+	const labelNode = stepHead.c?.find(child => !child.p?.hidden && child.p?.role === "omp.tool.bash.step.label");
+	const noteNode = stepHead.c?.find(child => !child.p?.hidden && child.p?.role === "omp.tool.bash.step.note");
+	const unpinNode = stepHead.c?.find(child => !child.p?.hidden && child.k === "button" && !Array.isArray(child.p?.actions) && child.p?.actions?.click === "unpin");
+	const label = nodeText(labelNode).trim();
+	if (!label) return undefined;
+	const note = nodeText(noteNode).trim() || undefined;
+	const empty = stepEmpty ? nodeText(stepEmpty).trim() || undefined : undefined;
+	const output = !empty && stepOutput ? nodeText(stepOutput) : undefined;
+	return { label, ...(note ? { note } : {}), ...(unpinNode && identity(unpinNode.id) ? { unpinId: unpinNode.id } : {}), ...(output !== undefined ? { output } : {}), ...(empty ? { empty } : {}) };
+}
 const indexes = new WeakMap<TspHostSnapshot, ReadonlyMap<string, ShellProjection | null>>();
 function shellIndex(snapshot: TspHostSnapshot): ReadonlyMap<string, ShellProjection | null> {
 	const cached = indexes.get(snapshot);
@@ -240,17 +286,20 @@ function shellIndex(snapshot: TspHostSnapshot): ReadonlyMap<string, ShellProject
 	const index = new Map<string, ShellProjection | null>();
 	for (const surface of snapshot.surfaces) {
 		if (surface.closed || surface.suspended || surface.documentGeneration !== snapshot.generation || !identity(surface.open.id) || !integer(surface.sequence)) continue;
-		const visit = (node: TspNode, owner?: string): void => {
+		const visit = (node: TspNode, owner?: string, ownerNode?: TspNode): void => {
 			if (node.p?.hidden) return;
-			if (bashAncestor(node)) owner = node.p!.key;
+			if (bashAncestor(node)) { owner = node.p!.key; ownerNode = node; }
 			if (node.k === "shell" && owner && node.p?.inspector !== true) {
 				const props = shellProps(node.p);
 				// A second matching child invalidates ownership even when its presentation is malformed.
 				if (index.has(owner) || !props || !identity(node.id)) index.set(owner, null);
-				else index.set(owner, { hostId: snapshot.hostId, generation: snapshot.generation, epoch: snapshot.epoch,
-					surfaceId: surface.open.id, nodeId: node.id, toolCallId: owner, props });
+				else {
+					const step = ownerNode ? projectBashStep(ownerNode) : undefined;
+					index.set(owner, { hostId: snapshot.hostId, generation: snapshot.generation, epoch: snapshot.epoch,
+						surfaceId: surface.open.id, nodeId: node.id, toolCallId: owner, props, ...(step ? { step } : {}) });
+				}
 			}
-			for (const child of node.c ?? []) visit(child, owner);
+			for (const child of node.c ?? []) visit(child, owner, ownerNode);
 		};
 		visit(surface.document);
 	}
@@ -272,12 +321,20 @@ function knownNode(presentation: ShellVizPresentation, id: string): boolean {
 	}
 	return presentation.watches.some(watch => watch.node === id);
 }
-const actions: ReadonlySet<string> = new Set(["view:raw", "view:pseudo", "split", "inspect", "play", "pause", "step", "reset", "live",
-	...layers.map(layer => `layer:${layer}`), ...speeds.map(speed => `speed:${speed}`)]);
+const stepActions: ReadonlySet<string> = new Set(["view:raw", "view:pseudo", "split",
+	...layers.map(layer => `layer:${layer}`)]);
+const actions: ReadonlySet<string> = new Set([...stepActions, "inspect", "play", "pause", "step", "reset", "live",
+	...speeds.map(speed => `speed:${speed}`)]);
 export function isShellAction(presentation: ShellVizPresentation, value: unknown): value is string {
 	if (typeof value !== "string" || !text(value)) return false;
 	if (actions.has(value)) return true;
 	if (/^seek:(0|[1-9][0-9]*)$/.test(value)) { const cursor = Number(value.slice(5)); return integer(cursor) && cursor <= presentation.timeline.length; }
+	if (value.startsWith("select:") || value.startsWith("expand:")) return knownNode(presentation, value.slice(7));
+	return false;
+}
+function isJobsStepAction(presentation: ShellVizPresentation, value: unknown): value is string {
+	if (typeof value !== "string" || !text(value)) return false;
+	if (stepActions.has(value)) return true;
 	if (value.startsWith("select:") || value.startsWith("expand:")) return knownNode(presentation, value.slice(7));
 	return false;
 }
@@ -312,9 +369,11 @@ export function assertShellEvent(surface: TspSurfaceSnapshot, event: TspRenderer
 	if (!shellAction && !(node?.k === "shell" && (event.ev === "change" || event.ev === "select"))) return;
 	const props = node?.k === "shell" ? shellProps(node.p) : null;
 	const inline = targetPath?.some(bashAncestor);
+	const jobsStep = props?.steps === true && (node?.p?.role === "omp.jobs.command" || targetPath?.some(parent => parent.p?.role === "omp.overlay.jobs"));
 	const inspector = props?.inspector === true && (surface.open.mode === "screen" || targetPath?.[1]?.id === "layer");
 	if (surface.closed || surface.suspended || !props || !targetPath || targetPath.some(parent => parent.p?.hidden)
-		|| (!inline && !inspector)) throw new Error("omp screen: The shell visualization is no longer available.");
+		|| (!inline && !inspector && !jobsStep)) throw new Error("omp screen: The shell visualization is no longer available.");
 	const value = shellEventValue(event, props);
-	if (value !== null && !isShellAction(props.presentation, value)) throw new Error("omp screen: The shell visualization action is not available.");
+	const allowed = inline || inspector ? isShellAction(props.presentation, value) : isJobsStepAction(props.presentation, value);
+	if (value !== null && !allowed) throw new Error("omp screen: The shell visualization action is not available.");
 }

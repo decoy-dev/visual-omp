@@ -3,7 +3,7 @@ import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, typ
 import type { TspAvailability, TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { TspRendererEvent } from "../../../shared/tsp-host.schema";
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isAskCardAction, isAskFormAction, isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
+import { isAskCardAction, isAskFormAction, isHookNode, isJobsSourceAction, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents } from "../../../shared/tsp/dialogs";
 import { TspHookAnswer } from "../../../shared/tsp/dialogs.schema";
 import { planReview } from "../../../shared/tsp/plan-review";
@@ -16,6 +16,14 @@ import type { TspMessage } from "./stream";
 import { composerFacts } from "./composer";
 import { assertBtwEvent, BTW_SEND_BLOCKED_REASON, projectBtw } from "../../../shared/tsp/btw";
 import { assertShellEvent, shellProps } from "../../../shared/tsp/shell";
+
+/**
+ * Kinds advertised to omp in `hello.kinds`. `TSP_KINDS` accepts the full wire grammar so
+ * unconditional emitters (such as omp 19.1's Jobs panel `menu`) never fail the stream, while
+ * omitting `web`, `buttons` and `doc` keeps omp on its `md` + `list` fallbacks (including
+ * PlanReviewOverlay) until visual-omp implements interactive in-place document editing and web frames.
+ */
+export const TSP_ADVERTISED_KINDS = TSP_KINDS.filter(kind => kind !== "web" && kind !== "buttons" && kind !== "doc");
 
 const Query = z.object({ q: z.string(), v: z.array(z.number()).optional(), features: z.array(z.string()).optional() });
 const Open = z.object({ id: z.string().min(1), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });
@@ -264,7 +272,7 @@ export class TspSession {
 				this.#programFeatures = new Set(query.data.features);
 				// First reply precedes every event, including acks for optimistic native frames.
 				this.#internal(this.#enqueue(() => this.#write(encodeTspJson("r", {
-					r: "hello", v: TSP_VERSION, term: "visual-omp", kinds: TSP_KINDS, features: [],
+					r: "hello", v: TSP_VERSION, term: "visual-omp", kinds: TSP_ADVERTISED_KINDS, features: [],
 					apc: TSP_DEFAULT_APC_LIMIT, credits: TSP_DEFAULT_CREDITS, cols: this.#cols,
 					dark: this.#dark, reduceMotion: this.#reduceMotion,
 				}))));
@@ -357,6 +365,18 @@ export class TspSession {
 				if (event.ev === "action" && isAskCardAction(event.act)) {
 					const card = [...walkNodes(surface.doc.snapshot())].find(root => root.p?.role === TSP_ROLES.askCard && !root.p?.hidden && [...walkNodes(root)].some(child => child.id === node.id));
 					if (!card || Array.isArray(node.p?.actions) || node.p?.actions?.click !== event.act || node.k === "button" && (node.p?.disabled === true || typeof node.p?.disabled === "string" || node.p?.busy)) throw new TspInputStateError("omp screen: The question card no longer offers this action.");
+				}
+				if (event.ev === "action" && isJobsSourceAction(event.act)) {
+					const hasItem = (items: readonly unknown[] | undefined): boolean => !!items?.some(entry => {
+						if (typeof entry === "string") return entry !== "-" && entry !== "---" && entry === event.act;
+						if (!entry || typeof entry !== "object" || !("id" in entry)) return false;
+						const item = entry as { id?: unknown; disabled?: unknown; items?: readonly unknown[] };
+						if (item.id === event.act) return item.disabled !== true && typeof item.disabled !== "string";
+						return hasItem(item.items);
+					});
+					if (node.k !== "menu" || node.p?.hidden || node.p?.disabled === true || typeof node.p?.disabled === "string" || !hasItem(node.p?.items)) {
+						throw new TspInputStateError("omp screen: That job output source is no longer available.");
+					}
 				}
 				if ((event.ev === "select" || event.ev === "activate") && node.k === "tabs" && node.p?.role === TSP_ROLES.askQuestions
 					&& !node.p.items.some(item => item.id === event.item)) throw new TspInputStateError("omp screen: The form question tab is no longer available.");

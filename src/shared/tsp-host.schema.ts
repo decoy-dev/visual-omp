@@ -12,7 +12,7 @@ export const TspRendererEvent = z.discriminatedUnion("ev", [
 	z.strictObject({ ev: z.literal("toggle"), ...Target, key: z.string().optional(), collapsed: z.boolean() }),
 	z.strictObject({ ev: z.literal("select"), ...Target, item: z.string() }),
 	z.strictObject({ ev: z.literal("activate"), ...Target, item: z.string() }),
-	z.strictObject({ ev: z.literal("action"), ...Target, act: z.string().min(1), value: z.string().optional(), mods: z.array(z.string()).optional() }),
+	z.strictObject({ ev: z.literal("action"), ...Target, act: z.string().min(1), value: z.string().optional(), mods: z.array(z.string()).optional(), checked: z.boolean().optional() }),
 	z.strictObject({ ev: z.literal("change"), ...Target, item: z.string(), value: z.union([z.boolean(), z.number().finite(), z.string(), z.array(z.string()), z.null()]) }),
 	Edit,
 	z.strictObject({ ev: z.literal("undo"), ...Target }),

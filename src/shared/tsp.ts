@@ -59,6 +59,7 @@ export const TSP_KINDS = [
 	"math",
 	"image",
 	"media",
+	"web",
 	"kv",
 	"table",
 	"tree",
@@ -77,6 +78,9 @@ export const TSP_KINDS = [
 	"editor",
 	"input",
 	"button",
+	"buttons",
+	"menu",
+	"doc",
 	"status",
 	"seg",
 	"overlay",
@@ -907,6 +911,67 @@ export interface TspChartProps {
 	size?: "sm" | "md" | "lg";
 }
 
+export interface TspDocComment {
+	/** The program's comment id; `comment`/`uncomment` events name it. */
+	id: string;
+	/** The commented source text. */
+	quote: string;
+	/** UTF-16 offset of the quote's first char in `text`; the first occurrence of `quote` when it doesn't match there. */
+	at?: number;
+	note: string;
+}
+
+export interface TspDocProps {
+	text?: string;
+	edit?: boolean;
+	comment?: boolean;
+	comments?: readonly TspDocComment[];
+	jump?: { heading: number; n: number };
+}
+
+export interface TspWebProps {
+	url: string;
+	title?: string;
+	w?: string;
+	h?: string;
+}
+
+export type TspMenuItem =
+	| string
+	| { header: string }
+	| {
+			id: string;
+			label?: string;
+			icon?: string;
+			keys?: string | readonly string[];
+			detail?: string;
+			checked?: boolean;
+			radio?: string;
+			disabled?: boolean | string;
+			danger?: boolean;
+			items?: readonly TspMenuItem[];
+	  };
+
+export interface TspMenuProps {
+	items?: readonly TspMenuItem[];
+	text?: string;
+	icon?: string;
+	trigger?: "default" | "quiet" | "primary";
+	caret?: boolean;
+	size?: "sm" | "md";
+	variant?: "default" | "dense";
+	open?: boolean;
+	active?: string;
+	align?: "start" | "end";
+	disabled?: boolean | string;
+}
+
+export interface TspButtonsProps {
+	variant?: "joined" | "split" | "toolbar";
+	size?: "sm" | "md";
+	label?: string;
+}
+
 /** Kind-specific props, indexed by kind. */
 export interface TspPropsByKind {
 	col: TspColProps;
@@ -955,6 +1020,10 @@ export interface TspPropsByKind {
 	chart: TspChartProps;
 	meter: TspMeterProps;
 	effort: TspEffortProps;
+	web: TspWebProps;
+	buttons: TspButtonsProps;
+	menu: TspMenuProps;
+	doc: TspDocProps;
 }
 
 /**
@@ -1066,11 +1135,12 @@ export type TspEvent =
 	| { ev: "resize"; sf?: string; cols: number; cell?: { w: number; h: number }; visible?: boolean }
 	| { ev: "theme"; dark: boolean }
 	| { ev: "motion"; reduce: boolean }
+	| { ev: "features"; features: readonly string[] }
 	| { ev: "visible"; sf?: string; visible: boolean }
 	| { ev: "toggle"; sf: string; id: string; key?: string; collapsed: boolean }
 	| { ev: "select"; sf: string; id: string; item: string }
 	| { ev: "activate"; sf: string; id: string; item: string }
-	| { ev: "action"; sf: string; id: string; act: string; value?: string; mods?: readonly string[] }
+	| { ev: "action"; sf: string; id: string; act: string; value?: string; mods?: readonly string[]; checked?: boolean }
 	/** A typed value changed by pointer (prefs rows, picker toggles); `null` resets to the default. */
 	| {
 			ev: "change";

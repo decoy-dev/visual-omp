@@ -88,6 +88,8 @@
 	"originalOutput": "Original output",
 	"replayOutput": "Replay output",
 	"output": "Output",
+	"stepOutput": "Step output",
+	"showAllOutput": "Show all output",
 	"noOutput": "No output.",
 	"returnLatest": "Return to Latest to read the original output.",
 	"allOutput": "All output. Command-specific output is unavailable.",

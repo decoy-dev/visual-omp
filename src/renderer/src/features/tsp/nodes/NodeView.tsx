@@ -1,14 +1,15 @@
-import type { TspKind, TspNode } from "@shared/tsp";
+import type { TspKind, TspMenuItem, TspNode } from "@shared/tsp";
 import { shellProps } from "@shared/tsp/shell";
 import type { TerminalColors } from "@shared/contracts/native";
 import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS } from "@shared/tsp/roles";
 import { HookDialog } from "../interactive/HookDialog";
-import { CheckCircle, Circle, File, Image, Info, Warning } from "@phosphor-icons/react";
+import { CaretDown, CheckCircle, Circle, DotsThree, File, Globe, Image, Info, Warning } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Markdown } from "../../../transcript/Markdown";
 import { DiffBlock } from "../../../tool-render/parts";
 import { Button } from "../../../ui/Button";
+import { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger } from "../../../ui/Menu";
 import { ansiRuns } from "../ansi";
 import { Choice } from "../interactive/Choice";
 import { Forms } from "../interactive/Forms";
@@ -31,19 +32,34 @@ function ShellLoading() {
 const ShellView = lazyView(() => import("../../shell-visualization/ShellView").then(module => module.ShellView), ShellLoading, LoadFailedNotice);
 export const KIND_GROUPS = {
 	col: "container", row: "container", card: "container", section: "container", rule: "container", spacer: "container", overlay: "container",
-	text: "text", md: "text", code: "text", diff: "text", math: "text", kbd: "text", badge: "text", icon: "text", status: "text", seg: "text",
-	list: "choice", item: "choice", picker: "choice", tabs: "choice", checklist: "choice", tree: "choice", table: "choice", kv: "choice",
-	prefs: "form", input: "form", editor: "form", effort: "form", button: "form",
+	text: "text", md: "text", doc: "text", code: "text", diff: "text", math: "text", kbd: "text", badge: "text", icon: "text", status: "text", seg: "text",
+	list: "choice", item: "choice", picker: "choice", tabs: "choice", checklist: "choice", tree: "choice", table: "choice", kv: "choice", menu: "choice",
+	prefs: "form", input: "form", editor: "form", effort: "form", button: "form", buttons: "form",
 	spinner: "live", shimmer: "live", elapsed: "live", progress: "live", meter: "live", rate: "live", chart: "live",
-	tool: "work", agent: "work", json: "work", shell: "work", image: "media", media: "media", toast: "notice", rows: "fallback", ansi: "fallback",
+	tool: "work", agent: "work", json: "work", shell: "work", image: "media", media: "media", web: "media", toast: "notice", rows: "fallback", ansi: "fallback",
 } as const satisfies Record<TspKind, string>;
 const warned = new Set<string>();
 function copyText(node: TspNode): string {
 	if (node.k === "text" || node.k === "shimmer") return plain(node.p?.spans ?? node.p?.text);
-	if (node.k === "md" || node.k === "code" || node.k === "ansi" || node.k === "math" || node.k === "input" || node.k === "editor") return node.p?.text ?? "";
+	if (node.k === "md" || node.k === "doc" || node.k === "code" || node.k === "ansi" || node.k === "math" || node.k === "input" || node.k === "editor") return node.p?.text ?? "";
 	return node.c?.map(copyText).filter(Boolean).join(" ") ?? "";
 }
 function warnOnce(key: string) { if (!warned.has(key)) { warned.add(key); console.warn(`TSP screen fallback: ${key}`); } }
+function isMenuSeparator(item: TspMenuItem): boolean {
+	return item === "-" || item === "---";
+}
+function warnMenuActions(items: readonly TspMenuItem[] | undefined): void {
+	if (!items) return;
+	for (const item of items) {
+		if (typeof item === "string") {
+			if (!isMenuSeparator(item) && !isKnownAction(item)) warnOnce(`action:${item}`);
+			continue;
+		}
+		if ("header" in item) continue;
+		if (item.items?.length) { warnMenuActions(item.items); continue; }
+		if (!isKnownAction(item.id)) warnOnce(`action:${item.id}`);
+	}
+}
 function warnUnsupportedActions(node: TspNode): void {
 	const actions = node.p?.actions;
 	const declared = Array.isArray(actions) ? actions.map(action => action.id) : [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])];
@@ -51,6 +67,7 @@ function warnUnsupportedActions(node: TspNode): void {
 	if (node.k === "prefs") for (const section of node.p?.sections ?? []) for (const row of section.rows) {
 		if (row.control.k === "action" && !isKnownAction(row.control.act)) warnOnce(`action:${row.control.act}`);
 	}
+	if (node.k === "menu") warnMenuActions(node.p?.items);
 	// List items are drawn by Choice rather than recursively mounted as NodeView.
 	if (node.k === "list") for (const child of node.c ?? []) if (child.k === "item") {
 		if (!isKnownRole(child.p?.role)) warnOnce(`role:${child.p?.role}`);
@@ -59,7 +76,7 @@ function warnUnsupportedActions(node: TspNode): void {
 }
 /** Whether a descendant takes its own clicks, such as the option pills inside a folded question of omp 19's ask card. */
 function hasOwnControls(node: TspNode): boolean {
-	return node.c?.some(child => child.k === "button" || (!Array.isArray(child.p?.actions) && !!child.p?.actions?.click) || hasOwnControls(child)) ?? false;
+	return node.c?.some(child => child.k === "button" || child.k === "menu" || (!Array.isArray(child.p?.actions) && !!child.p?.actions?.click) || hasOwnControls(child)) ?? false;
 }
 function Fallback({ node, context }: NodeProps) {
 	const { t } = useTranslation("palette");
@@ -100,12 +117,13 @@ function Body({ node, context }: NodeProps) {
 		case "spacer": return <div className={node.p?.size === "lg" ? "h-section" : "h-stack"} />;
 		case "text": return <p className="whitespace-pre-wrap break-words">{plain(node.p?.spans ?? node.p?.text)}</p>;
 		case "seg": return <span className="whitespace-pre-wrap">{plain(node.p?.spans)}</span>;
-		case "md": return <Markdown text={node.p?.text ?? ""} />;
+		case "md": case "doc": return <Markdown text={node.p?.text ?? ""} />;
 		case "code": return <Code p={node.p} />;
 		case "shell": {
 			const props = shellProps(node.p);
 			if (!props) return <p className="max-h-24 overflow-auto rounded-sm bg-inset p-card text-sm text-fg-muted">{t("tsp.shellUnavailable")}</p>;
-			return <ShellView key={`${context.sf}:${node.id}`} props={props} disabled={context.readOnly} onAction={value => { if (!context.readOnly) context.send({ ev: "action", sf: context.sf, id: node.id, act: "shell-viz", value }); }} />;
+			const jobsStep = props.steps === true && (node.p?.role === "omp.jobs.command" || context.role === "omp.overlay.jobs");
+			return <ShellView key={`${context.sf}:${node.id}`} props={props} allowReplay={!jobsStep} disabled={context.readOnly} onAction={value => { if (!context.readOnly) context.send({ ev: "action", sf: context.sf, id: node.id, act: "shell-viz", value }); }} />;
 		}
 		// omp wraps a diff's long lines unless the node says `wrap: false` (omp 18.22.1's git app toggles it).
 		case "diff": return <DiffBlock wrap={node.p?.wrap !== false} diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
@@ -117,6 +135,68 @@ function Body({ node, context }: NodeProps) {
 		case "list": case "picker": case "tree": return <Choice node={node} context={context} />;
 		case "item": return <div className="py-2"><p>{plain(node.p?.label)}</p>{node.p?.detail && <p className="text-sm text-fg-muted">{plain(node.p.detail)}</p>}{children}</div>;
 		case "button": return <PushButton node={node} context={context} />;
+		case "buttons": return <div role="group" aria-label={node.p?.label} className="flex flex-wrap items-center gap-2">{children}</div>;
+		case "menu": {
+			const items = node.p?.items ?? [];
+			const disabled = context.readOnly || !!node.p?.disabled;
+			const variant = node.p?.trigger === "primary" ? "primary" : node.p?.trigger === "quiet" ? "ghost" : "secondary";
+			const renderItems = (list: readonly TspMenuItem[]) => {
+				const rendered = [];
+				for (let index = 0; index < list.length; index++) {
+					const item = list[index]!;
+					if (typeof item === "string") {
+						if (isMenuSeparator(item)) { rendered.push(<MenuSeparator key={`sep-${index}`} />); continue; }
+						const known = isKnownAction(item);
+						rendered.push(<MenuItem key={`${index}:${item}`} disabled={context.readOnly || !known} onSelect={() => context.send({ ev: "action", sf: context.sf, id: node.id, act: item })}>{item}</MenuItem>);
+						continue;
+					}
+					if ("header" in item) { rendered.push(<MenuLabel key={`hdr-${index}`}>{item.header}</MenuLabel>); continue; }
+					if (item.radio) {
+						const groupName = item.radio;
+						const groupItems = [item];
+						while (index + 1 < list.length) {
+							const next = list[index + 1]!;
+							if (typeof next === "string" || "header" in next || next.radio !== groupName) break;
+							groupItems.push(next);
+							index++;
+						}
+						const activeValue = groupItems.find(entry => entry.checked)?.id ?? "";
+						rendered.push(
+							<MenuRadioGroup key={`radio-${groupName}-${index}`} value={activeValue}>
+								{groupItems.map(entry => {
+									const known = isKnownAction(entry.id);
+									const itemDisabled = context.readOnly || !!entry.disabled || !known;
+									const shortcut = typeof entry.keys === "string" ? entry.keys : entry.keys?.join("+");
+									// A radio row's action carries its new checked state, which is always true once chosen (wire `tsp.ts`, `ev: "action"`).
+									return <MenuRadioItem key={entry.id} value={entry.id} disabled={itemDisabled} shortcut={shortcut} description={entry.detail} onSelect={() => context.send({ ev: "action", sf: context.sf, id: node.id, act: entry.id, checked: true })}>{entry.label ?? entry.id}</MenuRadioItem>;
+								})}
+							</MenuRadioGroup>,
+						);
+						continue;
+					}
+					const known = isKnownAction(item.id);
+					const itemDisabled = context.readOnly || !!item.disabled || !known;
+					const shortcut = typeof item.keys === "string" ? item.keys : item.keys?.join("+");
+					if (typeof item.checked === "boolean") {
+						rendered.push(<MenuCheckboxItem key={item.id} checked={item.checked} disabled={itemDisabled} shortcut={shortcut} onCheckedChange={() => context.send({ ev: "action", sf: context.sf, id: node.id, act: item.id, checked: !item.checked })}>{item.label ?? item.id}</MenuCheckboxItem>);
+						continue;
+					}
+					rendered.push(<MenuItem key={item.id} danger={item.danger} disabled={itemDisabled} shortcut={shortcut} onSelect={() => context.send({ ev: "action", sf: context.sf, id: node.id, act: item.id })}>{item.label ?? item.id}</MenuItem>);
+				}
+				return rendered;
+			};
+			return (
+				<Menu>
+					<MenuTrigger asChild>
+						<Button size="sm" variant={variant} disabled={disabled} aria-label={node.p?.aria ?? node.p?.text ?? t("tsp.choices")} title={typeof node.p?.disabled === "string" ? node.p.disabled : undefined}>
+							{node.p?.text ?? <DotsThree aria-hidden className="size-4" />}
+							{node.p?.caret && <CaretDown aria-hidden className="size-3.5" />}
+						</Button>
+					</MenuTrigger>
+					<MenuContent align={node.p?.align === "end" ? "end" : "start"}>{renderItems(items)}</MenuContent>
+				</Menu>
+			);
+		}
 		case "tabs": if (node.p?.variant === "segmented") return <Segmented aria-label={node.p.aria ?? t("tsp.choices")} value={node.p.active ?? ""} options={node.p.items.map(item => ({ value: item.id, label: plain(item.label) }))} disabled={context.readOnly} onValueChange={item => context.send({ ev: "select", sf: context.sf, id: node.id, item })} className="max-w-full flex-wrap" />;
 			return <div role="tablist" aria-label={node.p?.aria ?? t("tsp.choices")} className="flex flex-wrap gap-2">{node.p?.items.map(item => <button type="button" className="tsp-tab" key={item.id} role="tab" aria-selected={node.p?.active === item.id} disabled={context.readOnly} onClick={() => context.send({ ev: "select", sf: context.sf, id: node.id, item: item.id })}>{plain(item.label)}</button>)}</div>;
 		case "kv": return <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-2">{node.p?.items.map((item, index) => <div key={index} className="contents"><dt className="text-fg-muted">{plain(item.k)}</dt><dd className="break-words">{plain(item.v)}</dd></div>)}</dl>;
@@ -128,6 +208,7 @@ function Body({ node, context }: NodeProps) {
 		case "agent": return <section className="space-y-2 py-2"><h4 className="font-semibold">{node.p?.name}</h4><p>{plain(node.p?.task)}</p><p className="text-sm text-fg-muted">{node.p?.status}{node.p?.model && ` · ${node.p.model}`}</p>{children}</section>;
 		case "json": return <Suspense fallback={<pre className="font-mono text-code">{JSON.stringify(node.p?.value, null, 2)}</pre>}><FieldTree value={node.p?.value} /></Suspense>;
 		case "image": case "media": return <div className="flex items-center gap-3 rounded-sm bg-inset p-card text-fg-muted"><Image aria-hidden className="size-5 shrink-0" /><span>{node.k === "image" ? node.p?.alt ?? t("tsp.image") : node.p?.path}<span className="block text-sm">{t("tsp.mediaUnavailable")}</span></span></div>;
+		case "web": return <div className="flex items-center gap-3 rounded-sm bg-inset p-card text-fg-muted"><Globe aria-hidden className="size-5 shrink-0" /><span>{node.p?.title ?? node.p?.url}<span className="block text-sm">{t("tsp.mediaUnavailable")}</span></span></div>;
 		case "toast": return <p role="status" className="flex items-start gap-2 text-sm"><Info aria-hidden className="mt-0.5 size-4 shrink-0" /><span>{node.p?.text}{node.p?.sub && <span className="block text-fg-muted">{node.p.sub}</span>}</span></p>;
 		case "rows": case "ansi": return <Fallback node={node} context={context} />;
 		default: warnOnce(`kind:${(node as TspNode).k}`); return <Fallback node={node} context={context} />;
@@ -148,7 +229,7 @@ export function NodeView({ node, context }: NodeProps) {
 	const click = !Array.isArray(actions) ? actions?.click : undefined;
 	const unsupportedClick = !!click && !isKnownAction(click);
 	const content = <Body node={node} context={childContext} />;
-	const actionable = click && !["button", "list", "picker", "tree", "item", "tool", "agent", "json", "shell"].includes(node.k);
+	const actionable = click && !["button", "buttons", "menu", "list", "picker", "tree", "item", "tool", "agent", "json", "shell"].includes(node.k);
 	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
 	const activate = () => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));

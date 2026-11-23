@@ -452,4 +452,57 @@ describe("generic shell consumer", () => {
 		await act(async () => root.render(null));
 		expect(onAction).not.toHaveBeenCalled();
 	});
+
+	it("follows omp's step keys, keeps Replay on live step cards, and hides Replay on Jobs step shells", async () => {
+		presentation.rows = [{
+			id: "step-row", node: "ast:pipe", depth: 0, effects: [],
+			segments: [
+				{ text: "step1", node: "ast:1", executionNode: "exec:1" },
+				{ text: " | " },
+				{ text: "step2", node: "ast:2", executionNode: "exec:2" },
+				{ text: " [flags]", node: "chip:1", executionNode: "exec:2", expanded: "-la" },
+			],
+		}];
+		await render({ props: { presentation, steps: true, focus: ["exec:2"] } });
+		expect(element.querySelector(".shell-details")).toBeNull();
+		expect([...element.querySelectorAll("button")].some(button => button.textContent === "Replay")).toBe(true);
+		// The focused step's segments are highlighted, including its expandable chip.
+		expect([...element.querySelectorAll('[data-step-focus="true"]')].map(node => node.textContent)).toEqual(["step2", " [flags]"]);
+
+		// A segment without its own node belongs to the row's step (`executionNode ?? node ?? row.node`).
+		const row = element.querySelector<HTMLElement>("[data-shell-row='step-row']")!;
+		const separator = [...row.querySelectorAll<HTMLElement>("code > span")].find(node => node.textContent === " | ")!;
+		await act(async () => separator.click());
+		expect(onAction).toHaveBeenLastCalledWith("select:ast:pipe");
+		expect(onAction).toHaveBeenCalledTimes(1);
+
+		// The arrow keys move through the targets in segment order, and Enter or Space sends the one in focus: steps
+		// send `select:`, and the chip sends only `expand:`.
+		const key = (name: string) => act(async () => { row.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true })); });
+		await key("ArrowRight"); await key("ArrowRight");
+		expect(element.querySelector('[data-keyboard-target="true"]')?.textContent).toBe("step2");
+		await key("Enter");
+		expect(onAction).toHaveBeenLastCalledWith("select:exec:2");
+		await key("ArrowRight");
+		expect(element.querySelector('[data-keyboard-target="true"]')?.textContent).toBe(" [flags]");
+		await key(" ");
+		expect(onAction).toHaveBeenLastCalledWith("expand:chip:1");
+		await key("ArrowLeft"); await key("ArrowLeft"); await key("ArrowLeft"); await key("Enter");
+		expect(onAction).toHaveBeenLastCalledWith("select:exec:1");
+
+		const chip = [...row.querySelectorAll<HTMLElement>("[role='button']")].find(node => node.textContent === " [flags]")!;
+		await act(async () => chip.click());
+		expect(onAction).toHaveBeenLastCalledWith("expand:chip:1");
+		// Hovering the chip highlights every segment of its step (a pointer entering from outside the window).
+		await act(async () => { chip.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: null })); });
+		expect([...element.querySelectorAll('[data-step-hover="true"]')].map(node => node.textContent)).toEqual(["step2", " [flags]"]);
+
+		// Jobs step shells render through NodeView with Replay disabled and never emit unmount pause actions.
+		const send = vi.fn();
+		const context: NodeContext = { sf: "surface", role: "omp.overlay.jobs", readOnly: false, send, keys: vi.fn(), render: () => null };
+		await act(async () => root.render(createElement(TooltipProvider, { children: createElement(NodeView, { node: { id: "jobs-shell", k: "shell", p: { role: "omp.jobs.command", presentation, steps: true } }, context }) })));
+		expect([...element.querySelectorAll("button")].some(button => button.textContent === "Replay")).toBe(false);
+		await act(async () => root.render(null));
+		expect(send).not.toHaveBeenCalled();
+	});
 });
