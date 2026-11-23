@@ -4,11 +4,34 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-11-23
+
+visual-omp 0.8.5 keeps a message you send with Send now in view until omp adds it to the chat, and works with omp 19.1, whose bash commands can call omp's own tools. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Improved:** **Send now messages stay in view.** A message you send with Send now while omp works stays above the message box until omp adds it to the chat.
+- **Improved:** With omp 19.1, bash cards show each omp tool that a command called, and you can show a command's output one step at a time.
+- **Improved:** With omp 19.0.0 and later, omp's own question card works in the omp screen.
+- **Fixed:** Recent chats no longer list omp 19.1's Chrome side-panel sessions.
+
 ### Detailed changes
 
 #### Improved
 
+- A message you send with Send now while omp works stays in a "Sending at omp's next step." section above the message box until omp adds it to the chat, drops it, returns it to the message box or reports a failure. It used to disappear from view until omp finished its current step.
+- With omp 19.1, which lets a bash command call omp's own tools, bash cards show each tool the command called and each `--help` call. Changes lists AST edits made through bash, and Live preview shows images from bash commands. Outputs shows images that bash commands generate or print, and when a bash command is a single `generate_image` call, it lists each image once instead of also listing the copy bash saves.
+- With omp 19.1, edit cards show each file of an edit in omp's `magic` mode, with its Markdown description, before the diffs arrive. Several sections for the same file appear as one.
+- With omp 19.1, a bash card's command view works in steps. Clicking a step shows that step's output in place of the command's output until you choose Show all output, the step whose output is shown is highlighted, and the arrow keys move between steps. Replay stays available on the card.
+- The omp screen shows the source menu in omp 19.1's Jobs panel.
+- Tool cards, background jobs, helper activity and Live preview show the short label at the start of an intent, as omp 19.1 does, instead of the whole description.
 - With omp 19.0.0 and later, omp's own question card works in the omp screen. Choose an answer's button to pick it, and choose Answer this question to open a question. These buttons used to be unavailable there, although Submit and Cancel already worked.
+- Usage & limits shows credit balances and spending that a provider reports without a percentage limit, and lists organization accounts that share an email address separately.
+
+#### Fixed
+
+- Recent chats no longer list omp 19.1's Chrome side-panel sessions.
+- With omp 19.1.1, the result card for `/omfg` keeps the saved rule path, so you can copy it or show it in its folder.
 
 ## [0.8.4] - 2026-11-19
 
