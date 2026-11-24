@@ -291,7 +291,7 @@ Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variabl
 
 `visual-omp`, lowercase, Geist Mono 600, tracking −0.02em, `--fg`, with no cursor or suffix. `Wordmark withMark` places the mark before the text with an 8px gap and a mark box about 1.3× the text size. The sm variant uses 14px text with an 18px mark in the 40px sidebar header beside the app version; md uses 16px text with a 21px mark, and lg uses 24px text with a 31px mark.
 
-The mark is periscope C1 "Heavy" (§6). With the default `tone="accent"`, the ink shapes use `--fg` and the lens plate uses `--accent`, so the mark follows the theme. With `tone="current"`, every shape uses the surrounding text color. `src/renderer/src/ui/BrandMark.tsx` defines its geometry (exported as both `BrandMark` and `Mark`); the app icon SVGs and the README hero carry copies of the same shapes.
+The mark is periscope C1 "Heavy" (§6). With the default `tone="accent"`, the ink shapes use `--fg` and the lens plate uses `--accent`, so the mark follows the theme. With `tone="current"`, every shape uses the surrounding text color. `src/renderer/src/ui/BrandMark.tsx` defines its geometry (exported as both `BrandMark` and `Mark`); the app icon SVGs and the README lockup (§7.1) carry copies of the same shapes.
 
 Streaming text uses a thin 2px accent caret (`.stream-caret`), and working states use the pulse dot and the working halo (§5.16).
 
@@ -1314,11 +1314,15 @@ electron-builder reads `build/icon.icns` (macOS) and `build/icon.ico` (Windows).
 
 ## 7. Brand surfaces
 
-### 7.1 README hero banner
+### 7.1 README lockup and download buttons
 
-`assets/hero.svg` (1500×540) is the source and `assets/hero.png` (3000×1080) is the image `README.md` shows. The canvas is flat `#F4F7F7` (`--bg`). The C1 lockup, the title-bar lockup from the concept files scaled ×6 (a 108px mark and the `visual-omp` wordmark outlined in Geist Mono 600), sits at (417, 175). Below it, centered on a baseline at y 365, one line in Geist 400 24px `#4D5857` (`--fg-muted`) reads "A desktop app for omp, the AI coding agent." There is no gradient, grid, glow or eyebrow, and the teal lens is the only accent.
+The README opens with `assets/readme/lockup-light.svg` and `lockup-dark.svg` (800×220), chosen by `prefers-color-scheme`. A 34px C1 mark and the `visual-omp` wordmark in Geist Mono 600 at 28px, tracking −0.02em, are centered on y 42. Below them, two centered lines in Geist 700 at 54px, tracking −0.02em, on baselines at y 116 and y 174, read "The omp coding agent" and "in a desktop window". Light artwork uses `#141C1C` ink and a `#10726F` lens; dark artwork uses `#E9EEEE` and `#5FCCC8`.
 
-The PNG is rendered at 2× in headless Chrome with Geist embedded through `@font-face`, since the tagline is live text and GitHub displays the PNG.
+Three download buttons follow, each 52px high with a 12px radius and a Phosphor fill icon: Apple silicon Mac is filled with the accent, and Intel Mac and Windows are outlined. All text is outlined, so the SVGs need no fonts. `scripts/readme/lockup.py` writes every lockup and button with HarfBuzz shaping, so Geist's kerning applies; its docstring lists the Python packages it needs.
+
+### 7.2 README recordings
+
+Each feature in the README has an animated WebP in `docs/images/` and a `-still.webp` poster that `prefers-reduced-motion: reduce` selects. Each recording is centered under its section's text at the full content width. Recordings come from a development build at a 1440×920 window and device scale factor 2, using demo projects and a scripted OpenAI-compatible demo model; omp runs every tool call. Each frame is drawn on a transparent canvas with a rounded clip, a gray edge and a soft shadow, so one light-theme asset works on both GitHub themes. Most loops are 1440px wide with an 80px margin; the questions loop uses a tighter 960px crop with a 48px margin. Each loop stays at or under about 900 KB.
 
 ---
 

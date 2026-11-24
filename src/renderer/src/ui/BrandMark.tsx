@@ -2,7 +2,7 @@
  * The brand mark: the only place its geometry lives in the app. The mark is periscope variation C1 "Heavy"
  * (docs/logo-concepts/2-periscope/variants/c-prompt/variations/c1-heavy): a heavy prompt chevron, and a periscope
  * rising from the prompt's underscore with a teal lens plate. The packaged app icons (assets/icon.svg,
- * assets/icon-macos.svg) and the README hero (assets/hero.svg) carry copies of the same shapes.
+ * assets/icon-macos.svg) and the README lockup (assets/readme/lockup-*.svg) carry copies of the same shapes.
  */
 import { cn } from "./cn";
 
