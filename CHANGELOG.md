@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-11-23
+
+visual-omp 0.8.6 no longer stalls on messages that mention a GitHub number such as `#30`, shows placeholders for settings while omp reads them, marks chats of a colored project in the sidebar and copies text files from the Files viewer. It requires omp 18.15.0 or later.
+
 ### Highlights
 
 - **Improved:** In Current chats and the ungrouped Projects list, chats of a project with a folder color show a short bar of that color at the left of the row.
