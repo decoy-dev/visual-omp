@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  Source of assets/readme/banner.png (1280x640 at 2x, the size GitHub uses for social previews).
+  Render from the repository root after npm install:
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+    --allow-file-access-from-files --force-device-scale-factor=2 --window-size=1280,640 \
+    --screenshot=assets/readme/banner.png "file://$PWD/scripts/readme/banner.html"
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Geist"; src: url("../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Geist Mono"; src: url("../../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+  html, body { margin: 0; }
+  .banner { position: relative; width: 1280px; height: 640px; overflow: hidden; background: #F1F5F4; font-family: "Geist", sans-serif; color: #141C1C; }
+  .copy { position: absolute; left: 72px; top: 0; bottom: 0; width: 580px; display: flex; flex-direction: column; justify-content: center; }
+  .lockup { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .lockup svg { width: 34px; height: 34px; }
+  .lockup span { font-family: "Geist Mono", monospace; font-weight: 600; font-size: 26px; letter-spacing: -0.02em; }
+  h1 { margin: 0; font-weight: 700; font-size: 46px; line-height: 1.1; letter-spacing: -0.025em; white-space: nowrap; }
+  p { margin: 24px 0 0; font-size: 20px; line-height: 1.45; color: #4D5857; max-width: 440px; }
+  .meta { margin-top: 30px; display: flex; gap: 10px; }
+  .meta span { font-size: 15px; font-weight: 500; color: #10726F; border: 1.5px solid rgba(16, 114, 111, 0.35); border-radius: 999px; padding: 5px 13px; }
+  .window { position: absolute; left: 676px; top: 76px; width: 1040px; }
+</style>
+</head>
+<body>
+<div class="banner">
+  <div class="copy">
+    <div class="lockup">
+      <svg viewBox="186 186 652 652" aria-hidden="true">
+        <path d="M230 600L342 682L230 764" fill="none" stroke="#141C1C" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="420" y="712" width="382" height="72" fill="#141C1C"/>
+        <path d="M474 392L650 216H762V392H606V748H474Z" fill="#141C1C"/>
+        <rect x="790" y="234" width="48" height="140" rx="10" fill="#10726F"/>
+      </svg>
+      <span>visual-omp</span>
+    </div>
+    <h1>The omp you already run,<br>in a desktop app</h1>
+    <p>Updated throughout the week to support each new omp release.</p>
+    <div class="meta"><span>macOS</span><span>Windows</span><span>MIT licensed</span></div>
+  </div>
+  <img class="window" src="../../docs/images/hero-still.webp" alt="">
+</div>
+</body>
+</html>

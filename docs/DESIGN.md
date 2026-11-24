@@ -1324,6 +1324,10 @@ Three download buttons follow, each 52px high with a 12px radius and a Phosphor 
 
 Each feature in the README has an animated WebP in `docs/images/` and a `-still.webp` poster that `prefers-reduced-motion: reduce` selects. Each recording is centered under its section's text at the full content width. Recordings come from a development build at a 1440×920 window and device scale factor 2, using demo projects and a scripted OpenAI-compatible demo model; omp runs every tool call. Each frame is drawn on a transparent canvas with a rounded clip, a gray edge and a soft shadow, so one light-theme asset works on both GitHub themes. Most loops are 1440px wide with an 80px margin; the questions loop uses a tighter 960px crop with a 48px margin. Each loop stays at or under about 900 KB.
 
+### 7.3 Banner
+
+`assets/readme/banner.png` is a 1280×640 banner rendered at 2× for posts and GitHub's social preview. On the flat `#F1F5F4` canvas, the left column holds the C1 mark with the `visual-omp` wordmark, the headline "The omp you already run, in a desktop app" in Geist 700 at 46px, a muted line about updates for each omp release, and outlined teal pills for macOS, Windows and the MIT license. The hero poster's window extends past the right and bottom edges. `scripts/readme/banner.html` is its source, and its header comment gives the headless Chrome command that renders it.
+
 ---
 
 ## 8. Microcopy

@@ -54,6 +54,7 @@ visual-omp starts the omp you installed in a hidden terminal on your computer an
 - Sessions you start in a terminal appear in the sidebar. On macOS you can follow one while the terminal works and continue it in the app once the terminal releases it.
 - Provider sign-in runs `omp login`, and accounts are managed through omp, so visual-omp stores no credentials of its own.
 - The app reads omp's collaboration stream over a relay bound to 127.0.0.1, so the connection between the app and omp stays on your computer.
+- visual-omp is updated throughout the week to support each new omp release, and a scheduled daily check runs the app's tests against new omp versions.
 
 ## Why visual-omp
 
