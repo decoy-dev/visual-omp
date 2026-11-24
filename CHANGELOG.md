@@ -6,6 +6,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Highlights
 
+- **Improved:** In Current chats and the ungrouped Projects list, chats of a project with a folder color show a short bar of that color at the left of the row.
 - **Improved:** While omp reads your settings, Settings → General and Permissions say so, name each affected setting and show a placeholder where its control will appear.
 - **Fixed:** A message with a GitHub reference such as `#30` no longer leaves omp's suggestion list blocking Send and opening the omp screen.
 
@@ -13,6 +14,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Improved
 
+- In Current chats and the ungrouped Projects list, a chat whose project has a folder color shows a short rounded bar of that color at the left edge of its row, so chats of the same project stand out at a glance. Chats of projects without a color show none.
 - While omp reads its settings, Settings → General and Permissions show a notice with a spinner at the top: "Reading your settings from omp. Gray placeholders mark settings that are still loading. This can take several seconds." Each part still waiting shows "Waiting for omp" beside its heading or its buttons. Each affected setting keeps its name with a placeholder for its control, and help text that depends on the value is a placeholder too. The notice folds away when omp answers. These controls used to be missing until omp answered, and each tool in Permissions showed Default, so the page could look broken.
 
 #### Fixed

@@ -212,11 +212,12 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 	const { chat, now } = props;
 	const current = props.variant === "current";
 	const flat = props.variant === "flat";
-	const projectColor = useProjectColor(flat ? props.chat.projectPath : "");
 	const { t } = useTranslation("shell");
 	const session = chat.kind === "session" ? chat.session : null;
 	const tabId = chat.tabId;
 	const tab = useApp(state => (tabId ? (state.tabs.find(entry => entry.id === tabId) ?? null) : null));
+	// Current chats and flat lists mark a colored project's chats with its color; the Projects tree already groups them.
+	const projectColor = useProjectColor(flat ? props.chat.projectPath : current ? (tab?.projectPath ?? "") : "");
 	const unseen = useApp(state => (tabId ? state.unseenChats[tabId] : undefined));
 	const statusId = useId();
 	const primary = useApp(state => state.view === "chat" && tabId !== null && state.activeTabId === tabId);
@@ -338,6 +339,15 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 						)}
 					>
 						<span ref={cueRef} aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-md bg-accent-muted opacity-0" />
+						{/* A short rounded bar, not a full-height stripe: DESIGN §3.2 "Project accent". */}
+						{projectColor && (
+							<span
+								aria-hidden
+								data-project-accent
+								className="pointer-events-none absolute top-1/2 left-0.5 h-3.5 w-[3px] -translate-y-1/2 rounded-full"
+								style={{ background: projectColorValue(projectColor) }}
+							/>
+						)}
 						{current && active && (
 							<motion.span
 								aria-hidden
@@ -393,7 +403,6 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 										hideWhileMenuOpen,
 									)}
 								>
-									{flat && projectColor && <ProjectColorDot color={projectColor} />}
 									<span className="truncate">{props.chat.projectName}</span>
 								</span>
 							)

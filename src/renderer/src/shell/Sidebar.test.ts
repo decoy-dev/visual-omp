@@ -2,6 +2,7 @@
 import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type * as MotionModule from "motion/react";
+import type { AppPreferences } from "@shared/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeAllChats, controllerFor, useApp } from "../state/app";
 import type { SessionView } from "../state/session";
@@ -136,6 +137,21 @@ describe("Current chats reordering", () => {
 		expect(titles()).toEqual(["Unseen A", "Unseen B", "Seen A", "Seen B"]);
 		await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(title("Seen A"))); });
 	});
+});
+
+it("marks Current chats of a colored project with its accent, and leaves other projects' chats unmarked", async () => {
+	const accents = () => [...section().querySelectorAll<HTMLElement>("[data-project-accent]")];
+	expect(accents()).toHaveLength(0);
+	await act(async () => {
+		useApp.setState(state => ({
+			tabs: state.tabs.map(tab => (tab.id === "row0" ? { ...tab, projectPath: "/other" } : tab)),
+			prefs: { projectColors: { "/workspace": "green" }, pinnedProjects: [] } as unknown as AppPreferences,
+			sessionsByProject: { "/workspace": [], "/other": [] },
+		}));
+	});
+	expect(accents()).toHaveLength(3);
+	expect(accents().every(accent => accent.style.background === "var(--folder-green)")).toBe(true);
+	expect(title("Seen A").closest("[class*='group']")!.querySelector("[data-project-accent]")).toBeNull();
 });
 
 it("lists bulk-close work and lost drafts, focuses Cancel and preserves chats until confirmation", async () => {
