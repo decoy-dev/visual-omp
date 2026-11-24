@@ -720,15 +720,15 @@ function SidebarHeader(): ReactNode {
 	}, []);
 	return (
 		<div className={cn("drag-region flex h-10 shrink-0 items-center pr-3", MAC ? "pl-traffic" : "pl-4")}>
-			{/* A narrow sidebar or large text drops the version first, then the word, keeping the mark. */}
+			{/* Narrower than the lockup and version together (a sidebar under its default width, or large text), the word gives way so the version stays beside the mark. */}
 			<div className="@container flex min-w-0 flex-1 items-center gap-2">
-				<Wordmark withMark size="sm" className="shrink-0 @max-[6.75rem]:hidden" />
-				<span className="hidden @max-[6.75rem]:inline-flex">
+				<Wordmark withMark size="sm" className="shrink-0 @max-[9.75rem]:hidden" />
+				<span className="hidden @max-[9.75rem]:inline-flex">
 					<Mark size={18} />
 					<span className="sr-only">visual-omp</span>
 				</span>
 				{version && (
-					<span className="font-mono text-xs text-fg-faint transition-colors duration-(--dur-slow) ease-(--ease-out-quart) @max-[10rem]:hidden">
+					<span className="shrink-0 font-mono text-xs text-fg-faint transition-colors duration-(--dur-slow) ease-(--ease-out-quart)">
 						{t("sidebar.version", { version })}
 					</span>
 				)}

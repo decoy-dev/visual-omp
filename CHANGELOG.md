@@ -4,6 +4,16 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Highlights
+
+- **Fixed:** The app's version stays in the sidebar's header when the sidebar is narrower than its default width.
+
+### Detailed changes
+
+#### Fixed
+
+- On macOS at the default text size, the sidebar header showed the app version only when the sidebar was at its default 264px width or wider. A narrower sidebar now drops the word "visual-omp" instead and keeps the version beside the periscope mark.
+
 ## [0.8.6] - 2026-11-23
 
 visual-omp 0.8.6 no longer stalls on messages that mention a GitHub number such as `#30`, shows placeholders for settings while omp reads them, marks chats of a colored project in the sidebar and copies text files from the Files viewer. It requires omp 18.15.0 or later.

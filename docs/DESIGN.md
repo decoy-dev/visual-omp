@@ -321,7 +321,7 @@ The frameless title bar is a drag region with no-drag controls. It uses the main
 
 ### 3.2 Sidebar (264px, drag 200-320px, ⌘B hides)
 
-The sidebar has a 40px header containing the wordmark and app version. Its remaining content is organized as follows:
+The sidebar has a 40px header containing the wordmark and app version. When the sidebar is too narrow for both, as below its default width or at large text sizes, the word "visual-omp" gives way and the version stays beside the mark. Its remaining content is organized as follows:
 
 ```
 ┌────────────────────────────┐
