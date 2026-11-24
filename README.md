@@ -177,11 +177,24 @@ Settings covers omp's providers, model roles, permissions, helpers, MCP servers,
 
 ### Phone sharing
 
-Start sharing from Share → Invite, then scan the QR code to open omp's browser client on your phone. The code grants control of the chat, including messages and approvals, and a view-only link is also available. Rooms are encrypted end to end through omp's public relay; the relay can see connection metadata. The computer stays awake while sharing, though closing its lid can still put it to sleep. If omp changes the room, the dialog provides a new code and links for reconnecting. Stop sharing disconnects guests, and sharing the same room again makes its previous code and links work again.
+Start sharing from Share → Invite and scan its QR code to open the chat in omp's browser client on your phone, with control of messages and approvals. A view-only link is also available, and chat content is encrypted end to end through omp's public relay, which can see connection metadata.
+
+<details>
+<summary>While a chat is shared</summary>
+
+The computer stays awake while sharing, though closing its lid can still put it to sleep. If omp changes the room, the dialog provides a new code and links for reconnecting. Stop sharing disconnects guests, and sharing the same room again makes its previous code and links work again.
+
+</details>
 
 ### Other features
 
-Home's folder picker starts a chat in any project or folder, and the project wizard can create a folder or clone a repository. The sidebar sorts projects by recent activity, name or creation date, and **Group by project** switches between project groups and one list of chats. Replies can include SVG and Mermaid diagrams, and the Normal, Thinking and Verbose views set how much of omp's work the transcript shows. The chat header's ⋯ menu offers commands such as Restart, Compact and Plan mode, along with Goal, Vibe and Loop modes and the Advisor, which the command palette also lists. MCP servers, skills and plugins, memory, usage limits and cost, session sharing and live collaboration, imports from Claude Code and Codex, and the session tree have their own screens. omp's security scan and `omp cleanse` run from the command palette. Settings offers text size, reduced motion and light or dark themes, and keyboard commands, screen-reader labels, a first-launch tour and Help's glossary give other ways to find the controls.
+| Area | What's included |
+| --- | --- |
+| **Projects** | Start a chat in any folder, create a folder or clone a repository, and sort or group the sidebar |
+| **Transcript** | SVG and Mermaid diagrams, with Normal, Thinking and Verbose views of omp's work |
+| **Modes** | Plan, Goal, Vibe and Loop modes and the Advisor, from the chat's ⋯ menu or the command palette |
+| **omp features** | MCP servers, skills and plugins, memory, usage and cost, live collaboration, Claude Code and Codex imports, the session tree, the security scan and `omp cleanse` |
+| **Accessibility** | Text size, reduced motion, light and dark themes, keyboard commands, screen-reader labels, the first-launch tour and Help's glossary |
 
 ## Installation
 
