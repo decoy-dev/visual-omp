@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TSP_KINDS, type TspEvent, type TspNode, type TspOp } from "../../../shared/tsp";
+import { openOverlay } from "../../../shared/tsp/view-state";
+import { TSP_ROLES } from "../../../shared/tsp/roles";
 import { composerFacts } from "./composer";
 import { TspSession, TSP_ADVERTISED_KINDS } from "./session";
 import { TspStream, type TspMessage } from "./stream";
@@ -313,6 +315,62 @@ describe("TSP session", () => {
 		await expect(h.session.submit("")).rejects.toThrow("Enter a message");
 		for (const text of ["!pwd", "!!pwd", "$ print(1)"]) await h.session.submit(text);
 		expect(h.bodies().filter(body => body.ev === "send").slice(-3).map(body => body.text)).toEqual(["!pwd", "!!pwd", "$ print(1)"]);
+	});
+
+	it("closes omp's editor suggestions with Escape before sending, instead of treating them as an open menu", async () => {
+		const writes: string[] = [];
+		const h = harness(data => { writes.push(data); });
+		h.hello(); h.open(); h.frame(1, regions);
+		// omp 19 offers GitHub references for `#30` and hoists the list into the layer, where it can hold the focus.
+		h.frame(2, [["set", "editor", { sendable: true, text: "close #30" }], ["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+			{ id: "complete", k: "overlay", p: { role: "omp.autocomplete", anchor: { caret: "input" } }, c: [
+				{ id: "refs", k: "list", p: { selected: "pr" }, c: [{ id: "pr", k: "item", p: { label: [{ t: "PR #30" }] } }, { id: "issue", k: "item", p: { label: [{ t: "Issue #30" }] } }] },
+			] },
+		] }], ["focus", "refs"]]);
+		expect(h.session.availability()).toEqual({ available: true, reason: null });
+		expect(openOverlay(h.session.snapshot().surfaces)).toBeNull();
+		const sent = h.session.submit("Close #29 and #30.");
+		await vi.waitFor(() => expect(writes).toContain("\x1b"));
+		expect(h.bodies().some(body => body.ev === "send")).toBe(false);
+		h.frame(3, [["del", "complete"], ["focus", "editor"]]);
+		await sent;
+		expect(h.bodies().filter(body => body.ev === "send")).toEqual([{ ev: "send", sf: "s:1", id: "editor", text: "Close #29 and #30." }]);
+	});
+
+	const suggestionsLayer = (): TspOp => ["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+		{ id: "complete", k: "overlay", p: { role: "omp.autocomplete" }, c: [{ id: "refs", k: "list", c: [{ id: "pr", k: "item", p: { label: [{ t: "PR #30" }] } }] }] },
+	] }];
+
+	it("sends no Escape when another omp overlay takes input before its suggestions can close", async () => {
+		const writes: string[] = [];
+		const h = harness(data => { writes.push(data); });
+		h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }], suggestionsLayer()]);
+		const sent = h.session.submit("hello");
+		h.frame(3, [["add", "modal", "layer", null, { id: "modal", k: "overlay", p: { modal: true } }]]);
+		await expect(sent).rejects.toThrow("not ready");
+		expect(writes).not.toContain("\x1b");
+		expect(h.bodies().some(body => body.ev === "send")).toBe(false);
+	});
+
+	it("sends no Escape when an approval prompt appears before its suggestions can close", async () => {
+		const writes: string[] = [];
+		const h = harness(data => { writes.push(data); });
+		h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }], suggestionsLayer()]);
+		const sent = h.session.submit("hello");
+		h.frame(3, [["add", "approval", "dock", null, { id: "approval", k: "list", p: { role: TSP_ROLES.approvalChoices }, c: [{ id: "yes", k: "item", p: { label: [{ t: "Allow" }] } }] }]]);
+		await expect(sent).rejects.toThrow("Answer omp's prompt");
+		expect(writes).not.toContain("\x1b");
+	});
+
+	it.each(["submit", "followUp"] as const)("refuses %s when omp reopens its suggestions before the final write", async path => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }]]);
+		const sent = path === "submit" ? h.session.submit("hello") : h.session.followUp("hello", () => {});
+		h.frame(3, [suggestionsLayer()]);
+		await expect(sent).rejects.toThrow("opened its suggestions");
+		expect(h.bodies().some(body => body.ev === "send" || body.ev === "edit")).toBe(false);
 	});
 
 	it("refuses hook, shell, modal and subagent composers as main app submission targets", async () => {

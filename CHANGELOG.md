@@ -7,12 +7,17 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 ### Highlights
 
 - **Improved:** While omp reads your settings, Settings → General and Permissions say so, name each affected setting and show a placeholder where its control will appear.
+- **Fixed:** A message with a GitHub reference such as `#30` no longer leaves omp's suggestion list blocking Send and opening the omp screen.
 
 ### Detailed changes
 
 #### Improved
 
 - While omp reads its settings, Settings → General and Permissions show a notice with a spinner at the top: "Reading your settings from omp. Gray placeholders mark settings that are still loading. This can take several seconds." Each part still waiting shows "Waiting for omp" beside its heading or its buttons. Each affected setting keeps its name with a placeholder for its control, and help text that depends on the value is a placeholder too. The notice folds away when omp answers. These controls used to be missing until omp answered, and each tool in Permissions showed Default, so the page could look broken.
+
+#### Fixed
+
+- omp 19 suggests GitHub links in its own message box when text ends in `#` and a number. visual-omp treated that list as an open omp menu: it refused to send with "Close the open omp menu before sending a message." and opened the omp screen to show the list. The list no longer blocks sending or opens the omp screen, and visual-omp closes it before sending, so the message keeps `#30` as you typed it.
 
 ## [0.8.5] - 2026-11-23
 

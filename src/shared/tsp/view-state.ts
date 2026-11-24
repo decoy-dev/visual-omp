@@ -19,11 +19,14 @@ export function region(surface: TspSurfaceSnapshot, id: "main" | "dock" | "layer
 export function liveSurfaces(surfaces: TspSurfaces): TspSurfaceSnapshot[] {
 	return surfaces.filter(surface => !surface.closed && !surface.suspended);
 }
-/** The top layer wins. Input ownership includes claimed nodes; presentation omits them. */
+/**
+ * The top layer wins. Input ownership includes claimed nodes; presentation omits them. omp's editor suggestions
+ * (`omp.autocomplete`, hoisted into the layer) belong to the editor, not a menu: the app's own composer is the editor.
+ */
 export function openOverlay(surfaces: TspSurfaces, includeClaimed = false, presented?: TspPresentationClaims): TspNodeTarget | null {
 	for (const surface of [...liveSurfaces(surfaces)].reverse()) {
 		const claimed = (node: TspNode) => isClaimed(node) || !!presented?.get(surface.open.id)?.has(node.id) && isClaimable(node, surface);
-		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && (includeClaimed || !claimed(node)));
+		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && node.p?.role !== TSP_ROLES.autocomplete && (includeClaimed || !claimed(node)));
 		const node = nodes.at(-1);
 		if (node) return { surface, node };
 		let hook: TspNode | undefined;

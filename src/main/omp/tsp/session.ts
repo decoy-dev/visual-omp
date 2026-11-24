@@ -13,7 +13,7 @@ import { commandNodeText } from "../../../shared/tsp/command-result";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
-import { composerFacts } from "./composer";
+import { composerFacts, editorSuggestions } from "./composer";
 import { assertBtwEvent, BTW_SEND_BLOCKED_REASON, projectBtw } from "../../../shared/tsp/btw";
 import { assertShellEvent, shellProps } from "../../../shared/tsp/shell";
 
@@ -435,7 +435,7 @@ export class TspSession {
 			return this.#write(events.length ? events.map(event => encodeTspJson("e", event)).join("") : "\x1b");
 		});
 	}
-	/** Restart uses declared dismissal only; autocomplete without one requires a saved-session relaunch. */
+	/** Restart uses declared dismissal only. omp's editor suggestions do not block it: its submission closes them first. */
 	async prepareRestart(assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<boolean> {
 		assertCurrent();
 		if (this.availability(surfaceAllowed).available) return true;
@@ -472,26 +472,67 @@ export class TspSession {
 		await this.waitFor(() => this.availability(surfaceAllowed).available, assertCurrent, 8000, "omp did not confirm that its menu closed.");
 		return true;
 	}
+	/** The main editor's own suggestions: the list omp hoisted from that editor's surface. */
+	#suggestionsOpen(surfaceAllowed: (surface: string) => boolean): boolean {
+		const surfaces = this.snapshot().surfaces;
+		const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const surface = facts.surfaceId ? liveSurfaces(surfaces).find(entry => entry.open.id === facts.surfaceId) : undefined;
+		return !!surface && !!editorSuggestions(surface);
+	}
+	/** At the final write: suggestions omp reopened would drop a `send` or take its keys. */
+	#assertNoSuggestions(surfaceId: string): void {
+		const surface = liveSurfaces(this.snapshot().surfaces).find(entry => entry.open.id === surfaceId);
+		if (surface && editorSuggestions(surface)) throw new TspInputStateError("omp screen: omp opened its suggestions before the message could be sent. Send it again.");
+	}
+	/**
+	 * omp opens its editor suggestions when text before the cursor matches one (`#30` offers GitHub references). A
+	 * `send` is dropped while they hold omp's focus, and Enter would accept one, so they close first: Escape closes a
+	 * visible list and does nothing else (omp's `Editor` handles `tui.select.cancel` before any other key). Escape
+	 * reaches whatever holds omp's input, so it goes only while the pinned main editor owns input with no menu,
+	 * question or screen open. Without suggestions, `next` runs at once, so its checks stay synchronous.
+	 */
+	#afterSuggestions(assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean, next: () => Promise<void>): Promise<void> {
+		if (!this.#suggestionsOpen(surfaceAllowed)) return next();
+		let target: TspEditorTarget;
+		try { target = this.pinEditor(surfaceAllowed); } catch (error) { return Promise.reject(error); }
+		const check = () => { assertCurrent(); target.assertCurrent(); };
+		return this.#enqueue(() => {
+			check();
+			const availability = this.availability(surfaceAllowed);
+			if (!availability.available) throw new TspInputStateError(`omp screen: The main editor is not ready to send. ${availability.reason}`);
+			// A sendable approval prompt still counts as available, but Escape would answer it.
+			if (composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id))).blockedBy) throw new TspInputStateError("omp screen: Answer omp's prompt before sending a message.");
+			return this.#suggestionsOpen(surfaceAllowed) ? this.#write("\x1b") : undefined;
+		})
+			.then(() => this.waitFor(() => !this.#suggestionsOpen(surfaceAllowed), check, 3000, "omp did not close its suggestions."))
+			.then(next);
+	}
+
 	/** Atomic text submission to omp's main composer, preserving its displaced-draft semantics. */
 	submit(text: string, assertCurrent?: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
 		if (!text.trim()) return Promise.reject(new Error("omp screen: Enter a message before sending."));
-		const surfaces = this.snapshot().surfaces;
-		const availability = this.availability(surfaceAllowed);
-		if (!availability.available) return Promise.reject(new TspInputStateError(`omp screen: The main editor is not ready to send. ${availability.reason}`));
-		const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
-		const original = this.#surfaces.get(facts.surfaceId!);
-		return this.send({ ev: "send", sf: facts.surfaceId!, id: facts.editorId!, text }, () => {
-			assertCurrent?.();
-			if (!surfaceAllowed(facts.surfaceId!) || this.#surfaces.get(facts.surfaceId!) !== original) throw new TspInputStateError("omp screen: The main editor changed before the message could be sent.");
-			if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("omp screen: The main editor is not ready to send.");
+		return this.#afterSuggestions(() => assertCurrent?.(), surfaceAllowed, () => {
+			const surfaces = this.snapshot().surfaces;
+			const availability = this.availability(surfaceAllowed);
+			if (!availability.available) return Promise.reject(new TspInputStateError(`omp screen: The main editor is not ready to send. ${availability.reason}`));
+			const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			const original = this.#surfaces.get(facts.surfaceId!);
+			return this.send({ ev: "send", sf: facts.surfaceId!, id: facts.editorId!, text }, () => {
+				assertCurrent?.();
+				if (!surfaceAllowed(facts.surfaceId!) || this.#surfaces.get(facts.surfaceId!) !== original) throw new TspInputStateError("omp screen: The main editor changed before the message could be sent.");
+				if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("omp screen: The main editor is not ready to send.");
+				this.#assertNoSuggestions(facts.surfaceId!);
+			});
 		});
 	}
 
 	/** Follow-up has no wire event. Edit and Ctrl+Q must be one atomic write. */
 	followUp(text: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
-		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
-		const value = facts.surfaceId && this.imageCount(facts.surfaceId) > 0 ? facts.text + text : text;
-		return this.editAndKeys(0, facts.text.length, value, value.length, "\x11", assertCurrent, surfaceAllowed);
+		return this.#afterSuggestions(assertCurrent, surfaceAllowed, () => {
+			const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			const value = facts.surfaceId && this.imageCount(facts.surfaceId) > 0 ? facts.text + text : text;
+			return this.editAndKeys(0, facts.text.length, value, value.length, "\x11", assertCurrent, surfaceAllowed);
+		});
 	}
 
 	editAndKeys(from: number, to: number, text: string, cursor: number, keys: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
@@ -507,13 +548,17 @@ export class TspSession {
 			if (!this.#programFeatures.has("edit")) throw new TspInputStateError("omp screen: omp does not accept edit events.");
 			if (!this.availability(surfaceAllowed).available || !now.sendable) throw new TspInputStateError(`omp screen: ${this.availability(surfaceAllowed).reason}`);
 			if (this.#surfaces.get(facts.surfaceId!) !== original || now.surfaceId !== facts.surfaceId || now.editorId !== facts.editorId || now.text !== facts.text) throw new TspInputStateError("omp screen: The editor changed before the edit could be applied.");
+			this.#assertNoSuggestions(facts.surfaceId!);
 			const event = TspRendererEvent.parse({ ev: "edit", sf: facts.surfaceId, id: facts.editorId, from, to, text, cursor, len: facts.text.length });
 			return this.#write(encodeTspJson("e", event) + keys);
 		});
 	}
 
 	/** `send` omits staged images. Preserve them with the composer's submit action. */
-	async submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true, prepared?: (text: string) => void): Promise<void> {
+	submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true, prepared?: (text: string) => void): Promise<void> {
+		return this.#afterSuggestions(assertCurrent, surfaceAllowed, () => this.#submitImagesNow(text, paths, assertCurrent, surfaceAllowed, prepared));
+	}
+	async #submitImagesNow(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean, prepared?: (text: string) => void): Promise<void> {
 		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 		const target = this.pinEditor(surfaceAllowed);
 		const assertTarget = () => { assertCurrent(); target.assertCurrent(); };

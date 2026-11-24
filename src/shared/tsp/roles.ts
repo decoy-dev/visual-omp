@@ -11,6 +11,7 @@ export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
 	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden", askCard: "omp.ask.card",
 	askCardHead: "omp.ask.card.head", askFold: "omp.ask.fold", askOpen: "omp.ask.open", askLegend: "omp.ask.legend", workingStop: "omp.working.stop",
+	autocomplete: "omp.autocomplete",
 	askForm: "omp.ask.form", askSection: "omp.ask.section", askField: "omp.ask.field",
 	askText: "omp.ask.text", askHeading: "omp.ask.heading", askLabel: "omp.ask.label",
 	askOptions: "omp.ask.options", askOption: "omp.ask.option", askCheck: "omp.ask.check",
