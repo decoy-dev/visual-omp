@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-11-24
+
+visual-omp 0.8.7 keeps the app version visible in a narrow sidebar, no longer reports an approved plan as failed with omp 19.1 and adds a command palette stop to the first-launch tour. It requires omp 18.15.0 or later.
+
 ### Highlights
 
 - **Improved:** The first-launch tour has a stop for the command palette and says what Tasks, Changes and Outputs show.
