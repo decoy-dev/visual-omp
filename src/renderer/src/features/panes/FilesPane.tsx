@@ -3,7 +3,7 @@
  * syntax colors, inline images, PDFs and folder listings. A tab can show any path, inside the project
  * or not. ⌘click or right-click → "Mention in chat" puts `@path` in the composer of the focused chat.
  */
-import { ArrowSquareOut, ArrowsClockwise, CaretRight, FileCode, FileIcon, FileImage, Folder, FolderOpen, FolderSimpleDashed, SidebarSimple } from "@phosphor-icons/react";
+import { ArrowSquareOut, ArrowsClockwise, CaretRight, Copy, FileCode, FileIcon, FileImage, Folder, FolderOpen, FolderSimpleDashed, SidebarSimple } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type MouseEvent, memo, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -27,7 +27,7 @@ import {
 	spring,
 } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
-import { mentionInChat, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
+import { copyText, mentionInChat, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { errorText } from "../extensions/format";
 import { useHomeDir } from "../projects/folders/homeDir";
@@ -340,8 +340,11 @@ type Shown = PaneFilePreview | { kind: "folder" };
 function Viewer({ path, projectPath, viewKey, home, version }: { path: string; projectPath: string; viewKey: string; home: string | null; version: number }) {
 	const { t } = useTranslation("panes");
 	const canonicalProjectPath = useCanonicalProjectPath(projectPath);
-	const [content, setContent] = useState<Shown | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	// The viewer is keyed by its view, not its file, so what loaded is kept with the path it belongs to: while another
+	// path loads, the previous file's text is never shown, copied or acted on under the new path.
+	const [loaded, setLoaded] = useState<{ path: string; content: Shown | null; error: string | null } | null>(null);
+	const content = loaded?.path === path ? loaded.content : null;
+	const error = loaded?.path === path ? loaded.error : null;
 	const [reload, setReload] = useState(0);
 	/** The image source that failed to render (an SVG that isn't well-formed, say); a reload with new bytes tries again. */
 	const [broken, setBroken] = useState<string | null>(null);
@@ -360,17 +363,15 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 			.invoke("panes:inspect", path)
 			.then(next => {
 				if (cancelled) return;
-				setContent(next);
-				setError(null);
+				setLoaded({ path, content: next, error: null });
 			})
 			.catch(async (reason: unknown) => {
 				// Not a readable file: list it as a folder, through the tree's loader so the same entries are skipped.
 				await useFiles.getState().load(path);
 				if (cancelled) return;
 				if (Array.isArray(useFiles.getState().children[path])) {
-					setContent({ kind: "folder" });
-					setError(null);
-				} else setError(errorText(reason));
+					setLoaded({ path, content: { kind: "folder" }, error: null });
+				} else setLoaded({ path, content: null, error: errorText(reason) });
 			});
 		return () => {
 			cancelled = true;
@@ -386,6 +387,8 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	const imageSource = useFileSource(image ? path : null, version + reload);
 	const imageUrl = imageSource.src;
 	const html = file && !error && HTML_EXT.test(path);
+	// A file too large to show whole is not copied, since the copy would silently miss its end.
+	const wholeText = file && !error && content.kind === "text" && !content.truncated ? content.text : null;
 	// Inside the project the tree's menu has Show in folder; outside it, the viewer offers it.
 	const outside = relativePath(projectPath, path, canonicalProjectPath, window.vomp?.platform) === path;
 	const reveal = () => void window.vomp.invoke("app:showItem", path);
@@ -415,6 +418,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 						}
 					/>
 				)}
+				{wholeText !== null && <IconButton size="sm" label={t("files.copyText")} icon={<Copy />} onClick={() => void copyText(wholeText, t("files.textCopied"))} />}
 				{file && (OPENABLE_EXT.test(path) || playable) && (
 					<IconButton size="sm" label={t("outputs.openDefault")} icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t)} />
 				)}

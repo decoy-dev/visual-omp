@@ -24,7 +24,7 @@ vi.mock("../../ui", () => ({
 	Spinner: () => null,
 }));
 vi.mock("../../ui/toast", () => ({ toast: vi.fn() }));
-vi.mock("../../ui/contextActions", () => ({ mentionInChat: vi.fn(), revealLabel: () => "Show in folder", openWithDefaultApp: (path: string, _t: unknown, target?: string) => env.invoke("app:openFile", path, target) }));
+vi.mock("../../ui/contextActions", () => ({ mentionInChat: vi.fn(), revealLabel: () => "Show in folder", openWithDefaultApp: (path: string, _t: unknown, target?: string) => env.invoke("app:openFile", path, target), copyText: (text: string) => navigator.clipboard.writeText(text) }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: ({ children }: { children: ReactNode }) => children }));
 vi.mock("../../registry/lazy", async () => {
 	// Exercise the Files chunk's adapter-loading boundary without idle preloading the app.
@@ -121,10 +121,31 @@ describe("HTML Files viewer routing", () => {
 		expect(host.querySelector("iframe")).toBeNull();
 		expect(env.invoke.mock.calls.some(call => call[0] === "preview:grant")).toBe(false);
 	});
-	it("keeps non-HTML text in the code viewer", async () => {
-		await show("/project/page.txt");
+	it("keeps non-HTML text in the code viewer and copies the whole file", async () => {
+		const writeText = vi.fn(async () => {});
+		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+		await show("/project/notes.md");
 		expect(host.querySelector("iframe")).toBeNull();
 		expect(host.textContent).toContain("<h1>Saved HTML source</h1>");
+		await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Copy file text"]')!.click());
+		expect(writeText).toHaveBeenCalledWith("<h1>Saved HTML source</h1>");
+	});
+	it("never shows or copies the previous file's text while the next one loads", async () => {
+		const writeText = vi.fn(async () => {});
+		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+		const second = Promise.withResolvers<unknown>();
+		env.invoke.mockImplementation(async (channel: string, path: string) => channel !== "panes:inspect" ? undefined
+			: path === "/project/b.md" ? second.promise : { kind: "text", text: "Text of A", size: 9 });
+		await show("/project/a.md");
+		const copyButton = () => host.querySelector<HTMLButtonElement>('button[aria-label="Copy file text"]');
+		expect(copyButton()).not.toBeNull();
+		await act(async () => { useFiles.setState({ byView: { chat: { ...EMPTY_VIEW, tabs: ["/project/a.md", "/project/b.md"], active: "/project/b.md", treeHidden: true } } }); });
+		expect(copyButton()).toBeNull();
+		expect(host.textContent).not.toContain("Text of A");
+		await act(async () => { second.resolve({ kind: "text", text: "Text of B", size: 9 }); });
+		await act(async () => copyButton()!.click());
+		expect(writeText).toHaveBeenCalledWith("Text of B");
+		expect(writeText).not.toHaveBeenCalledWith("Text of A");
 	});
 });
 
@@ -143,6 +164,8 @@ describe("large local media routing", () => {
 		expect(host.textContent).toContain("Showing the first 2 MB");
 		await act(async () => button(copy.outputs.openDefault).click());
 		expect(env.invoke).toHaveBeenCalledWith("app:openFile", "/project/large.txt", undefined);
+		// Only the start loaded, so a copy would silently miss the rest.
+		expect(host.querySelector('button[aria-label="Copy file text"]')).toBeNull();
 	});
 });
 

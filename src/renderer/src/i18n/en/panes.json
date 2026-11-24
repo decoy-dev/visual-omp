@@ -272,6 +272,8 @@
 		"open": "Open file",
 		"copyPath": "Copy path",
 		"copied": "Path copied",
+		"copyText": "Copy file text",
+		"textCopied": "File text copied",
 		"revealMac": "Show file in Finder",
 		"reveal": "Show file in folder",
 		"revealFolderMac": "Show folder in Finder",
