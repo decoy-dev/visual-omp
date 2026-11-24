@@ -180,7 +180,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 			await before?.();
 			if (semantic && tsp.review) await tsp.choose(tsp.review, action);
 			else await choose(session, action);
-			if (semantic) tsp.assertCurrent();
+			if (semantic && action === "refine") tsp.assertCurrent();
 			if (action === "refine") {
 				useComposerDrafts.getState().setDraft(session.tabId, t("plan.refinePrefix"));
 				useComposerDrafts.getState().focus(session.tabId);

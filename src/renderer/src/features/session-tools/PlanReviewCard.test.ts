@@ -11,6 +11,7 @@ import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents
 import { PlanReviewCard } from "./PlanReviewCard";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { useComposerDrafts } from "../../chat/composer/drafts";
+import { clearToasts, useToasts } from "../../ui/toast";
 import "../../i18n";
 import { PlanPane } from "../panes/PlanPane";
 import { useApp } from "../../state/app";
@@ -55,13 +56,18 @@ let view: SessionView;
 let controller: SessionController;
 let sessionListeners: Set<() => void>;
 let requestOnce: MockInstance<typeof screenActivity.requestOnce>;
-function recorded(name: string) {
+function recorded(name: string, version?: string) {
 	const doc = new FixtureDocuments();
-	for (const message of loadFixtureRecording(name).messages) {
+	for (const message of loadFixtureRecording(name, version).messages) {
 		doc.receive({ verb: message.verb, body: JSON.stringify(message.body) });
 		if (planReview(doc.snapshot().surfaces)) return doc.snapshot();
 	}
 	throw new Error("Missing recorded plan review");
+}
+function planSnapshot(name: string, version?: string): TspHostSnapshot {
+	const docs = recorded(name, version);
+	return { ...docs, hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null,
+		availability: { available: false, reason: "Plan review" }, surfaces: docs.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
 }
 function update(next: TspHostSnapshot) {
 	snapshot = next;
@@ -129,7 +135,18 @@ function workflowRecording(name: string, version?: string) {
 	} });
 	return { count: () => inputIndex, finish: () => { expect(inputIndex).toBe(inputs.length); expect(planReview(snapshot.surfaces)).toBeNull(); } };
 }
-async function render() { await act(async () => root.render(createElement(TooltipProvider, { children: createElement(PlanReviewCard, { session: controller }) }))); }
+function ToastProbe() {
+	const toasts = useToasts();
+	return createElement("output", { "data-testid": "toast-messages" }, toasts.map(item => item.message).join("\n"));
+}
+async function toastMessages() {
+	await act(async () => root.render(createElement(ToastProbe)));
+	return element.querySelector('[data-testid="toast-messages"]')?.textContent ?? "";
+}
+async function render() {
+	await act(async () => root.render(createElement("div", null,
+		createElement(TooltipProvider, { children: createElement(PlanReviewCard, { session: controller }) }), createElement(ToastProbe))));
+}
 async function click(label: string) {
 	const button = [...element.querySelectorAll("button"), ...document.querySelectorAll('[role="menuitem"]')].find(button => button.textContent?.trim() === label);
 	expect(button, label).toBeTruthy();
@@ -141,13 +158,13 @@ async function menu() {
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+	clearToasts();
 	vi.clearAllMocks(); mocks.approval.mockReset().mockResolvedValue(undefined); listeners = new Set(); sessionListeners = new Set();
 	requestOnce = vi.spyOn(screenActivity, "requestOnce");
 	useComposerDrafts.getState().forget("plan-test"); useApp.setState({ terminalTabId: null });
 	autoOpened.tabId = null;
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
-	const docs = recorded("plan-review-execute");
-	snapshot = { ...docs, hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Plan review" }, surfaces: docs.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+	snapshot = planSnapshot("plan-review-execute");
 	view = {
 		mode: "live", readOnly: false, working: false, workingSince: null, guest: null, history: null,
 		inputHistory: [], queue: [], sendingNow: [], strandedImages: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, error: null,
@@ -522,6 +539,58 @@ it.each(["Approve and run", "Approve and compact first"] as const)("holds %s dri
 	expect(screenActivity.has(scope, "drive")).toBe(true);
 	await act(async () => update(withoutReview()));
 	expect(screenActivity.has(scope, "drive")).toBe(false);
+});
+
+it.each([
+	["execute", "Approve and run", false],
+	["compact", "Approve and compact first", false],
+	["keep", "Approve and keep context", true],
+] as const)("accepts delivered %s approval when the card unmounts before review removal", async (action, label, useMenu) => {
+	snapshot = planSnapshot(`plan-review-${action}`, "18.22.0");
+	view = { ...view, host: { ...view.host!, tspAvailability: snapshot.availability } };
+	await render();
+	const scope = snapshot;
+	const write = Promise.withResolvers<undefined>();
+	invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : write.promise);
+	if (useMenu) await menu();
+	await click(label);
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	await act(async () => write.resolve(undefined));
+	view = { ...view, readOnly: true };
+	await act(async () => root.render(null));
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	expect(await toastMessages()).toBe("");
+});
+
+it("reports a rejected plan choice write and releases its activity hold", async () => {
+	await render();
+	const scope = snapshot;
+	const write = Promise.withResolvers<undefined>();
+	invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : write.promise);
+	await click("Approve and run");
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	await act(async () => write.reject(new Error("Plan choice refused")));
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	expect(await toastMessages()).toContain("Plan choice refused");
+});
+
+it.each([
+	["refine", "Refine with a comment"],
+	["discard", "Discard plan"],
+] as const)("keeps %s pending when the card unmounts before review removal", async (_action, label) => {
+	await render();
+	const scope = snapshot;
+	const write = Promise.withResolvers<undefined>();
+	invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : write.promise);
+	await menu();
+	await click(label);
+	expect(screenActivity.has(scope, "drive")).toBe(true);
+	await act(async () => write.resolve(undefined));
+	await act(async () => root.render(null));
+	expect(screenActivity.has(scope, "drive")).toBe(false);
+	expect(useComposerDrafts.getState().drafts["plan-test"]).toBeUndefined();
+	expect(mocks.exit).not.toHaveBeenCalled();
+	expect(await toastMessages()).toContain("The plan review view closed.");
 });
 
 it.each(["write failure", "epoch change", "unmount"] as const)("releases a tier write drive on %s", async end => {

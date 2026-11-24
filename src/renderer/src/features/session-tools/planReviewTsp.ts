@@ -62,13 +62,20 @@ export function useTspPlanReview(session: SessionController | null) {
 		const event = closes ? live.cancelId ? { ev: "action" as const, sf: live.sf, id: live.cancelId, act: TSP_ACTIONS.cancel } : null : planChoice(live, action);
 		// Save (omp 18.22.0) keeps the review open under omp's own "Save plan" prompt. The card answers the recorded
 		// prompt; any other covering prompt opens in the omp screen.
+		const approval = action === "execute" || action === "compact" || action === "keep";
 		const keepsReview = action === "saveCopy";
 		let handoff = false;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		const release = screenActivity.hold(next, action === "save" ? "request" : "drive");
 		let off = () => {};
 		let offSession = () => {};
-		const cancel = () => { release(); off(); offSession(); pending.current.delete(cancel); reject(new Error("The plan review view closed.")); };
+		// An accepted approval can start omp's next context before the review leaves the document.
+		let delivered = false;
+		const cancel = () => {
+			release(); off(); offSession(); pending.current.delete(cancel);
+			if (delivered && approval) resolve();
+			else reject(new Error("The plan review view closed."));
+		};
 		const check = () => {
 			try {
 				const latest = assertCurrent();
@@ -87,11 +94,11 @@ export function useTspPlanReview(session: SessionController | null) {
 		try {
 			const write = event ? window.vomp.invoke("host:tsp-event", next.hostId, next.generation, event, next.epoch)
 				: window.vomp.invoke("host:keys", next.hostId, "escape", next.generation, next.epoch);
+			void write.then(() => { delivered = true; }, () => {});
 			check();
 			await Promise.all([write, promise]);
-			const latest = assertCurrent();
 			// Queue only after the physical review has left, or once an unrecognized prompt covers it; the watcher owns the post-layout opening.
-			if ((action === "save" || handoff) && session) openRequestedScreen(session, latest);
+			if ((action === "save" || handoff) && session) openRequestedScreen(session, assertCurrent());
 		} finally { release(); off(); offSession(); pending.current.delete(cancel); }
 	};
 	/**

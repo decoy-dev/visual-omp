@@ -8,6 +8,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - **Improved:** The first-launch tour has a stop for the command palette and says what Tasks, Changes and Outputs show.
 - **Fixed:** The app's version stays in the sidebar's header when the sidebar is narrower than its default width.
+- **Fixed:** Approving a plan no longer shows the error "The plan review view closed." after omp has accepted the plan.
 
 ### Detailed changes
 
@@ -19,6 +20,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### Fixed
 
 - On macOS at the default text size, the sidebar header showed the app version only when the sidebar was at its default 264px width or wider. A narrower sidebar now drops the word "visual-omp" instead and keeps the version beside the periscope mark.
+- With omp 19.1, approving a plan could show the error "The plan review view closed." although omp had accepted the plan and started on it. omp can start its next context before it removes the plan review, and the app read that as the review closing before omp answered. Once omp has received an approval, the card now treats the review closing as success.
 
 ## [0.8.6] - 2026-11-23
 
