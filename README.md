@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  visual-omp runs the <a href="https://github.com/can1357/oh-my-pi">omp</a> you already use and shows its chats, plans, helpers and changes in one window.
+  visual-omp runs the <a href="https://github.com/can1357/oh-my-pi">omp</a> you already use and puts every chat in one window, with each chat's status in the sidebar and its files, pages and helpers beside it.
 </p>
 
 <p align="center">
@@ -27,12 +27,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/hero-still.webp">
-    <img src="docs/images/hero.webp" width="1440" alt="A message asks omp to compare three carriers in a rates file. omp reads the file, and its reply streams in with a table of prices by parcel weight and a line chart drawn beneath the table.">
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/glance-still.webp">
+    <img src="docs/images/glance.webp" width="1440" alt="Four chats in three color-coded projects work at once. While a new chat adds request logging, the sidebar shows the others working, one helper chat running its helpers, a troubleshooting page finishing with a new result mark, and a tags chat waiting for an answer. The tags question is answered from its card, and the finished request logging chat opens from the top of the list.">
   </picture>
 </p>
 
-<p align="center"><sub>omp reads the rate file, then its reply arrives with a table and the chart visual-omp draws from it.</sub></p>
+<p align="center"><sub>Four chats in three projects work at once. One stops to ask a question, and the others finish with a result mark that moves them to the top of Current chats.</sub></p>
 
 > [!NOTE]
 > The recordings on this page come from a development build made after visual-omp 0.8.6, using demo projects. A scripted demo model writes omp's replies, and omp runs every tool call in those projects. Some recordings speed up typing, waits and reply text, so they do not show a model's speed.
@@ -40,15 +40,6 @@
 ## Your own omp
 
 visual-omp starts the omp you installed in a hidden terminal on your computer and shows omp's own screen, so each chat uses your sign-ins, settings, extensions and saved sessions.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/own-omp-still.webp">
-    <img src="docs/images/own-omp.webp" width="1440" alt="Typing a slash in the message box lists omp's commands. Choosing /extensions opens omp's Extension Control Center inside the chat, where the list scrolls and a source filter changes before the screen closes.">
-  </picture>
-</p>
-
-<p align="center"><sub><code>/extensions</code> opens omp's Extension Control Center in the chat, drawn from what omp sends.</sub></p>
 
 - Slash commands go to omp as you type them. Commands with an app screen open that screen, and omp menus without one, such as `/extensions`, open in the omp screen.
 - Sessions you start in a terminal appear in the sidebar. On macOS you can follow one while the terminal works and continue it in the app once the terminal releases it.
@@ -72,35 +63,24 @@ visual-omp uses these omp mechanisms:
 
 ## Features
 
-### Tool steps and bash details
+### Every chat in one window
 
-Tool calls fold into a short list of steps. Open a bash step to see each command's state, the values it set and how long it took, then replay the run one event at a time.
+Each chat runs its own omp, and Current chats lists them all with their status. A spinner means omp is working, a pulsing robot means only its helpers are still working, a question mark means omp is waiting for your answer, and double check marks with a bold title mark a result you haven't opened yet. Chats with unopened results move to the top of the list. Give each project one of seven colors, and its folder and chat rows show that color.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/tools-still.webp">
-    <img src="docs/images/tools.webp" width="1440" alt="omp times each test file. Opening its bash step shows the Pseudo view of the loop with recorded values and durations, the output names the slowest file, and Replay opens its event controls.">
-  </picture>
-</p>
-
-<p align="center"><sub>omp times the test files, and the Pseudo view shows the loop, the values it recorded and each step's duration.</sub></p>
-
-### Plan review
-
-In plan mode, omp writes a plan and waits for you. Read it in the side panel, then approve it, compact the chat first or send a comment back from the card in the chat.
+The Dock icon on macOS and the taskbar button on Windows show how many chats have unopened results. With **Alert me in the background** on in Settings → Sounds & alerts, a chat that finishes or asks a question while the window is in the background also bounces the Dock icon once on macOS. On Windows it flashes the taskbar button and sends a notification, which plays a sound if your Windows notification settings allow it. <kbd>⌘K</kbd> (<kbd>Ctrl</kbd> + <kbd>K</kbd> on Windows) searches commands by what they do, and Open side by side shows two chats together.
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/plan-still.webp">
-    <img src="docs/images/plan.webp" width="1440" alt="A plan-mode message asks for a free-shipping threshold. omp drafts the plan, which appears in the side panel with goal, steps and out-of-scope sections, and choosing Approve and run on the review card starts the edits.">
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/chats-still.webp">
+    <img src="docs/images/chats.webp" width="1440" alt="The command palette opens a second chat side by side. Each chat gets a follow-up, both reply, and the Outputs pane previews the Markdown page that one of them wrote.">
   </picture>
 </p>
 
-<p align="center"><sub>omp drafts the free-shipping plan, and Approve and run starts the work in the same chat.</sub></p>
+<p align="center"><sub>Two chats in different projects work on follow-ups, and Outputs previews the page one of them adds.</sub></p>
 
 ### Helpers
 
-When omp hands work to helpers (subagents), each one gets a card in the chat that shows what it is doing. Open a helper to read its conversation while it runs, and use the Tasks pane for every helper's token count next to omp's todo list and background jobs.
+When omp hands work to helpers (subagents), each one gets a card in the chat that shows what it is doing and updates as it works. Open a helper to read its conversation while it runs, and use the Tasks pane for every helper's token count next to omp's todo list and background jobs. While only helpers are still working, the chat's row in the sidebar shows a pulsing robot.
 
 <p align="center">
   <picture>
@@ -111,18 +91,18 @@ When omp hands work to helpers (subagents), each one gets a card in the chat tha
 
 <p align="center"><sub>Three helpers check one package each, and omp collects their findings into one table.</sub></p>
 
-### Question cards
+### Files, PDFs and web pages
 
-When omp asks several questions, the card shows one at a time. Previous question and Next question keep your answers, and Send answers delivers them all together.
+Images, PDFs, video and audio open in the side panel, from the Files pane or from the Outputs pane, which lists the files omp saves as it works. Saved HTML files open as pages. A link to a local server opens in the chat's Preview pane, a built-in browser for dev servers, from the link's right-click menu.
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/questions-still.webp">
-    <img src="docs/images/questions.webp" width="1440" alt="omp asks three questions about a release workflow, one at a time. A tag pattern is chosen, two publishing targets are checked, the release notes source is chosen, and Send answers sends all three to omp.">
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/files-still.webp">
+    <img src="docs/images/files.webp" width="1440" alt="A message asks omp to export the spring sale page as a PDF flyer and a PNG preview and to serve it. omp runs headless Chrome and a local server, the Outputs pane shows the PNG and then the PDF, and Open in Preview pane from the link's menu loads the served page beside the chat.">
   </picture>
 </p>
 
-<p align="center"><sub>Three questions about a release workflow: which tags start a release, where it publishes and where its notes come from.</sub></p>
+<p align="center"><sub>omp exports the spring sale page to a PDF and a PNG with headless Chrome, and the page it serves opens in the Preview pane.</sub></p>
 
 ### Live outputs
 
@@ -137,6 +117,49 @@ The Outputs pane previews HTML, Markdown, CSV, SVG and Mermaid as omp writes the
 
 <p align="center"><sub>omp writes the stylesheet first, and the preview updates as omp writes the page.</sub></p>
 
+### Themes and settings
+
+Appearance offers six color themes, each in light and dark, and each one recolors the whole window. Settings also covers omp's providers, model roles, permissions, helpers, MCP servers, skills and memory, and it saves changes to omp's own settings. **Models & roles** assigns models to jobs such as chat, planning and commits, and provider sign-in opens omp's own sign-in inside the app, including when a token expires.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/settings-still.webp">
+    <img src="docs/images/settings.webp" width="1440" alt="In Settings, Appearance, choosing the Ocean, Plum and Ember color themes recolors the whole window. The dark theme follows, and the window returns to Teal in light mode.">
+  </picture>
+</p>
+
+<p align="center"><sub>Each color theme recolors the whole window, in light and dark.</sub></p>
+
+### Usage and app resources
+
+The status bar shows plan usage for the providers your chats use, such as Claude's 5-hour window, next to the CPU and RAM that visual-omp itself is using. **Usage & limits** adds each provider's plan limits and the usage recorded in omp's session files, by day and by chat.
+
+### Plan review
+
+In plan mode, omp writes a plan and waits for you. Read it in the side panel, then approve it, compact the chat first or send a comment back from the card in the chat.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/plan-still.webp">
+    <img src="docs/images/plan.webp" width="1440" alt="A plan-mode message asks for a free-shipping threshold. omp drafts the plan, which appears in the side panel with goal, steps and out-of-scope sections, and choosing Approve and run on the review card starts the edits.">
+  </picture>
+</p>
+
+<p align="center"><sub>omp drafts the free-shipping plan, and Approve and run starts the work in the same chat.</sub></p>
+
+### Question cards
+
+When omp asks several questions, the card shows one at a time. Previous question and Next question keep your answers, and Send answers delivers them all together.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/questions-still.webp">
+    <img src="docs/images/questions.webp" width="1440" alt="omp asks three questions about a release workflow, one at a time. A tag pattern is chosen, two publishing targets are checked, the release notes source is chosen, and Send answers sends all three to omp.">
+  </picture>
+</p>
+
+<p align="center"><sub>Three questions about a release workflow: which tags start a release, where it publishes and where its notes come from.</sub></p>
+
 ### Changes and line comments
 
 The Changes pane shows uncommitted diffs and commit history. Comment on a line to send it to omp, then commit with a generated message, open a pull request and check CI.
@@ -150,31 +173,18 @@ The Changes pane shows uncommitted diffs and commit history. Comment on a line t
 
 <p align="center"><sub>A line comment goes to omp, which moves the threshold into <code>data/store.json</code> and reruns the tests.</sub></p>
 
-### Several chats and the command palette
+### Tool steps and bash details
 
-Current chats lists every open chat, marked with its project's color when the project has one. <kbd>⌘K</kbd> (<kbd>Ctrl</kbd> + <kbd>K</kbd> on Windows) searches commands by what they do, and Open side by side shows two chats together.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/chats-still.webp">
-    <img src="docs/images/chats.webp" width="1440" alt="The command palette opens a second chat side by side. Each chat gets a follow-up, both reply, and the Outputs pane previews the Markdown page that one of them wrote.">
-  </picture>
-</p>
-
-<p align="center"><sub>Two chats in different projects work on follow-ups, and Outputs previews the page one of them adds.</sub></p>
-
-### Settings
-
-Settings covers omp's providers, model roles, permissions, helpers, MCP servers, skills and memory, and it saves changes to omp's own settings. **Models & roles** assigns models to jobs such as chat, planning and commits, and provider sign-in opens omp's own sign-in inside the app, including when a token expires. Appearance offers six color themes in light and dark.
+Tool calls fold into a short list of steps. Open a bash step to see each command's state, the values it set and how long it took, then replay the run one event at a time. Browser steps show the page omp opened and the screenshots it took, including tabs in your own Chrome when omp uses its browser relay.
 
 <p align="center">
   <picture>
-    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/settings-still.webp">
-    <img src="docs/images/settings.webp" width="1440" alt="In Settings, Appearance, choosing the Ocean, Plum and Ember color themes recolors the whole window. The dark theme follows, and the window returns to Teal in light mode.">
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/tools-still.webp">
+    <img src="docs/images/tools.webp" width="1440" alt="omp times each test file. Opening its bash step shows the Pseudo view of the loop with recorded values and durations, the output names the slowest file, and Replay opens its event controls.">
   </picture>
 </p>
 
-<p align="center"><sub>Each color theme recolors the whole window, in light and dark.</sub></p>
+<p align="center"><sub>omp times the test files, and the Pseudo view shows the loop, the values it recorded and each step's duration.</sub></p>
 
 ### Phone sharing
 
@@ -192,7 +202,7 @@ The computer stays awake while sharing, though closing its lid can still put it 
 | Area | What's included |
 | --- | --- |
 | **Projects** | Start a chat in any folder, create a folder or clone a repository, and sort or group the sidebar |
-| **Transcript** | SVG and Mermaid diagrams, with Normal, Thinking and Verbose views of omp's work |
+| **Transcript** | SVG and Mermaid diagrams, charts drawn from tables in omp's replies, and Normal, Thinking and Verbose views of omp's work |
 | **Modes** | Plan, Goal, Vibe and Loop modes and the Advisor, from the chat's ⋯ menu or the command palette |
 | **omp features** | MCP servers, skills and plugins, memory, usage and cost, live collaboration, Claude Code and Codex imports, the session tree, the security scan and `omp cleanse` |
 | **Accessibility** | Text size, reduced motion, light and dark themes, keyboard commands, screen-reader labels, the first-launch tour and Help's glossary |
