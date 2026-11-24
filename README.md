@@ -118,7 +118,7 @@ When omp asks several questions, the card shows one at a time. Previous question
 <p align="center">
   <picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/questions-still.webp">
-    <img src="docs/images/questions.webp" width="960" alt="omp asks three questions about a release workflow, one at a time. A tag pattern is chosen, two publishing targets are checked, the release notes source is chosen, and Send answers sends all three to omp.">
+    <img src="docs/images/questions.webp" width="1440" alt="omp asks three questions about a release workflow, one at a time. A tag pattern is chosen, two publishing targets are checked, the release notes source is chosen, and Send answers sends all three to omp.">
   </picture>
 </p>
 
