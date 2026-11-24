@@ -21,6 +21,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - On macOS at the default text size, the sidebar header showed the app version only when the sidebar was at its default 264px width or wider. A narrower sidebar now drops the word "visual-omp" instead and keeps the version beside the periscope mark.
 - With omp 19.1, approving a plan could show the error "The plan review view closed." although omp had accepted the plan and started on it. omp can start its next context before it removes the plan review, and the app read that as the review closing before omp answered. Once omp has received an approval, the card now treats the review closing as success.
+- Help's glossary said that only macOS and Linux chats use the omp screen and that Windows chats keep omp's terminal. Its TUI and omp screen entries now describe the omp screen on every platform and say that Classic omp terminal in Settings > Advanced shows omp's terminal in new chats instead.
 
 ## [0.8.6] - 2026-11-23
 
