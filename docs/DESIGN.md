@@ -608,7 +608,7 @@ Fresh app preferences set `setupCompleted: false`. An existing preferences file 
 
 The full wizard presents these steps in order:
 
-1. **Welcome** explains that setup connects a provider and chooses the app's initial settings.
+1. **Welcome** says that visual-omp runs omp on the computer and keeps using an existing installation's sign-ins, settings and saved sessions, and that setup connects a provider and chooses the app's initial settings.
 2. **Install or update omp** appears only when omp is missing, unsupported or refused. It reuses the existing installer IPC and update dialog, with the states below. A supported omp skips this step.
 3. **Providers** uses omp's provider discovery and `omp login` in an inline terminal. The app stores no credentials itself. [Skip] remains available until a provider is connected, then changes to [Continue].
 4. **Default chat model** saves the selected model to omp's global chat default, so it applies outside the current project.
@@ -631,17 +631,18 @@ The install step retains the existing recovery behavior:
 
 ### 4.2 First-run guided tour
 
-The tour runs after setup has completed and a supported omp is available. Its automatic start waits 800ms and remains blocked while setup is open or needed. Five steps spotlight their targets: the scrim is `--backdrop` with an 8px-padded cutout (radius 12) and a `--ring` outline, and it glides between targets on the gentle spring.
+The tour runs after setup has completed and a supported omp is available. Its automatic start waits 800ms and remains blocked while setup is open or needed. Six steps spotlight their targets: the scrim is `--backdrop` with an 8px-padded cutout (radius 12) and a `--ring` outline, and it glides between targets on the gentle spring.
 
 - **Card**: 320px, `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, placed beside the target. Title `--text-base` semibold, body `--text-md` `--fg-muted`.
-- **Footer**: [Skip tour], step dots (screen readers hear "Step N of 5"), and [Show next step →], which becomes [Start chatting] on the last step. Content slides in the direction of travel.
+- **Footer**: step dots (screen readers hear "Step N of 6") above a row with [Skip tour] and [Show next step →], which becomes [Start chatting] on the last step. The dots have their own row so both buttons keep the card's full width at large text sizes. Content slides in the direction of travel.
 - **Keys**: Esc finishes, → and ← step, and focus stays in the card.
 - **Steps**:
-  1. **Projects and chats**: "The sidebar lists your projects and chats. Each request becomes a chat you can return to."
-  2. **Say what you want**: "Type what you want in plain words and press Enter to send. Commands are optional shortcuts."
+  1. **Projects and chats**: "The sidebar lists your projects and chats, and it also lists chats you had with omp in a terminal. Open any of them to continue where it left off."
+  2. **Say what you want**: "Type what you want in plain words and press Enter to send. When omp asks a question or wants a plan approved, you answer it on a card in the chat."
   3. **How much omp does on its own**: "This setting controls how much omp does before asking you. Auto lets omp edit files and run commands without approval, so commit or back up your work before you use it."
-  4. **Watch the work**: "This panel shows changes, files, previews, outputs, running helpers, the plan and a terminal. Choose one from the menu at the top of the panel." The side panel opens for this step and closes again afterwards.
-  5. **Project and usage status**: "The status bar shows git information, available plan usage and omp status. Open Usage & limits for estimated API cost."
+  4. **Find any command**: "Press ⌘K to search commands by what they do, such as Plan mode, Restart omp or Share chat. Slash commands typed in the message box go to omp as they would in the terminal." It points at Search commands in the title bar, and Windows and Linux show Ctrl+K.
+  5. **Watch the work**: "Tasks shows omp's to-do list and its helpers while they work. Changes shows diffs you can comment on and commit. Outputs previews pages, PDFs, images and videos while omp writes them. Choose these and other views from the menu at the top of the panel." In a chat, the side panel opens for this step and closes again afterwards, unless it was already open. Home and pages never show the panel, and a narrow window may not, so when the panel is not visible the card is centered and reads: "In a chat, the side panel shows the work. Tasks shows omp's to-do list and its helpers while they work. Changes shows diffs you can comment on and commit. Outputs previews pages, PDFs, images and videos while omp writes them. Open it with the Side panel button in the chat's header."
+  6. **Project and usage status**: "The status bar shows git information, available plan usage and omp status. Open Usage & limits for estimated API cost."
 - The tour can be replayed from Help → [Take the tour]. [Run setup again] in Help or the command palette reopens setup separately.
 
 ### 4.3 Project overview

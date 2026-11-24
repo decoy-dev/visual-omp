@@ -6,9 +6,15 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Highlights
 
+- **Improved:** The first-launch tour has a stop for the command palette and says what Tasks, Changes and Outputs show.
 - **Fixed:** The app's version stays in the sidebar's header when the sidebar is narrower than its default width.
 
 ### Detailed changes
+
+#### Improved
+
+- The first-launch tour has six stops. A new stop points at Search commands and says that ⌘K (Ctrl+K on Windows and Linux) searches commands by what they do. The side panel stop now says what Tasks, Changes and Outputs show, and on Home, where no side panel is shown, it says to open the panel from a chat's header. The sidebar stop says that chats from omp in a terminal appear there too, and the message box stop says that omp's questions and plans for approval are answered on cards in the chat. The step dots moved above the buttons so both buttons fit at large text sizes.
+- Setup's welcome screen says that visual-omp runs omp on your computer and keeps using an existing installation's sign-ins, settings and saved sessions.
 
 #### Fixed
 

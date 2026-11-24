@@ -1,6 +1,6 @@
 /**
- * First-run guided tour (DESIGN §4.2): a 5-step spotlight over shell regions that carry
- * `data-tour="sidebar|composer|permission|dock|statusbar"`. A step whose element isn't on screen
+ * First-run guided tour (DESIGN §4.2): a 6-step spotlight over shell regions that carry
+ * `data-tour="sidebar|composer|permission|palette|dock|statusbar"`. A step whose element isn't on screen
  * (e.g. no chat open yet, so no composer) shows its card centered over the dimmed window.
  */
 import { ArrowRight } from "@phosphor-icons/react";
@@ -9,12 +9,12 @@ import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import { peekDock, useApp } from "../../state/app";
+import { peekDock, useApp, useDockVisible } from "../../state/app";
 import { useLeaveConfirm } from "../../state/leaveGuard";
 import { Button, PresenceSwap, StepDots, spring } from "../../ui";
 import { needsSetup, useSetup } from "./setup";
 
-const STEPS = ["sidebar", "composer", "permission", "dock", "statusbar"] as const;
+const STEPS = ["sidebar", "composer", "permission", "palette", "dock", "statusbar"] as const;
 type StepId = (typeof STEPS)[number];
 type Side = "right" | "left" | "above" | "below";
 
@@ -23,6 +23,7 @@ const PLACEMENT: Record<StepId, readonly Side[]> = {
 	sidebar: ["right", "below", "above"],
 	composer: ["above", "below", "right"],
 	permission: ["above", "right", "below"],
+	palette: ["below", "right", "left"],
 	dock: ["left", "below", "above"],
 	statusbar: ["above", "below"],
 };
@@ -203,8 +204,11 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 	}, [step]);
 
 	// The dock is usually closed on first launch; open it for its step and close it again afterwards, in the chat or
-	// overview it opened in (`peekDock`).
-	useEffect(() => (id === "dock" ? peekDock() : undefined), [id]);
+	// overview it opened in (`peekDock`). A layout effect, so a chat never paints the step's no-panel wording first.
+	useLayoutEffect(() => (id === "dock" ? peekDock() : undefined), [id]);
+	// Home and pages never show the panel (and a narrow window may not): the step then says where to find it.
+	const dockShown = useDockVisible();
+	const body = id === "dock" && !dockShown ? "tour.steps.dock.bodyHidden" : `tour.steps.${id}.body`;
 
 	// Keep focus inside the tour: return it to the card if something outside grabs it.
 	useEffect(() => {
@@ -286,15 +290,16 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 							{t(`tour.steps.${id}.title`)}
 						</h2>
 						<p id={bodyId} className="mt-1.5 text-md text-fg-muted">
-							{t(`tour.steps.${id}.body`)}
+							{t(body, { key: window.vomp.platform === "darwin" ? "⌘K" : "Ctrl+K" })}
 						</p>
 					</PresenceSwap>
 				</div>
-				<div className="mt-4 flex items-center gap-3">
+				{/* Progress sits above the actions, so Skip and Next keep the card's full width at large text sizes. */}
+				<StepDots total={STEPS.length} current={step} className="mt-4" />
+				<div className="mt-3 flex items-center justify-between gap-3">
 					<Button variant="ghost" size="sm" onClick={finish} className="-ml-2">
 						{t("tour.skip")}
 					</Button>
-					<StepDots total={STEPS.length} current={step} className="mx-auto" />
 					<Button ref={next} variant="primary" size="sm" iconRight={<ArrowRight aria-hidden />} onClick={advance}>
 						{last ? t("tour.finish") : t("tour.next")}
 					</Button>

@@ -52,6 +52,7 @@ export function TitleBar(): ReactNode {
 				<button
 					type="button"
 					aria-haspopup="dialog"
+					data-tour="palette"
 					aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
 					className="no-drag flex h-7 w-72 min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-inset px-2 text-md text-fg-muted outline-none hover:border-border-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
 					onClick={() => useApp.getState().setPaletteOpen(true)}

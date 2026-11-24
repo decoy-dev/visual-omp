@@ -18,7 +18,7 @@
 		},
 		"welcome": {
 			"title": "Welcome to visual-omp",
-			"body": "Connect your providers and choose how omp works in your chats."
+			"body": "visual-omp runs omp on your computer. If omp is already installed, visual-omp keeps using its sign-ins, settings and saved sessions. Connect your providers and choose how omp works in your chats."
 		},
 		"providers": {
 			"title": "Sign in to your providers",
@@ -140,19 +140,24 @@
 		"steps": {
 			"sidebar": {
 				"title": "Projects and chats",
-				"body": "The sidebar lists your projects and chats. Each request becomes a chat you can return to."
+				"body": "The sidebar lists your projects and chats, and it also lists chats you had with omp in a terminal. Open any of them to continue where it left off."
 			},
 			"composer": {
 				"title": "Say what you want",
-				"body": "Type what you want in plain words and press Enter to send. Commands are optional shortcuts."
+				"body": "Type what you want in plain words and press Enter to send. When omp asks a question or wants a plan approved, you answer it on a card in the chat."
 			},
 			"permission": {
 				"title": "How much omp does on its own",
 				"body": "This setting controls how much omp does before asking you. Auto lets omp edit files and run commands without approval, so commit or back up your work before you use it."
 			},
+			"palette": {
+				"title": "Find any command",
+				"body": "Press {{key}} to search commands by what they do, such as Plan mode, Restart omp or Share chat. Slash commands typed in the message box go to omp as they would in the terminal."
+			},
 			"dock": {
 				"title": "Watch the work",
-				"body": "This panel shows changes, files, previews, outputs, running helpers, the plan and a terminal. Choose one from the menu at the top of the panel."
+				"body": "Tasks shows omp's to-do list and its helpers while they work. Changes shows diffs you can comment on and commit. Outputs previews pages, PDFs, images and videos while omp writes them. Choose these and other views from the menu at the top of the panel.",
+				"bodyHidden": "In a chat, the side panel shows the work. Tasks shows omp's to-do list and its helpers while they work. Changes shows diffs you can comment on and commit. Outputs previews pages, PDFs, images and videos while omp writes them. Open it with the Side panel button in the chat's header."
 			},
 			"statusbar": {
 				"title": "Project and usage status",
