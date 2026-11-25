@@ -4,6 +4,31 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-11-25
+
+visual-omp 0.8.9 adds support for omp 19.2.0 and 19.2.1, fixes message sending with omp 19.2, removes automatic omp updates and gates in-app omp updates on supported versions. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Changed:** **In-app omp updates track visual-omp support.** visual-omp now offers and runs in-app omp updates only up to the newest omp version this release supports (omp 19.2.1).
+- **Fixed:** **Sending messages works with omp 19.2 again.** Lazily loading optional omp extension modules prevents `omp did not arm its input observation` errors when omp changes internal `@oh-my-pi/pi-tui` subpaths.
+- **Removed:** Automatic omp update switches were removed from Settings > General, first-run setup and update notices, and app-hosted chats prevent omp from auto-updating in the background.
+
+### Detailed changes
+
+#### Changed
+
+- Support for omp 19.2.0 and 19.2.1 across native theme and keyword extensions, Plan Review dock controls, multi-select ask questions, settled `/cleanse` and `/omfg` command panels, shell visualization workers, TSP wire additions (`annotate`, `outside`, `TspPicture`, `btw-blur`, `omp.prefs.search`), longer `--config` poll reload waits, and persisted model fallback reasons.
+- In-app omp update checks and **Update omp** runs are gated at the newest omp version verified for this visual-omp release (currently omp 19.2.1). When a newer upstream omp release is out, About and setup report that visual-omp needs an update first without starting `omp update`, while users who update omp themselves from a terminal can still run visual-omp.
+
+#### Fixed
+
+- Fixes message submission failing on omp 19.2.0 and 19.2.1 with `omp did not arm its input observation` by resolving optional `@oh-my-pi/*` theme and keyword modules lazily instead of failing extension load when omp removes or moves a `@oh-my-pi/pi-tui` subpath.
+
+#### Removed
+
+- Removed **Update omp automatically** from Settings > General and first-run setup, and removed **Turn off automatic updates** from the installed-engine notice. App-hosted chats also set `update.auto: false` in the per-session config overlay so omp never updates itself behind visual-omp's back while keeping your global omp configuration untouched for terminal use.
+
 ## [0.8.8] - 2026-11-24
 
 visual-omp 0.8.8 includes general security improvements and adds a crash-reporting switch during first-run setup. It requires omp 18.15.0 or later.
