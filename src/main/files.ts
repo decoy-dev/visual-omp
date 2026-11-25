@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, constants, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { access, constants, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { DirEntry } from "@shared/ipc";
 import { userEnv } from "./env";
@@ -20,12 +21,24 @@ export function readText(file: string): Promise<string> {
 	return readFile(file, "utf8");
 }
 
-/** Write atomically (temp file + rename) so editors and omp never see a half-written file. */
-export async function writeText(file: string, content: string): Promise<void> {
+/** Write atomically (unpredictable temp file + O_EXCL + optional mode + rename) so editors and omp never see a half-written file. */
+export async function writeText(file: string, content: string, options?: { mode?: number }): Promise<void> {
 	await mkdir(dirname(file), { recursive: true });
-	const tmp = `${file}.${process.pid}.tmp`;
-	await writeFile(tmp, content);
-	await rename(tmp, file);
+	const tmp = `${file}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+	const mode = options?.mode;
+	const handle = await open(tmp, "wx", mode ?? 0o666);
+	let closed = false;
+	try {
+		await handle.writeFile(content, "utf8");
+		if (mode !== undefined && process.platform !== "win32") await handle.chmod(mode);
+		closed = true;
+		await handle.close();
+		await rename(tmp, file);
+	} catch (error) {
+		if (!closed) await handle.close().catch(() => {});
+		await rm(tmp, { force: true }).catch(() => {});
+		throw error;
+	}
 }
 
 export function pathExists(path: string): Promise<boolean> {

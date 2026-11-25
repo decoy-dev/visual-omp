@@ -278,12 +278,13 @@ export class SessionHost {
 			const compactAt = await this.#compaction.initial(this.#options.resumeFile ? await resumeSessionId(this.#options.resumeFile) : null);
 			await writeFile(overlay, stringify(this.#overlayConfig(useTsp, compactAt)), { mode: 0o600 });
 			this.#update({ compactAt });
-			const debugPath =
-				process.platform === "win32" ? `\\\\.\\pipe\\visual-omp-${this.id}` : join(this.#privateDir, "tui.sock");
+			const debugPath = useTsp
+				? null
+				: process.platform === "win32" ? `\\\\.\\pipe\\visual-omp-${this.id}` : join(this.#privateDir, "tui.sock");
 			const args = ["--config", overlay, "--extension", this.#nativeBridge.extensionPath];
 			if (this.#options.resumeFile) args.push(this.#options.restore ? "--restore" : "--resume", this.#options.resumeFile);
 			args.push(...(this.#options.extraArgs ?? []));
-			const childEnv: NodeJS.ProcessEnv = { ...env, OMP_SKIP_SETUP: "1", OMP_TUI_DEBUG: debugPath };
+			const childEnv: NodeJS.ProcessEnv = { ...env, OMP_SKIP_SETUP: "1", ...(debugPath ? { OMP_TUI_DEBUG: debugPath } : {}) };
 			childEnv.VOMP_NATIVE_BRIDGE = this.#nativeBridge.url;
 			if (useTsp) {
 				this.#tspStartup = new StartupDiagnosticCapture();
@@ -356,7 +357,7 @@ export class SessionHost {
 				throw await ompStartError(error, bin);
 			}
 			writeDiagnostic({ event: "host-start", chatId: this.id, transport: useTsp ? "tsp" : "classic" });
-			this.#debug = new TuiDebugClient(debugPath, operation => this.#assertClassicRead(`debug:${operation}`));
+			this.#debug = debugPath ? new TuiDebugClient(debugPath, operation => this.#assertClassicRead(`debug:${operation}`)) : null;
 			this.#pty.onData(data => {
 				if (this.#tspStream) {
 					const bytes = typeof data === "string" ? Buffer.from(data) : data;
@@ -1686,7 +1687,7 @@ export class SessionHost {
 	}
 
 	async #pollFocus(): Promise<void> {
-		if (!this.#debug || this.state.phase === "exited" || this.#polling) return;
+		if (!this.#pty || (!this.#tsp && !this.#debug) || this.state.phase === "exited" || this.#polling) return;
 		this.#polling = true;
 		try {
 			if (this.#tsp) this.#tspAppearanceChanged();
@@ -1699,7 +1700,7 @@ export class SessionHost {
 					this.#update({ cwd: location.cwd, sessionFile, sessionId: location.sessionId });
 				}
 			}
-			if (!this.#tsp) {
+			if (!this.#tsp && this.#debug) {
 				const tui = await this.#debug.info().catch(() => null);
 				if (tui?.focused || (tui?.overlays ?? 0) > 0) this.#finishStartup();
 				if (JSON.stringify(tui) !== JSON.stringify(this.state.tui)) this.#update({ tui });

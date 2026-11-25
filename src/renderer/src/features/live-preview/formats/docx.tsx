@@ -92,10 +92,16 @@ export function Frame(props: LiveFrameProps) {
 					} else if (binary.reason === "incomplete" && goodRevision.current === null) {
 						const cached = props.officeCache?.read();
 						if (cached?.format === "docx" && cached.path === path && cached.revision <= frame.revision && host.current) {
-							const body = document.createElement("div"), styles = document.createElement("div");
-							body.innerHTML = cached.body; styles.innerHTML = cached.styles;
+							const inert = document.implementation.createHTMLDocument("");
+							const body = inert.createElement("div"), styles = inert.createElement("div");
+							body.innerHTML = cached.body;
+							for (const css of cached.styles) {
+								const style = inert.createElement("style");
+								style.textContent = css;
+								styles.append(style);
+							}
 							sanitizeOfficeDom(body, styles);
-							attachDocument(host.current, body, styles); goodRevision.current = cached.revision;
+							attachDocument(host.current, document.adoptNode(body), document.adoptNode(styles)); goodRevision.current = cached.revision;
 						}
 					}
 					if (binary.reason === "unsafe" || binary.reason === "tooLarge") props.onOfficeCheck?.(false);
@@ -110,13 +116,20 @@ export function Frame(props: LiveFrameProps) {
 				const render = async () => {
 					await prior;
 					if (!current) return;
-					const body = document.createElement("div"), styles = document.createElement("div");
+					const inert = document.implementation.createHTMLDocument("");
+					const body = inert.createElement("div"), styles = inert.createElement("div");
 					await renderAsync(clean.bytes, body, styles, { useBase64URL: true, renderAltChunks: false, experimental: false,
 						ignoreLastRenderedPageBreak: true, ignoreWidth: false, ignoreHeight: false, inWrapper: false });
 					sanitizeOfficeDom(body, styles, clean.links);
 					if (!current || !host.current || frame.revision > requestedRevision.current) return;
-					const snapshot = { format: "docx" as const, path, revision: frame.revision, body: body.innerHTML, styles: styles.innerHTML };
-					attachDocument(host.current, body, styles); goodRevision.current = frame.revision;
+					const snapshot = {
+						format: "docx" as const,
+						path,
+						revision: frame.revision,
+						body: body.innerHTML,
+						styles: Array.from(styles.querySelectorAll("style"), node => node.textContent ?? ""),
+					};
+					attachDocument(host.current, document.adoptNode(body), document.adoptNode(styles)); goodRevision.current = frame.revision;
 					props.officeCache?.write(snapshot); setFailure(null);
 					props.onOfficeCheck?.(true);
 				};

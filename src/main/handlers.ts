@@ -24,6 +24,7 @@ import { visualProofsReady } from "./features/skills";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 import { contextImageBytes } from "./services/contextImages";
 import { openFile, showItem } from "./fileActions";
+import { fetchRemoteImage } from "./services/remote-image";
 import { writeDiagnostic } from "./services/diagnostics/events";
 import { runDiagnosticTest } from "./services/diagnostics/testing";
 import { readReleaseTour } from "./services/release-tour";
@@ -65,6 +66,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	});
 	handle("app:showItem", showItem);
 	handle("app:openFile", openFile);
+	handle("app:fetchRemoteImage", url => fetchRemoteImage(url));
 	handle("app:openLogs", async () => {
 		const folder = join(app.getPath("userData"), "logs");
 		await mkdir(folder, { recursive: true });

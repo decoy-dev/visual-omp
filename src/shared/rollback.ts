@@ -10,7 +10,6 @@ export function eligibleRollbackReleases(
 	if (!status || !install || install.method === "manual") return [];
 	const current = parseSemver(status.currentVersion);
 	if (!current) return [];
-	const managed = install.method === "brew" || install.method === "scoop";
 	const selected = target?.replace(/^v/, "");
 	return (status.releases ?? []).filter(release => {
 		const version = release.version.replace(/^v/, "");
@@ -19,7 +18,7 @@ export function eligibleRollbackReleases(
 			&& compareSemver(version, status.currentVersion) < 0
 			&& (selected === undefined || version === selected)
 			&& !!release.platformAsset
-			&& (!managed || /^sha256:[a-f0-9]{64}$/i.test(release.platformAsset.digest ?? ""));
+			&& /^sha256:[a-f0-9]{64}$/i.test(release.platformAsset.digest ?? "");
 	}).map(release => ({ ...release, version: release.version.replace(/^v/, "") }))
 		.sort((a, b) => compareSemver(b.version, a.version));
 }

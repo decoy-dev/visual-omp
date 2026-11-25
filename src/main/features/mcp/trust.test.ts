@@ -92,13 +92,37 @@ describe.each(["native", "win32"] as const)("MCP main-enforced per-invocation au
 	it("resolves only the explicitly authorized project's server after the native decision", async () => {
 		fake.prompt.mockImplementation(async options => {
 			expect(options).toMatchObject({ message: "chosen (This project)", defaultId: 0 });
-			expect(options.detail).toContain(`Folder: ${fake.paths.project}`); expect(options.detail).toContain("https://chosen.example/mcp");
+			expect(options.detail).toContain(`Folder: ${fake.paths.project}`);
+			expect(options.detail).toContain("https://chosen.example/mcp");
+			expect(options.detail).toContain("Headers: Authorization, Extra");
+			expect(options.detail).toContain("Files read: ./chosen-secret");
 			expect(fake.reads).not.toContain(fake.paths.chosenSecret); expect(fake.test).not.toHaveBeenCalled();
 			return { response: 1 };
 		});
 		await call("mcp:test", {}, { cwd: fake.paths.project, serverId: `${fake.paths.openCode}#chosen` });
 		expect(fake.test).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ headers: { Authorization: "fixture-secret", Extra: "chosen fixture" } }), cwd: fake.paths.project }));
 		expect(fake.reads).toContain(fake.paths.chosenSecret); expect(fake.reads).not.toContain(fake.paths.siblingSecret);
+	});
+
+	it("surfaces working folder, environment variables, and value commands in the confirmation prompt", async () => {
+		const otherCwd = resolve(fake.windowsPaths ? "C:\\fixtures\\other" : "/fixtures/other");
+		await expect(
+			call(
+				"mcp:test",
+				{
+					command: "node",
+					cwd: otherCwd,
+					env: { API_TOKEN: "!op read op://dev/token", PLAIN: "1" },
+					headers: { X_AUTH: "!gh auth token" },
+				},
+				{ cwd: fake.paths.project, serverName: "Configured server" },
+			),
+		).resolves.toMatchObject({ ok: true });
+		const detail = fake.prompt.mock.calls[0]?.[0].detail as string;
+		expect(detail).toContain(`Working folder: ${otherCwd}`);
+		expect(detail).toContain("Headers: X_AUTH");
+		expect(detail).toContain("Environment: API_TOKEN, PLAIN");
+		expect(detail).toContain("Value commands: op read op://dev/token, gh auth token");
 	});
 
 	it("requires native permission for an unsaved editor configuration too", async () => {

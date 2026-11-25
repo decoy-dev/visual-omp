@@ -126,7 +126,7 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 						<PresenceSwap swapKey={past?.version ?? "empty"}>
 							{past ? <ReleaseEntry entry={past} installed={past.version === currentVersion} /> : <p className="py-card text-fg-muted">{t(currentVersion ? "update.notes.empty" : "update.notes.loading")}</p>}
 						</PresenceSwap>
-						{managed && publishedPast?.platformAsset && !eligible && currentVersion && past && compareSemver(past.version, currentVersion) < 0 && <p role="status" className="mt-card text-sm text-fg-muted">{t("update.rollback.digestUnavailable")}</p>}
+						{publishedPast?.platformAsset && !eligible && currentVersion && past && compareSemver(past.version, currentVersion) < 0 && (installer || managed) && <p role="status" className="mt-card text-sm text-fg-muted">{t("update.rollback.digestUnavailable")}</p>}
 						{eligible && managed && installInfo && past && <ManagedRollbackSteps key={past.version} method={installInfo.method as "brew" | "scoop"} version={past.version} global={installInfo.scoopGlobal} retained={installInfo.scoopRetainedVersions?.includes(past.version) ?? false} download={download?.version === past.version && download.downloadOnly ? download : null} />}
 					</TabsContent>
 				</Tabs>

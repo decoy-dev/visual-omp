@@ -211,12 +211,27 @@ export function toPullRequest(view: z.infer<typeof PrViewSchema>): GhPullRequest
 	};
 }
 
-/** `{owner, repo, jobId}` from an Actions check URL (`…/actions/runs/<run>/job/<job>`). */
+const ACTIONS_HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+const ACTIONS_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
+const ACTIONS_PATH_RE = /^\/([^/]+)\/([^/]+)\/actions\/runs\/\d+\/job\/(\d+)\/?$/;
+
+/** `{host, owner, repo, jobId}` from an Actions check URL (`…/actions/runs/<run>/job/<job>`). */
 export function parseActionsJobUrl(url: string): { host: string; owner: string; repo: string; jobId: string } | null {
-	const match = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/actions\/runs\/\d+\/job\/(\d+)/.exec(url);
-	return match?.[1] && match[2] && match[3] && match[4]
-		? { host: match[1], owner: match[2], repo: match[3], jobId: match[4] }
-		: null;
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return null;
+	}
+	if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.port) return null;
+	const host = parsed.hostname.toLowerCase();
+	if (!ACTIONS_HOST_RE.test(host)) return null;
+	const match = ACTIONS_PATH_RE.exec(parsed.pathname);
+	if (!match?.[1] || !match[2] || !match[3]) return null;
+	const [, owner, repo, jobId] = match;
+	if (owner === "." || owner === ".." || repo === "." || repo === "..") return null;
+	if (!ACTIONS_SEGMENT_RE.test(owner) || !ACTIONS_SEGMENT_RE.test(repo)) return null;
+	return { host, owner, repo, jobId };
 }
 
 // ───────────────────────────────────────── Actions job logs

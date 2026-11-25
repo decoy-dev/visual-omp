@@ -8,8 +8,8 @@
  * start. omp does NOT reject a value of the wrong type or outside an enum — it logs a warning and
  * uses the default — so callers check those first (`valueProblem` in `services/omp-config`).
  */
-import type { Stats } from "node:fs";
-import { chmod, realpath, stat, unlink } from "node:fs/promises";
+import { chmodSync, mkdirSync, type Stats } from "node:fs";
+import { realpath, stat, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Document } from "yaml";
@@ -27,9 +27,17 @@ let agentDirPromise: Promise<string> | null = null;
 
 /**
  * Directory for omp runs that must not pick up any project layer (global-only reads/validation).
- * The system temp dir has no `.omp/`.
+ * Initialized at app startup to an owner-only folder under `userData`.
  */
-export const NEUTRAL_CWD = tmpdir();
+export let NEUTRAL_CWD = tmpdir();
+
+/** Pin `NEUTRAL_CWD` to an owner-only directory so subprocesses never inherit shared temp state. */
+export function setNeutralCwd(dir: string): string {
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	if (process.platform !== "win32") chmodSync(dir, 0o700);
+	NEUTRAL_CWD = dir;
+	return dir;
+}
 
 /** omp's agent dir exactly as omp resolves it (`PI_CODING_AGENT_DIR`, profiles, XDG layout). */
 export function ompAgentDir(): Promise<string> {
@@ -131,16 +139,14 @@ async function editLocked(file: string, target: string, cwd: string | undefined,
 	const next = doc.toString();
 	if (next === (original ?? "")) return;
 	const mode = original === null ? 0o600 : (await stat(target)).mode & 0o777;
-	await writeText(target, next);
-	await chmod(target, mode);
+	await writeText(target, next, { mode });
 	await rememberWrite([file, target]);
 
 	const check = await runOmp(["config", "path"], { cwd: cwd ?? NEUTRAL_CWD });
 	if (check.code === 0) return;
 	if (original === null) await unlink(target);
 	else {
-		await writeText(target, original);
-		await chmod(target, mode);
+		await writeText(target, original, { mode });
 	}
 	await rememberWrite([file, target]);
 	throw new Error(`omp rejected the change: ${ompErrorMessage(check.stderr, file)}`);

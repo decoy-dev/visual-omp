@@ -190,8 +190,9 @@ export function stripJsonc(text: string): string {
 }
 
 /**
- * OpenCode's load-time substitution: `{env:VAR}` (empty when unset) and `{file:path}` (trimmed, JSON-escaped,
- * relative to the config file; tokens on `//` comment lines are left alone; missing files expand to nothing).
+ * OpenCode's load-time substitution: `{env:VAR}` (empty when unset, JSON-escaped) and `{file:path}`
+ * (trimmed, JSON-escaped, relative to the config file; tokens on `//` comment lines are left alone;
+ * missing files expand to nothing). Evaluated in one non-recursive pass.
  */
 export async function substituteOpenCodeVars(
 	text: string,
@@ -199,25 +200,31 @@ export async function substituteOpenCodeVars(
 	env: NodeJS.ProcessEnv,
 	readFile: (path: string) => Promise<string | null>,
 ): Promise<string> {
-	const envExpanded = text.replace(/\{env:([^}]+)\}/g, (_match, name: string) => env[name] ?? "");
 	let out = "";
 	let cursor = 0;
-	for (const match of envExpanded.matchAll(/\{file:[^}]+\}/g)) {
+	for (const match of text.matchAll(/\{(env|file):([^}]+)\}/g)) {
 		const token = match[0];
+		const kind = match[1];
+		const arg = match[2] ?? "";
 		const index = match.index;
-		out += envExpanded.slice(cursor, index);
+		out += text.slice(cursor, index);
 		cursor = index + token.length;
-		const lineStart = envExpanded.lastIndexOf("\n", index - 1) + 1;
-		if (envExpanded.slice(lineStart, index).trimStart().startsWith("//")) {
+		const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+		if (text.slice(lineStart, index).trimStart().startsWith("//")) {
 			out += token;
 			continue;
 		}
-		let filePath = token.slice("{file:".length, -1);
+		if (kind === "env") {
+			const value = Object.hasOwn(env, arg) ? (env[arg] ?? "") : "";
+			out += JSON.stringify(value).slice(1, -1);
+			continue;
+		}
+		let filePath = arg;
 		if (filePath.startsWith("~/")) filePath = join(homedir(), filePath.slice(2));
 		const content = await readFile(isAbsolute(filePath) ? filePath : resolve(dirname(configPath), filePath));
 		if (content !== null) out += JSON.stringify(content.trim()).slice(1, -1);
 	}
-	return out + envExpanded.slice(cursor);
+	return out + text.slice(cursor);
 }
 
 /** The `mcp` map of one OpenCode layer (after {@link substituteOpenCodeVars}). */

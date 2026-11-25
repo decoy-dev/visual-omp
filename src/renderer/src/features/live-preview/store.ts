@@ -31,7 +31,7 @@ interface PreviewState {
 
 /** Conservative UTF-16 and container accounting; retained state contains presentation data only. */
 export function officeSnapshotBytes(snapshot: OfficeFrameSnapshot): number {
-	if (snapshot.format === "docx") return 256 + (snapshot.path.length + snapshot.body.length + snapshot.styles.length) * 2;
+	if (snapshot.format === "docx") return 256 + (snapshot.path.length + snapshot.body.length) * 2 + snapshot.styles.reduce((total, css) => total + 32 + css.length * 2, 0);
 	return 256 + snapshot.path.length * 2 + snapshot.sheets.reduce((total, sheet) => total + 128 + sheet.name.length * 2, 0)
 		+ snapshot.window.cells.reduce((total, row) => total + 32 + row.reduce((sum, text) => sum + 32 + text.length * 2, 0), 0);
 }

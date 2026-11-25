@@ -308,6 +308,8 @@ export interface IpcInvokeMap {
 	"app:showItem": { args: [path: string]; result: void };
 	/** Open a local regular file, confirming non-previewable files; browser targets accept HTML only. */
 	"app:openFile": { args: [path: string, target?: "browser"]; result: void };
+	/** Fetch a user-approved remote Markdown image over HTTP(S) without renderer session state. */
+	"app:fetchRemoteImage": { args: [url: string]; result: { bytes: Uint8Array; mimeType: string } };
 	/** Renderer-rasterized PNG data only; no network requests are made by main. */
 	"app:copyImage": { args: [dataUrl: string]; result: void };
 	"app:saveImage": { args: [options: { dataUrl: string; name: string; title: string }]; result: string | null };

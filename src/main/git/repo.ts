@@ -367,6 +367,7 @@ export async function worktreeAdd(cwd: string, options: GitWorktreeAddOptions): 
 	const argv = ["worktree", "add", "--cwd", root];
 	if (options.branch) argv.push("--branch", options.branch);
 	if (options.detach) argv.push("--detach");
+	if (options.base?.startsWith("-")) throw new Error("Base ref cannot start with '-'.");
 	argv.push(target);
 	if (options.base) argv.push(options.base);
 	const result = await runOmp(argv, { cwd: root, timeoutMs: 10 * 60_000 });
@@ -451,7 +452,7 @@ export async function pushBranch(cwd: string): Promise<GitPushResult> {
 		[configured.stdout.trim(), pushDefault.stdout.trim(), "origin"].find(name => name && remotes.includes(name)) ??
 		remotes[0] ??
 		"origin";
-	const result = await runGit(["push", "--set-upstream", remote, `HEAD:refs/heads/${branch}`], {
+	const result = await runGit(["push", "--set-upstream", "--", remote, `HEAD:refs/heads/${branch}`], {
 		cwd: root,
 		timeoutMs: 10 * 60_000,
 	});
@@ -461,7 +462,7 @@ export async function pushBranch(cwd: string): Promise<GitPushResult> {
 
 /** Files staged vs HEAD (or vs the empty tree on an unborn branch). */
 export async function hasStagedChanges(root: string): Promise<boolean> {
-	const result = await runGit(["diff", "--cached", "--quiet"], { cwd: root });
+	const result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "--cached", "--quiet"], { cwd: root });
 	return result.code === 1;
 }
 

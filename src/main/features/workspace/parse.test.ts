@@ -10,8 +10,19 @@ describe("normalizeRemote", () => {
 	});
 
 	it("rejects text that cannot be a repository", () => {
-		for (const input of ["", "hello world", "just-a-word", "https://github.com", "file:///etc/passwd", "-uhelp/x y"]) {
-			expect(normalizeRemote(input)).toBeNull();
+		for (const input of [
+			"",
+			"hello world",
+			"just-a-word",
+			"https://github.com",
+			"file:///etc/passwd",
+			"-uhelp/x y",
+			"--upload-pack=x@h:r",
+			"-oProxyCommand=x@h:r",
+			"git@-host:r",
+			"-host.example/owner/repo",
+		]) {
+			expect(normalizeRemote(input), input).toBeNull();
 		}
 	});
 });

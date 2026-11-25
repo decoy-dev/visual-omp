@@ -1,20 +1,20 @@
 const MAX_BODY_BYTES = 1024;
-const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?![\s\S])/;
+const VERSION = /^(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,3})(?:-(?:alpha|beta|rc)\.(0|[1-9]\d{0,3}))?(?![\s\S])/;
 const PLATFORMS: Record<string, true> = { darwin: true, win32: true, linux: true };
 const ARCHITECTURES: Record<string, true> = { arm64: true, x64: true, ia32: true };
 
-interface Check {
+export interface Check {
   version: string;
   platform: string;
   arch: string;
   channel?: string;
 }
 
-function isCheck(value: unknown): value is Check {
+export function isCheck(value: unknown): value is Check {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const data = value as Record<string, unknown>;
   return Object.keys(data).every(key => ["version", "platform", "arch", "channel"].includes(key))
-    && typeof data.version === "string" && data.version.length <= 32 && VERSION.test(data.version)
+    && typeof data.version === "string" && data.version.length <= 24 && VERSION.test(data.version)
     && typeof data.platform === "string" && Object.hasOwn(PLATFORMS, data.platform)
     && typeof data.arch === "string" && Object.hasOwn(ARCHITECTURES, data.arch)
     && (data.channel === undefined || (typeof data.channel === "string" && /^[a-zA-Z0-9][a-zA-Z0-9.-]{0,31}(?![\s\S])/.test(data.channel)));

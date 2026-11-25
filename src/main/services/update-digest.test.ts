@@ -12,11 +12,13 @@ it("retains the GitHub SHA256 digest in the selected release metadata", () => {
 	expect(toAssets(release)[0]?.digest).toBe(`sha256:${hash}`);
 });
 
-it("accepts a matching SHA256 digest and assets without published digests", () => {
+it("accepts a matching SHA256 digest and allows missing digests only in dev feed mode", () => {
 	expect(() => verifyInstallerDigest(hash, `sha256:${hash}`)).not.toThrow();
 	expect(() => verifyInstallerDigest(hash, `sha256:${hash.toUpperCase()}`)).not.toThrow();
-	expect(() => verifyInstallerDigest(hash, null)).not.toThrow();
-	expect(() => verifyInstallerDigest(hash, undefined)).not.toThrow();
+	expect(() => verifyInstallerDigest(hash, null)).toThrow("published SHA-256");
+	expect(() => verifyInstallerDigest(hash, undefined)).toThrow("published SHA-256");
+	expect(() => verifyInstallerDigest(hash, null, true)).not.toThrow();
+	expect(() => verifyInstallerDigest(hash, undefined, true)).not.toThrow();
 });
 
 it("rejects mismatches and malformed or unsupported supplied digests", () => {

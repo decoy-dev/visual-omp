@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runOmp } from "../omp/cli";
 import { status } from "./repo";
-import { branchCommits, createBranch, parseBranchLog, parsePrDraft, prContext, stageOnly, switchBranch } from "./workflow";
+import { branchCommits, createBranch, parseBranchLog, parsePrDraft, prContext, prWrite, stageOnly, switchBranch } from "./workflow";
 
 // vi.mock is hoisted above the imports: prWrite's omp call must never run in tests.
 vi.mock("../omp/cli", () => ({ runOmp: vi.fn() }));
@@ -41,6 +42,20 @@ describe("switchBranch", () => {
 
 	it("rejects an unknown branch", async () => {
 		await expect(switchBranch(dir, "nope")).rejects.toThrow(/no branch called "nope"/);
+	});
+
+	it("switches to a remote tracking branch using -- separator", async () => {
+		const remote = mkdtempSync(join(tmpdir(), "vomp-wf-track-remote-"));
+		try {
+			execFileSync("git", ["init", "-q", "--bare", remote]);
+			sh("remote", "add", "origin", remote);
+			sh("push", "-q", remote, "main:topic");
+			sh("fetch", "-q", "origin");
+			await switchBranch(dir, "origin/topic");
+			expect(sh("branch", "--show-current").trim()).toBe("topic");
+		} finally {
+			rmSync(remote, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -91,6 +106,36 @@ describe("branch commits and PR context", () => {
 			const commits = await branchCommits(dir, "main");
 			expect(commits.map(commit => [commit.subject, commit.body])).toEqual([["Add b", "Because b."]]);
 			expect(await branchCommits(dir, "missing")).toHaveLength(2);
+		} finally {
+			rmSync(remote, { recursive: true, force: true });
+		}
+	}, 30_000);
+});
+
+describe("prWrite", () => {
+	it("passes --no-ext-diff, --no-textconv, and --end-of-options so repo diff helpers do not execute", async () => {
+		const remote = mkdtempSync(join(tmpdir(), "vomp-wf-pr-remote-"));
+		const marker = join(dir, "ext-diff-ran");
+		const textconvMarker = join(dir, "textconv-ran");
+		try {
+			execFileSync("git", ["init", "-q", "--bare", remote]);
+			sh("remote", "add", "origin", remote);
+			sh("config", "remote.origin.url", "https://github.com/acme/app.git");
+			sh("config", "remote.origin.pushurl", remote);
+			sh("push", "-q", remote, "main:main");
+			sh("fetch", "-q", remote, "+refs/heads/*:refs/remotes/origin/*");
+			sh("switch", "-q", "-c", "feat");
+			writeFileSync(join(dir, ".gitattributes"), "b.txt diff=leak\n");
+			writeFileSync(join(dir, "b.txt"), "b\n");
+			sh("add", ".");
+			sh("commit", "-qm", "Add b");
+			sh("config", "diff.external", `touch "${marker}"`);
+			sh("config", "diff.leak.textconv", `node -e "require('fs').writeFileSync(process.argv[1],'x')" "${textconvMarker.replaceAll("\\", "/")}"`);
+			vi.mocked(runOmp).mockResolvedValueOnce({ code: 0, stdout: "Add b\n\nAdds b.txt.\n", stderr: "" });
+			const draft = await prWrite(dir, "main");
+			expect(draft).toEqual({ title: "Add b", body: "Adds b.txt." });
+			expect(existsSync(marker)).toBe(false);
+			expect(existsSync(textconvMarker)).toBe(false);
 		} finally {
 			rmSync(remote, { recursive: true, force: true });
 		}

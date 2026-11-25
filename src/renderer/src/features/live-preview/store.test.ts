@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { followedSubject, officeSnapshotBytes, useLivePreview } from "./store";
 import type { DocxFrameSnapshot, LiveFormat, LiveSubject, XlsxFrameSnapshot } from "./types";
 const subject = (id: string, path = `/project/${id}.docx`, format: LiveFormat = "docx", revision = 3) => ({ id, kind: "file", format, path, revision } as LiveSubject);
-const snapshot = (path = "/project/office.docx", revision = 3, body = "<p>Safe presentation</p>"): DocxFrameSnapshot => ({ path, revision, format: "docx", body, styles: "<style>p{color:red}</style>" });
+const snapshot = (path = "/project/office.docx", revision = 3, body = "<p>Safe presentation</p>"): DocxFrameSnapshot => ({ path, revision, format: "docx", body, styles: ["p{color:red}"] });
 beforeEach(() => useLivePreview.setState({ chats: {} }));
 describe("retained Office presentations", () => {
 	it("keeps the latest complete presentation across selection and refuses stale writes", () => {

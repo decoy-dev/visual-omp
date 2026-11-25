@@ -19,4 +19,13 @@ describe("normalizePreviewUrl", () => {
 		expect(normalizePreviewUrl("javascript:alert(1)")).toBeNull();
 		expect(normalizePreviewUrl("   ")).toBeNull();
 	});
+
+	it("blocks visual-omp's own origin and loopback alias while keeping other local ports", () => {
+		const own = "http://localhost:5173";
+		expect(normalizePreviewUrl("http://localhost:5173/app", own)).toBeNull();
+		expect(normalizePreviewUrl("http://127.0.0.1:5173/", own)).toBeNull();
+		expect(normalizePreviewUrl(":5173", own)).toBeNull();
+		expect(normalizePreviewUrl("http://localhost:5174/", own)).toBe("http://localhost:5174/");
+		expect(normalizePreviewUrl("example.com", "https://example.com")).toBeNull();
+	});
 });

@@ -1,8 +1,8 @@
 import type { RemoteProblem } from "@shared/contracts/workspace";
 
 const OWNER_REPO_RE = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
-const SCP_RE = /^[\w.-]+@[\w.-]+:[^\s]+$/;
-const HOST_PATH_RE = /^[\w-]+(?:\.[\w-]+)+\/[^\s]+$/;
+const SCP_RE = /^[A-Za-z0-9_][\w.-]*@[A-Za-z0-9_][\w.-]*:[^\s]+$/;
+const HOST_PATH_RE = /^[A-Za-z0-9_][\w-]*(?:\.[\w-]+)+\/[^\s]+$/;
 
 /**
  * What a user typed into "Clone from GitHub" as a URL git accepts: full https/ssh/git URLs and

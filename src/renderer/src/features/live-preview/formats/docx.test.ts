@@ -79,13 +79,13 @@ it("stores sanitized DOCX presentation rather than the source package", async ()
 		expect(value.body).toContain("Revision 1");
 		expect(value.body).not.toMatch(/script|onerror/);
 		expect(value.body).not.toContain("https://bad.test");
-		expect(value.styles).not.toContain("https://bad.test");
+		expect(value.styles.join("\n")).not.toContain("https://bad.test");
 	}
 });
 
 it.each([{ path: "/project/other.docx", revision: 1 }, { path: "/project/office.docx", revision: 2 }])("refuses a retained DOCX with mismatched identity or future revision: %j", async identity => {
 	invoke.mockResolvedValueOnce({ ok: false, reason: "incomplete" });
-	const officeCache: OfficeFrameCache = { read: () => ({ ...identity, format: "docx", body: "<p>Forbidden presentation</p>", styles: "" }), write: vi.fn(), clear: vi.fn() };
+	const officeCache: OfficeFrameCache = { read: () => ({ ...identity, format: "docx", body: "<p>Forbidden presentation</p>", styles: [] }), write: vi.fn(), clear: vi.fn() };
 	await show(1, officeCache);
 	expect(host.firstElementChild?.firstElementChild?.shadowRoot).toBeNull();
 	expect(host.textContent).not.toContain("Forbidden presentation");
@@ -94,13 +94,46 @@ it.each([{ path: "/project/other.docx", revision: 1 }, { path: "/project/office.
 it("restores sanitized document markup and preserves intercepted links", async () => {
 	invoke.mockResolvedValueOnce({ ok: false, reason: "incomplete" });
 	const officeCache: OfficeFrameCache = { read: () => ({ format: "docx", path: "/project/office.docx", revision: 1,
-		body: '<section><p>Retained text</p><img src="data:image/png;base64,YQ=="><a href="https://example.test/retained">Retained link</a></section>', styles: "<style>p{font-size:12pt}</style>" }), write: vi.fn(), clear: vi.fn() };
+		body: '<section><p>Retained text</p><img src="data:image/png;base64,YQ=="><a href="https://example.test/retained">Retained link</a></section>', styles: ["p{font-size:12pt}"] }), write: vi.fn(), clear: vi.fn() };
 	await show(1, officeCache);
 	const shadow = host.querySelector('[data-theme="light"]')!.shadowRoot!;
 	expect(shadow.textContent).toContain("Retained text");
 	expect(shadow.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==");
 	await act(async () => shadow.querySelector("a")!.click());
 	expect(invoke).toHaveBeenCalledWith("app:openExternal", "https://example.test/retained");
+});
+
+it("parses into an inert document and neutralizes </style> breakout on render and cache restore", async () => {
+	let capturedBodyDoc: Document | null = null;
+	let capturedStylesDoc: Document | null = null;
+	vi.mocked(renderAsync).mockImplementationOnce(async (_bytes, body, styles) => {
+		capturedBodyDoc = body.ownerDocument;
+		capturedStylesDoc = styles!.ownerDocument;
+		body.innerHTML = "<section><p>Body</p></section>";
+		const style = styles!.ownerDocument.createElement("style");
+		style.textContent = 'p{color:red}</style><img src="https://bad.test/leak">';
+		styles!.append(style);
+	});
+	const cached: OfficeFrameCache = {
+		read: () => ({ format: "docx", path: "/project/office.docx", revision: 1, body: "<section><p>Body</p></section>", styles: ['p{color:red}</style><img src="https://bad.test/leak">'] }),
+		write: vi.fn(),
+		clear: vi.fn(),
+	};
+	await show(1, cached);
+	expect(capturedBodyDoc).not.toBeNull();
+	expect(capturedBodyDoc).not.toBe(document);
+	expect(capturedStylesDoc).toBe(capturedBodyDoc);
+	const firstShadow = host.firstElementChild?.firstElementChild?.shadowRoot!;
+	expect(firstShadow.querySelector("img")).toBeNull();
+	expect(firstShadow.querySelector("style")?.textContent?.toLowerCase()).not.toContain("</style");
+
+	invoke.mockResolvedValueOnce({ ok: false, reason: "incomplete" });
+	await act(async () => root.unmount());
+	root = createRoot(host);
+	await show(2, cached);
+	const restoredShadow = host.firstElementChild?.firstElementChild?.shadowRoot!;
+	expect(restoredShadow.querySelector("img")).toBeNull();
+	expect(restoredShadow.querySelector("style")?.textContent?.toLowerCase()).not.toContain("</style");
 });
 
 it.each(["incomplete", "timeout"])("defers automatic following after %s without reporting an unsafe document", async reason => {

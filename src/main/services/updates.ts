@@ -99,14 +99,17 @@ export function toAssets(release: GitHubRelease): ReleaseAsset[] {
 	return release.assets.map(asset => ({ name: asset.name, url: asset.browser_download_url, size: asset.size, ...(asset.digest !== undefined ? { digest: asset.digest } : {}) }));
 }
 
-/** Managed downloads require GitHub's published SHA-256 digest before any bytes are fetched. */
+/** Every GitHub release installer requires GitHub's published SHA-256 digest before bytes are fetched. */
 export function hasInstallerSha256(digest: string | null | undefined): boolean {
 	return typeof digest === "string" && /^sha256:[a-fA-F0-9]{64}$/.test(digest);
 }
 
-/** Missing digests remain compatible with older GitHub assets; supplied digests fail closed. */
-export function verifyInstallerDigest(actualSha256: string, expected: string | null | undefined): void {
-	if (expected == null) return;
+/** Development feeds (`allowMissing`) may omit digests; packaged release downloads fail closed. */
+export function verifyInstallerDigest(actualSha256: string, expected: string | null | undefined, allowMissing = false): void {
+	if (expected == null) {
+		if (allowMissing) return;
+		throw new Error("This release has no published SHA-256 checksum for its installer.");
+	}
 	if (!hasInstallerSha256(expected)) throw new Error("The release supplied an unsupported installer checksum.");
 	if (actualSha256.toLowerCase() !== expected.slice("sha256:".length).toLowerCase()) {
 		throw new Error("The installer checksum did not match the release. Download the installer again.");
@@ -223,6 +226,22 @@ export const AppUpdateStatusSchema = z.object({
 	error: z.string().nullable(),
 }) satisfies z.ZodType<AppUpdateStatus>;
 
+function isReleasePageUrl(raw: string, anyHost: boolean): boolean {
+	const page = parseUrl(raw);
+	if (!page) return false;
+	if (anyHost) return page.protocol === "https:" || page.protocol === "http:";
+	return page.protocol === "https:"
+		&& page.hostname === "github.com"
+		&& !page.port
+		&& !page.username
+		&& !page.password
+		&& page.pathname.startsWith(`/${REPO}/releases/`);
+}
+
+function sameReleaseAsset(a: ReleaseAsset | null | undefined, b: ReleaseAsset | null | undefined): boolean {
+	return a?.url === b?.url && a?.name === b?.name && a?.size === b?.size && a?.digest === b?.digest;
+}
+
 /**
  * update-check.json as an earlier check wrote it, or null when it is unreadable, belongs to another
  * app version, or does not match what the release metadata vouches for (installer, versions,
@@ -237,11 +256,17 @@ export function trustedCachedStatus(raw: unknown, currentVersion: string, trust:
 	if (status.latestVersion !== latest) return null;
 	if (status.updateAvailable !== updateIsAvailable(latest, currentVersion, skippedThroughVersion)) return null;
 	const expected = status.tag ? installerAsset(status.assets, status.tag, trust) : null;
-	const cached = status.platformAsset;
-	if (expected?.url !== cached?.url || expected?.name !== cached?.name || expected?.size !== cached?.size || expected?.digest !== cached?.digest) return null;
-	const page = status.releaseUrl ? parseUrl(status.releaseUrl) : null;
-	if (status.releaseUrl && !trust.anyHost && (page?.protocol !== "https:" || page.hostname !== "github.com" || !page.pathname.startsWith(`/${REPO}/releases/`))) {
+	if (!sameReleaseAsset(expected, status.platformAsset)) return null;
+	if (status.releaseUrl && !isReleasePageUrl(status.releaseUrl, trust.anyHost)) {
 		return null;
+	}
+	for (const entry of status.releases) {
+		if (entry.url && !isReleasePageUrl(entry.url, trust.anyHost)) return null;
+		if (entry.platformAsset) {
+			if (!entry.tag || entry.tag.replace(/^v/, "") !== entry.version.replace(/^v/, "")) return null;
+			const expectedEntryAsset = installerAsset([entry.platformAsset], entry.tag, trust);
+			if (!sameReleaseAsset(expectedEntryAsset, entry.platformAsset)) return null;
+		}
 	}
 	return status;
 }

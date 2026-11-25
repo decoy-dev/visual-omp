@@ -7,7 +7,7 @@ import { expandEnvVars, parseEntry } from "./config";
 import { type DiscoveredRow, resolveEntries } from "./discovery";
 import { addServer, parseDocument, serializeDocument, setListMember, updateServer } from "./document";
 import { MCP_PRESETS, buildPresetConfig } from "./presets";
-import { buildOpenCodeServer, mergeRecords, parseCodexToml, parseMcpServersJson, parseOpenCodeLayer, parseVscodeJson, stripJsonc } from "./sources";
+import { buildOpenCodeServer, mergeRecords, parseCodexToml, parseMcpServersJson, parseOpenCodeLayer, parseVscodeJson, stripJsonc, substituteOpenCodeVars } from "./sources";
 
 const fixture = (name: string): string => readFileSync(join(__dirname, "fixtures", name), "utf8");
 
@@ -122,6 +122,35 @@ describe("foreign sources", () => {
 			type: "http",
 			url: "https://r/mcp",
 			enabled: false,
+		});
+	});
+
+	it("JSON-escapes OpenCode {env:...} expansions in one non-recursive pass and ignores comment lines", async () => {
+		const readFile = async () => {
+			throw new Error("should not read secondary {file:...} from env");
+		};
+		const configPath = resolve("project", "opencode.jsonc");
+		const template = [
+			"{",
+			"  // comment {env:QUOTED} {file:./secret}",
+			'  "mcp": {',
+			'    "s": { "type": "remote", "url": "https://r/mcp", "headers": { "A": "{env:QUOTED}", "B": "{env:INDIRECT}" } }',
+			"  }",
+			"}",
+		].join("\n");
+		const expanded = await substituteOpenCodeVars(
+			template,
+			configPath,
+			{ QUOTED: 'val"ue\\next\nline', INDIRECT: "{file:./secret}" },
+			readFile,
+		);
+		expect(expanded).toContain("// comment {env:QUOTED} {file:./secret}");
+		const parsed = parseOpenCodeLayer(expanded);
+		expect(parsed.error).toBeNull();
+		expect(parsed.mcp.s).toEqual({
+			type: "remote",
+			url: "https://r/mcp",
+			headers: { A: 'val"ue\\next\nline', B: "{file:./secret}" },
 		});
 	});
 

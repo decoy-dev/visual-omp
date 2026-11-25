@@ -1670,6 +1670,7 @@ function tspAskDock(): void {
 describe("semantic transport", () => {
 	it("leaves classic launch, raw output and snapshots unchanged in a classic host", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+		expect(pty.spawnOptions?.env?.OMP_TUI_DEBUG).toBeTruthy();
 		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
 		expect(pty.spawnOptions).not.toHaveProperty("encoding");
 		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
@@ -1863,6 +1864,7 @@ describe("semantic transport", () => {
 		await host.start();
 		expect(host.state.transport).toBe("tsp");
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("OMP_TUI_DEBUG");
 		expect(pty.spawnOptions?.useConptyDll === true).toBe(platform === "win32");
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
 		tspComposer();
@@ -1882,6 +1884,7 @@ describe("semantic transport", () => {
 		host = new SessionHost({ cwd: tmpdir() });
 		await host.start();
 		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+		expect(pty.spawnOptions?.env?.OMP_TUI_DEBUG).toBeTruthy();
 		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
 		expect(pty.spawnOptions).not.toHaveProperty("encoding");
 		expect(host.tspSnapshot()).toBeNull();
@@ -1898,6 +1901,7 @@ describe("semantic transport", () => {
 		expect(process.env.VOMP_TSP).toBeUndefined();
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
+		expect(pty.spawnOptions?.env).not.toHaveProperty("OMP_TUI_DEBUG");
 		expect(pty.spawnOptions).toMatchObject({ encoding: null, useConptyDll: true });
 		expect(parse(await readFile(pty.args[1]!, "utf8"))).not.toHaveProperty("composer");
 		expect(host.state.transport).toBe("tsp");

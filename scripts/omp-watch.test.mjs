@@ -1,9 +1,9 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureReleaseLabel, expectedChecksum, issueNamesVersion, MAX_ISSUE_BODY, normalizeVersion, pendingReleases, prepareRelease, reportBody } from "./omp-watch.mjs";
+import { ensureReleaseLabel, expectedChecksum, issueNamesVersion, MAX_ISSUE_BODY, normalizeReportMetadata, normalizeVersion, pendingReleases, prepareRelease, readOutcomes, reportBody } from "./omp-watch.mjs";
 
 test("release versions accept an optional v and reject shell and path input", () => {
 	assert.equal(normalizeVersion("v18.14.0"), "18.14.0");
@@ -122,4 +122,43 @@ test("unrelated label creation failures propagate when a fresh read still lacks 
 		throw failure;
 	}), error => error === failure);
 	assert.deepEqual(calls, ["api", "label", "api"]);
+});
+
+test("report outcomes reject unapproved values and fall back to env", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "omp-watch-outcomes-test-"));
+	try {
+		assert.deepEqual(await readOutcomes(dir, { WATCH_DOWNLOAD: "success", WATCH_COMPAT: "invalid\ninjection" }), {
+			metadata: "not run",
+			download: "success",
+			install: "not run",
+			typecheck: "not run",
+			tests: "not run",
+			compat: "not run",
+		});
+		await writeFile(join(dir, "outcomes.json"), JSON.stringify({ metadata: "success", download: "failure", compat: "bogus" }));
+		assert.deepEqual(await readOutcomes(dir, {}), {
+			metadata: "success",
+			download: "failure",
+			install: "not run",
+			typecheck: "not run",
+			tests: "not run",
+			compat: "not run",
+		});
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("report metadata normalizer refuses untrusted repo and version overrides", () => {
+	const normalized = normalizeReportMetadata(
+		{ repo: "attacker/evil", version: "99.0.0", url: "https://evil.test", body: "Notes", metadataStatus: "bogus" },
+		"decoy-dev/visual-omp",
+		"19.1.1",
+	);
+	assert.equal(normalized.repo, "decoy-dev/visual-omp");
+	assert.equal(normalized.version, "19.1.1");
+	assert.equal(normalized.tagName, "v19.1.1");
+	assert.equal(normalized.url, "https://github.com/can1357/oh-my-pi/releases/tag/v19.1.1");
+	assert.equal(normalized.metadataStatus, "failure");
+	assert.equal(normalized.body, "Notes");
 });

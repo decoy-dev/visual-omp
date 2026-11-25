@@ -7,7 +7,7 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename } from "node:path";
+import { basename, win32 } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -29,6 +29,11 @@ export const MCP_PROTOCOL_VERSION = "2025-11-25";
 const STDERR_LIMIT = 8 * 1024;
 const COMMAND_VALUE_TIMEOUT_MS = 10_000;
 const MAX_PAGES = 50;
+export const MAX_HTTP_BODY_BYTES = 16 * 1024 * 1024;
+export const MAX_SSE_EVENT_BYTES = 16 * 1024 * 1024;
+const MAX_ERROR_BODY_BYTES = 16 * 1024;
+const MAX_HTTP_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export interface TestRequest {
 	config: McpServerConfig;
@@ -80,10 +85,16 @@ export class SseParser {
 	#buffer = "";
 	#event = "";
 	#data: string[] = [];
+	#dataBytes = 0;
 	#id: string | null = null;
+
+	constructor(private readonly maxBytes = MAX_SSE_EVENT_BYTES) {}
 
 	push(chunk: string): SseEvent[] {
 		this.#buffer += chunk;
+		if (Buffer.byteLength(this.#buffer) + this.#dataBytes > this.maxBytes) {
+			throw new TestFailure(`SSE stream exceeded ${this.maxBytes} bytes`);
+		}
 		const events: SseEvent[] = [];
 		for (;;) {
 			const match = /\r\n|\n|\r/.exec(this.#buffer);
@@ -96,6 +107,7 @@ export class SseParser {
 				if (this.#data.length > 0) events.push({ event: this.#event || "message", data: this.#data.join("\n"), id: this.#id });
 				this.#event = "";
 				this.#data = [];
+				this.#dataBytes = 0;
 				continue;
 			}
 			if (line.startsWith(":")) continue;
@@ -103,8 +115,13 @@ export class SseParser {
 			const field = colon === -1 ? line : line.slice(0, colon);
 			const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
 			if (field === "event") this.#event = value;
-			else if (field === "data") this.#data.push(value);
-			else if (field === "id") this.#id = value;
+			else if (field === "data") {
+				this.#data.push(value);
+				this.#dataBytes += Buffer.byteLength(value) + 1;
+				if (Buffer.byteLength(this.#buffer) + this.#dataBytes > this.maxBytes) {
+					throw new TestFailure(`SSE event exceeded ${this.maxBytes} bytes`);
+				}
+			} else if (field === "id") this.#id = value;
 		}
 		return events;
 	}
@@ -221,9 +238,87 @@ class RpcSession implements TransportEvents {
 // Transports
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Quote one argument for `cmd.exe /s /c`. */
-function cmdQuote(arg: string): string {
-	return /^[\w\-./\\:=@+]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
+const BATCH_EXTENSIONS = new Set([".cmd", ".bat"]);
+const WINDOWS_UNSAFE_BATCH_RE = /[\r\n\0"%]/;
+const WINDOWS_SAFE_ARG_RE = /^[A-Za-z0-9_./\\:@+=-]+$/;
+
+function isFullyWindowsAbsolute(path: string): boolean {
+	return /^(?:[a-z]:[\\/]|[\\/]{2}[^\\/]+[\\/][^\\/]+)/i.test(path);
+}
+
+function windowsEnvValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+	const key = Object.keys(env).sort().find(entry => entry.toUpperCase() === name);
+	return key === undefined ? undefined : env[key];
+}
+
+async function isRegularFile(path: string): Promise<boolean> {
+	try {
+		return (await stat(path)).isFile();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Resolve a Windows MCP stdio command into either a directly spawnable binary or a `.cmd`/`.bat`
+ * batch shim that requires `cmd.exe`. Consulting `PATHEXT` first lets extensionless `node` or
+ * `python` resolve directly to `.exe` without invoking `cmd.exe`.
+ */
+export async function resolveWindowsStdioTarget(
+	command: string,
+	cwd: string,
+	env: NodeJS.ProcessEnv,
+	checkFile: (path: string) => Promise<boolean> = isRegularFile,
+): Promise<{ kind: "direct" | "batch"; executable: string } | null> {
+	if (!command || command.includes("\0")) return null;
+	const hasSeparator = command.includes("/") || command.includes("\\") || /^[a-z]:/i.test(command);
+	const resolvedCommand = hasSeparator && !isFullyWindowsAbsolute(command) ? win32.resolve(cwd, command) : command;
+	const extension = win32.extname(resolvedCommand).toLowerCase();
+	const pathext = (windowsEnvValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+		.split(";")
+		.filter(suffix => /^\.(?:com|exe|bat|cmd)$/i.test(suffix))
+		.map(suffix => suffix.toLowerCase());
+	const suffixes = extension
+		? [""]
+		: [...new Set([...pathext, ".com", ".exe", ".bat", ".cmd", ...(hasSeparator ? [""] : [])])];
+	const dirs = hasSeparator
+		? [win32.dirname(resolvedCommand)]
+		: (windowsEnvValue(env, "PATH") ?? "")
+			.split(win32.delimiter)
+			.map(entry => (entry.startsWith('"') && entry.endsWith('"') ? entry.slice(1, -1) : entry))
+			.filter(dir => isFullyWindowsAbsolute(dir));
+	const name = hasSeparator ? win32.basename(resolvedCommand) : resolvedCommand;
+	for (const dir of dirs) {
+		for (const suffix of suffixes) {
+			const candidate = win32.resolve(dir, `${name}${suffix}`);
+			if (!(await checkFile(candidate))) continue;
+			const candidateExt = win32.extname(candidate).toLowerCase();
+			return {
+				kind: BATCH_EXTENSIONS.has(candidateExt) ? "batch" : "direct",
+				executable: candidate,
+			};
+		}
+	}
+	return null;
+}
+
+/**
+ * Format one `cmd.exe /d /v:off /s /c` command line for a `.cmd`/`.bat` executable. Unlike MSVC
+ * programs, `cmd.exe` does not treat `""` as an escaped quote, expands `%VAR%`, and splits on
+ * newlines inside double quotes, so those characters are rejected rather than misquoted.
+ */
+export function formatWindowsBatchCommand(executable: string, args: readonly string[]): string {
+	const quote = (token: string): string => {
+		if (WINDOWS_UNSAFE_BATCH_RE.test(token)) {
+			throw new TestFailure(
+				"Arguments passed to a Windows batch script (.cmd or .bat) cannot contain quotes, %, or line breaks. Point to the executable directly instead.",
+				{ stage: "spawn" },
+			);
+		}
+		if (token !== "" && WINDOWS_SAFE_ARG_RE.test(token)) return token;
+		return `"${token.replace(/\\+$/, slashes => slashes + slashes)}"`;
+	};
+	return `"${[executable, ...args].map(quote).join(" ")}"`;
 }
 
 class StdioTransport implements Transport {
@@ -246,18 +341,35 @@ class StdioTransport implements Transport {
 
 	async open(): Promise<void> {
 		const windows = process.platform === "win32";
-		const shell = windows
-			? (await resolveExecutable(this.env.ComSpec ?? this.env.COMSPEC ?? "", this.env)) ?? await requireExecutable("cmd.exe", this.env)
-			: null;
-		const child = windows
-			? spawn(shell!, ["/d", "/s", "/c", `"${[this.command, ...this.args].map(cmdQuote).join(" ")}"`], {
+		let child: ChildProcess;
+		if (windows) {
+			if (this.command.includes("\0") || this.args.some(arg => arg.includes("\0"))) {
+				throw new TestFailure("MCP command arguments cannot contain null bytes.", { stage: "spawn" });
+			}
+			const target = await resolveWindowsStdioTarget(this.command, this.cwd, this.env);
+			if (!target) throw new TestFailure(`Command not found: ${this.command}`, { stage: "spawn" });
+			if (target.kind === "direct") {
+				child = spawn(target.executable, this.args, {
+					cwd: this.cwd,
+					env: this.env,
+					stdio: ["pipe", "pipe", "pipe"],
+					windowsHide: true,
+				});
+			} else {
+				const shell = (await resolveExecutable(this.env.ComSpec ?? this.env.COMSPEC ?? "", this.env))
+					?? await requireExecutable("cmd.exe", this.env);
+				const commandLine = formatWindowsBatchCommand(target.executable, this.args);
+				child = spawn(shell, ["/d", "/v:off", "/s", "/c", commandLine], {
 					cwd: this.cwd,
 					env: this.env,
 					stdio: ["pipe", "pipe", "pipe"],
 					windowsHide: true,
 					windowsVerbatimArguments: true,
-				})
-			: spawn(this.command, this.args, { cwd: this.cwd, env: this.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+				});
+			}
+		} else {
+			child = spawn(this.command, this.args, { cwd: this.cwd, env: this.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+		}
 		this.#child = child;
 		const exited = Promise.withResolvers<void>();
 		this.#exited = exited.promise;
@@ -283,6 +395,15 @@ class StdioTransport implements Transport {
 		child.stdout?.setEncoding("utf8");
 		child.stdout?.on("data", (chunk: string) => {
 			const { lines, rest } = splitLines(buffer + chunk);
+			if (Buffer.byteLength(rest) > MAX_HTTP_BODY_BYTES) {
+				const failure = new TestFailure(`Server message exceeded ${MAX_HTTP_BODY_BYTES} bytes`);
+				buffer = "";
+				child.stdout?.destroy();
+				spawned.reject(failure);
+				this.events.onClose(failure);
+				void this.close();
+				return;
+			}
 			buffer = rest;
 			for (const line of lines) {
 				if (!line.trim()) continue;
@@ -336,10 +457,51 @@ class StdioTransport implements Transport {
 	}
 }
 
+export async function readBoundedText(response: Response, maxBytes: number, truncateOnLimit = false): Promise<string> {
+	if (!truncateOnLimit) {
+		const declared = response.headers.get("content-length");
+		if (declared !== null && /^\d+$/.test(declared.trim()) && Number(declared.trim()) > maxBytes) {
+			await response.body?.cancel().catch(() => undefined);
+			throw new TestFailure(`Server response exceeded ${maxBytes} bytes`);
+		}
+	}
+	if (!response.body) {
+		const text = await response.text();
+		if (Buffer.byteLength(text) > maxBytes) {
+			if (truncateOnLimit) return text.slice(0, maxBytes);
+			throw new TestFailure(`Server response exceeded ${maxBytes} bytes`);
+		}
+		return text;
+	}
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	const chunks: string[] = [];
+	let totalBytes = 0;
+	try {
+		for (;;) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			if (totalBytes + value.byteLength > maxBytes) {
+				if (truncateOnLimit) {
+					chunks.push(decoder.decode(value.subarray(0, Math.max(0, maxBytes - totalBytes)), { stream: false }));
+					return chunks.join("");
+				}
+				throw new TestFailure(`Server response exceeded ${maxBytes} bytes`);
+			}
+			totalBytes += value.byteLength;
+			chunks.push(decoder.decode(value, { stream: true }));
+		}
+		chunks.push(decoder.decode());
+		return chunks.join("");
+	} finally {
+		await reader.cancel().catch(() => undefined);
+	}
+}
+
 async function httpFailure(response: Response, what: string): Promise<TestFailure> {
-	const body = (await response.text().catch(() => "")).trim().slice(0, 300);
+	const body = (await readBoundedText(response, MAX_ERROR_BODY_BYTES, true).catch(() => "")).trim().slice(0, 300);
 	const auth = response.status === 401 || response.status === 403;
-	return new TestFailure(`${what} failed: HTTP ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`, {
+	return new TestFailure(`${what} failed: HTTP ${response.status} ${response.statusText}${body ? `: ${body}` : ""}`, {
 		httpStatus: response.status,
 		authChallenge: auth ? response.headers.get("www-authenticate") : null,
 	});
@@ -373,6 +535,59 @@ function parseEventData(event: SseEvent): unknown {
 	} catch {
 		return undefined;
 	}
+}
+
+/** Fetch an MCP endpoint while allowing only same-origin redirects (or same-host http to https upgrades). */
+export async function fetchMcp(
+	url: string,
+	init: RequestInit,
+	fetchImpl: typeof fetch = fetch,
+): Promise<{ response: Response; url: URL }> {
+	const initial = new URL(url);
+	let current = initial;
+	let method = (init.method ?? "GET").toUpperCase();
+	const headers = new Headers(init.headers);
+	let body = init.body;
+	for (let hop = 0; hop <= MAX_HTTP_REDIRECTS; hop++) {
+		const response = await fetchImpl(current.href, { ...init, method, headers, body, redirect: "manual" });
+		if (!REDIRECT_STATUSES.has(response.status)) return { response, url: current };
+		await response.body?.cancel().catch(() => undefined);
+		const location = response.headers.get("location");
+		let next: URL;
+		try {
+			if (!location) throw new Error("missing location");
+			next = new URL(location, current);
+		} catch {
+			throw new TestFailure("Server sent a redirect without a valid location");
+		}
+		if (next.protocol !== "http:" && next.protocol !== "https:") {
+			throw new TestFailure(`Server redirected to an unsupported URL scheme: ${next.protocol}`);
+		}
+		if (next.username || next.password) {
+			throw new TestFailure("Server redirected to a URL with embedded credentials");
+		}
+		if (current.protocol === "https:" && next.protocol === "http:") {
+			throw new TestFailure("Server redirected from HTTPS to HTTP");
+		}
+		const sameOrigin = next.origin === current.origin;
+		const httpsUpgrade = current.protocol === "http:"
+			&& next.protocol === "https:"
+			&& next.hostname === current.hostname
+			&& next.hostname === initial.hostname
+			&& (current.port === "" || current.port === "80")
+			&& (next.port === "" || next.port === "443");
+		if (!sameOrigin && !httpsUpgrade) {
+			throw new TestFailure(`Server redirected to a different origin (${next.host}). Update the server URL if this redirect is expected.`);
+		}
+		if (response.status === 303 ? method !== "GET" && method !== "HEAD" : (response.status === 301 || response.status === 302) && method === "POST") {
+			method = "GET";
+			body = undefined;
+			headers.delete("content-type");
+			headers.delete("content-length");
+		}
+		current = next;
+	}
+	throw new TestFailure("Server redirected too many times");
 }
 
 /** Configured headers first; transport-generated headers win case-insensitively (MCP-Protocol-Version is ours). */
@@ -410,7 +625,7 @@ class StreamableHttpTransport implements Transport {
 		const isRequest = message.method !== undefined && message.id !== undefined;
 		let response: Response;
 		try {
-			response = await fetch(this.url, {
+			({ response } = await fetchMcp(this.url, {
 				method: "POST",
 				headers: buildHeaders(this.headers, {
 					...this.#generated(),
@@ -419,7 +634,7 @@ class StreamableHttpTransport implements Transport {
 				}),
 				body: JSON.stringify(message),
 				signal: this.#controller.signal,
-			});
+			}));
 		} catch (error) {
 			throw networkFailure(this.url, error);
 		}
@@ -441,7 +656,7 @@ class StreamableHttpTransport implements Transport {
 			});
 			return;
 		}
-		const text = await response.text();
+		const text = await readBoundedText(response, MAX_HTTP_BODY_BYTES);
 		if (!text.trim()) return;
 		try {
 			this.events.onMessage(JSON.parse(text));
@@ -458,7 +673,7 @@ class StreamableHttpTransport implements Transport {
 	async close(): Promise<void> {
 		this.#controller.abort();
 		if (!this.#sessionId) return;
-		await fetch(this.url, {
+		await fetchMcp(this.url, {
 			method: "DELETE",
 			headers: buildHeaders(this.headers, this.#generated()),
 			signal: AbortSignal.timeout(2000),
@@ -479,17 +694,17 @@ class LegacySseTransport implements Transport {
 
 	async open(): Promise<void> {
 		let response: Response;
+		let configured: URL;
 		try {
-			response = await fetch(this.url, {
+			({ response, url: configured } = await fetchMcp(this.url, {
 				headers: buildHeaders(this.headers, { Accept: "text/event-stream" }),
 				signal: this.#controller.signal,
-			});
+			}));
 		} catch (error) {
 			throw networkFailure(this.url, error);
 		}
 		if (!response.ok || !response.body) throw await httpFailure(response, "SSE connection");
 		const endpoint = Promise.withResolvers<void>();
-		const configured = new URL(this.url);
 		void readSse(response.body, event => {
 			if (event.event === "endpoint" && !this.#endpoint) {
 				const resolved = new URL(event.data, configured);
@@ -522,12 +737,12 @@ class LegacySseTransport implements Transport {
 		if (!this.#endpoint) throw new TestFailure("SSE endpoint not received");
 		let response: Response;
 		try {
-			response = await fetch(this.#endpoint, {
+			({ response } = await fetchMcp(this.#endpoint, {
 				method: "POST",
 				headers: buildHeaders(this.headers, { "Content-Type": "application/json" }),
 				body: JSON.stringify(message),
 				signal: this.#controller.signal,
-			});
+			}));
 		} catch (error) {
 			throw networkFailure(this.#endpoint, error);
 		}
@@ -715,7 +930,15 @@ export async function testServer(request: TestRequest): Promise<McpTestResult> {
 			session.transport = stdio;
 		} else {
 			const url = config.url ?? "";
-			if (!URL.canParse(url)) throw new TestFailure(`Invalid URL: ${url}`);
+			let parsedUrl: URL;
+			try {
+				parsedUrl = new URL(url);
+			} catch {
+				throw new TestFailure(`Invalid URL: ${url}`);
+			}
+			if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+				throw new TestFailure(`Unsupported server URL scheme: ${parsedUrl.protocol}`);
+			}
 			const headers =
 				config.headerPolicy === "origin-locked"
 					? (config.headers ?? {})

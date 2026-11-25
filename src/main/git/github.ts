@@ -64,16 +64,29 @@ export async function createPr(cwd: string, options: GhPrCreateOptions): Promise
 	return { url, number: Number(/\/pull\/(\d+)/.exec(url)?.[1]), pushed };
 }
 
+function expectedPrHost(url: string): string | null {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:" && parsed.hostname ? parsed.hostname.toLowerCase() : null;
+	} catch {
+		return null;
+	}
+}
+
 /** Failing checks of the current branch's PR with log excerpts from GitHub Actions. */
 export async function ciFailures(cwd: string, maxLines = DEFAULT_LOG_LINES): Promise<GhCiFailures> {
 	const { root } = await requireRepo(cwd);
 	const pr = await prStatus(root);
 	if (!pr) throw new Error("The current branch has no pull request.");
+	const expectedHost = expectedPrHost(pr.url);
 	const failing = pr.checks.filter(check => check.bucket === "fail");
 	const checks = await mapLimit(failing, LOG_FETCH_CONCURRENCY, async (check): Promise<GhFailedCheck> => {
 		const base = { name: check.name, workflow: check.workflow, url: check.url, conclusion: check.conclusion };
 		const job = check.url ? parseActionsJobUrl(check.url) : null;
 		if (!job) return { ...base, logAvailable: false, steps: [], error: "not a GitHub Actions job" };
+		if (!expectedHost || job.host !== expectedHost) {
+			return { ...base, logAvailable: false, steps: [], error: "check URL host does not match pull request host" };
+		}
 		const args = ["api", `repos/${job.owner}/${job.repo}/actions/jobs/${job.jobId}/logs`];
 		if (job.host !== "github.com") args.push("--hostname", job.host);
 		const result = await runGh(args, { cwd: root, timeoutMs: 120_000 });

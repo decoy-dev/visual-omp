@@ -7,12 +7,18 @@ import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { app } from "electron";
 
+declare const __VOMP_ISOLATION_TEST_ENABLED__: boolean | undefined;
+const isolationTestEnabled = typeof __VOMP_ISOLATION_TEST_ENABLED__ === "boolean"
+	? __VOMP_ISOLATION_TEST_ENABLED__
+	: Boolean(process.env.VITEST);
+const isolationTestActive = isolationTestEnabled && process.env.VOMP_PREVIEW_ISOLATION_TEST === "1";
+
 app.setName("visual-omp");
-if (process.env.VOMP_PREVIEW_ISOLATION_TEST === "1" && (!process.env.VOMP_DEV_PROFILE || !isAbsolute(process.env.VOMP_DEV_PROFILE))) {
+if (isolationTestActive && (!process.env.VOMP_DEV_PROFILE || !isAbsolute(process.env.VOMP_DEV_PROFILE))) {
 	throw new Error("Isolation testing requires an absolute scratch app profile.");
 }
 // Isolation evidence uses the same scratch profile override in packaged builds.
-if (!app.isPackaged || process.env.VOMP_PREVIEW_ISOLATION_TEST === "1") {
+if (!app.isPackaged || isolationTestActive) {
 	const profile = process.env.VOMP_DEV_PROFILE;
 	app.setPath("userData", profile && isAbsolute(profile) ? profile : join(app.getPath("appData"), profile || "visual-omp-dev"));
 	// An explicit scratch profile (release tours, fixtures) also keeps downloads and exports inside it, so a tour's

@@ -67,7 +67,11 @@
 			"body": "Pick a theme. The window previews it as you choose.",
 			"system": "System",
 			"light": "Light",
-			"dark": "Dark"
+			"dark": "Dark",
+			"crashReports": {
+				"label": "Send crash reports",
+				"description": "Automatically sends crash reports and selected app failure events to Sentry. Event logs exclude chat contents. Native crash reports may contain sensitive information from process memory. You can change this later in Settings."
+			}
 		},
 		"done": {
 			"title": "You're all set",
@@ -370,8 +374,8 @@
 			"skip": "Automatic checks will skip updates through v{{version}} until a newer release is available. You can choose Check for updates and update sooner.",
 			"legacySkip": "Your choice to skip updates through v{{version}} will be saved when the installer opens. Versions before 0.7.1 will still show the newer update, and you can leave it uninstalled.",
 			"skipped": "Updates through v{{version}} are skipped in automatic checks. Choose Check for updates to review them, or wait for a newer release.",
-			"dmg": "The earlier disk image downloads to Downloads and opens in Finder. Quit visual-omp, drag visual-omp onto Applications in the disk image, choose Replace, then open the app again.",
-			"nsis": "The earlier installer downloads to Downloads. Running it quits visual-omp so it can replace the app. Follow the setup wizard, then open visual-omp again. Working chats require confirmation before the app quits.",
+			"dmg": "The earlier disk image downloads and opens in Finder. Quit visual-omp, drag visual-omp onto Applications in the disk image, choose Replace, then open the app again.",
+			"nsis": "The earlier installer downloads automatically. Running it quits visual-omp so it can replace the app. Follow the setup wizard, then open visual-omp again. Working chats require confirmation before the app quits.",
 			"progressTitle": "Install visual-omp v{{version}}",
 			"progressDescription": "This installer replaces visual-omp with the earlier v{{version}}.",
 			"retry": "Try the installation again",
@@ -380,7 +384,7 @@
 			"unavailable": "No earlier published installer is available for this copy.",
 			"managedLegacySkip": "Your choice to skip updates through v{{version}} will be saved when the download starts. Versions before 0.7.1 will still show the newer update, and you can leave it uninstalled.",
 			"download": "Download v{{version}} installer",
-			"digestUnavailable": "This release has no published SHA-256 checksum. Its installer download is unavailable for this managed copy.",
+			"digestUnavailable": "This release has no published SHA-256 checksum, so visual-omp cannot download its installer.",
 			"managedLead": "To install this older version, switch to the downloaded installer. Package-manager updates will stop managing this copy.",
 			"managedPreserved": "Your saved chats, app data and omp settings are kept. The download is verified and revealed in Downloads; it does not run automatically.",
 			"downloading": "Downloading and verifying the v{{version}} installer…",
@@ -408,8 +412,8 @@
 			"managerDescription": "The running version is v{{version}}.",
 			"managerPreserved": "Reinstallation requires restarting visual-omp. Your saved chats and omp settings stay unchanged.",
 			"managerSkip": "If this installs a version newer than the releases you chose to skip, that skipped-update choice clears when visual-omp next starts.",
-			"dmg": "The disk image for this version downloads to Downloads and opens in Finder. Quit visual-omp, drag visual-omp onto Applications in the disk image, choose Replace, then open the app again.",
-			"nsis": "The installer for this version downloads to Downloads. Running it quits visual-omp so it can replace the app. Follow the setup wizard, then open visual-omp again. Working chats require confirmation before the app quits.",
+			"dmg": "The disk image for this version downloads and opens in Finder. Quit visual-omp, drag visual-omp onto Applications in the disk image, choose Replace, then open the app again.",
+			"nsis": "The installer for this version downloads automatically. Running it quits visual-omp so it can replace the app. Follow the setup wizard, then open visual-omp again. Working chats require confirmation before the app quits.",
 			"brew": "Homebrew reinstalls the currently published cask, which may install a newer version than the one running.",
 			"brewRun": "Quit visual-omp first, run this command in Terminal, then open the app again.",
 			"scoop": "Scoop reinstalls the version in its current bucket manifest, which may be newer than the one running.",

@@ -296,7 +296,7 @@ it("promotes an accepted Office candidate without remounting its rendered presen
 	env.loadAdapter.mockImplementation(async () => ({ maxFps: 8, format: "docx", Frame: (props: LiveFrameProps) => {
 		useEffect(() => {
 			mounted(props.subject.id);
-			props.officeCache?.write({ format: "docx", path: props.subject.path!, revision: props.subject.revision, body: `<p>${props.subject.id}</p>`, styles: "" });
+			props.officeCache?.write({ format: "docx", path: props.subject.path!, revision: props.subject.revision, body: `<p>${props.subject.id}</p>`, styles: [] });
 			props.onOfficeCheck?.(true);
 		}, []);
 		return createElement("div", { "data-frame": props.subject.id }, props.subject.id);

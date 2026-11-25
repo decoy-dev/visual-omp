@@ -122,7 +122,7 @@ async function gitEnv(): Promise<NodeJS.ProcessEnv> {
 }
 
 /** Config that makes machine-read output independent of the user's git config. */
-const GIT_BASE_ARGS = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false"];
+const GIT_BASE_ARGS = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false", "-c", "protocol.ext.allow=never"];
 
 export type GitRunOptions = Omit<RunOptions, "env"> & { cwd: string };
 

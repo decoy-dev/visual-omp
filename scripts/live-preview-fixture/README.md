@@ -107,7 +107,7 @@ This command is for the integration owner. The fixture probes do not launch Elec
 
 Only the integration owner runs the packaged apps. Node.js 22 or later and omp 18.16.0 on PATH are required inside the Windows VM and on the later macOS host run. No model credentials are needed. Keep loopback ports 9229 (main inspector), 9333 (renderer CDP) and 47831 (fixture provider) free. The inspectors grant debugging access to the scratch app; quit it after collection. Normal launches open neither inspector.
 
-`run.mjs <root> --isolation <app>` sets `VOMP_PREVIEW_ISOLATION_TEST=1`, the exact absolute `<root>/work/isolation.html` path and the scratch app profile. Main captures the switch at startup in development and packaged builds. Only prepared saved revisions of that exact file gain inline scripts and `sandbox="allow-scripts"`. No `allow-same-origin` permission is added, the rest of the response CSP stays unchanged, and streaming revisions and all other files keep scripts off. A packaged launch without an absolute scratch profile fails before reading app preferences.
+`run.mjs <root> --isolation <app>` sets `VOMP_PREVIEW_ISOLATION_TEST=1`, the exact absolute `<root>/work/isolation.html` path and the scratch app profile. Main captures the switch at startup in development builds, and in packaged builds only when compiled with `VOMP_ISOLATION_TEST_BUILD=1`. Only prepared saved revisions of that exact file gain inline scripts and `sandbox="allow-scripts"`. No `allow-same-origin` permission is added, the rest of the response CSP stays unchanged, and streaming revisions and all other files keep scripts off. A packaged launch without an absolute scratch profile fails before reading app preferences.
 
 ### Build an unpacked Windows app on macOS
 

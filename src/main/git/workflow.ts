@@ -21,7 +21,7 @@ export async function switchBranch(cwd: string, branch: string): Promise<void> {
 		return;
 	}
 	if (list.remote.some(entry => entry.name === branch)) {
-		await git(["switch", "--track", branch], { cwd: root });
+		await git(["switch", "--track", "--", branch], { cwd: root });
 		return;
 	}
 	throw new Error(`There is no branch called "${branch}".`);
@@ -124,8 +124,8 @@ export async function prWrite(cwd: string, base: string | null): Promise<GitPrDr
 	const commits = await branchCommits(root, base);
 	if (commits.length === 0) throw new Error("This branch has no commits to describe yet");
 	const range = ref ? [`${ref}...HEAD`] : ["HEAD"];
-	const stat = ref ? await git(["diff", "--stat", ...range], { cwd: root }) : "";
-	const fullDiff = ref ? await git(["diff", "--no-color", ...range], { cwd: root }) : "";
+	const stat = ref ? await git(["diff", "--no-ext-diff", "--no-textconv", "--stat", "--end-of-options", ...range], { cwd: root }) : "";
+	const fullDiff = ref ? await git(["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--end-of-options", ...range], { cwd: root }) : "";
 	const diff =
 		fullDiff.length > MAX_PROMPT_DIFF_CHARS ? `${fullDiff.slice(0, MAX_PROMPT_DIFF_CHARS)}\n… (diff truncated)` : fullDiff;
 	const log = commits.map(entry => `- ${entry.subject}${entry.body ? `\n  ${entry.body.replace(/\n/g, "\n  ")}` : ""}`);

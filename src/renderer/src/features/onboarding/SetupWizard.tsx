@@ -5,7 +5,7 @@ import type { AppPreferences } from "@shared/ipc";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../../state/app";
-import { Button, cn, PeriscopeMark, Notice, PresenceSwap, SearchInput, Spinner, Stagger, StaggerItem, spring, useMotionReduced } from "../../ui";
+import { Button, cn, PeriscopeMark, Notice, PresenceSwap, SearchInput, Spinner, Stagger, StaggerItem, Switch, spring, useMotionReduced } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { findModel } from "../manage/roles/rolesModel";
 import { OmpLoginDialog, type OmpLoginTarget } from "../manage/settings/OmpLoginDialog";
@@ -239,6 +239,13 @@ export function SetupWizard() {
 			}
 		}
 	};
+	const chooseCrashReports = async (sendCrashReports: boolean) => {
+		setError(null);
+		try { await useApp.getState().setPrefs({ sendCrashReports }); }
+		catch (reason) {
+			if (active.current) setError(ipcErrorMessage(reason));
+		}
+	};
 	useEffect(() => {
 		themeTimer.current = window.setTimeout(() => setControlsTheme(previewTheme), reduced ? 0 : 240);
 		return () => clearTimeout(themeTimer.current);
@@ -385,6 +392,15 @@ export function SetupWizard() {
 									</div>
 								)}
 								{shown === "appearance" && <SetupAutoUpdateSetting />}
+								{shown === "appearance" && (
+									<Switch
+										className="py-3"
+										label={t("wizard.appearance.crashReports.label")}
+										description={t("wizard.appearance.crashReports.description")}
+										checked={prefs?.sendCrashReports !== false}
+										onCheckedChange={sendCrashReports => void chooseCrashReports(sendCrashReports)}
+									/>
+								)}
 								{shown === "done" && (
 									<Stagger step={0.04}><dl className="divide-y divide-border border-y border-border">
 										{[

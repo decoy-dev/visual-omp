@@ -43,4 +43,11 @@ describe("DOCX post-render sanitizer", () => {
 		sanitizeOfficeDom(body, document.createElement("div"), {});
 		expect(Array.from(body.querySelectorAll("a")).map(link => link.getAttribute("href"))).toEqual(["#constructor", "#__proto__"]);
 	});
+	it("strips closing style breakout patterns without dropping literal < in CSS strings", () => {
+		const breakout = sanitizeOfficeCss('p{color:red}</style><img src="https://bad.test"></STYLE><style>');
+		expect(breakout.toLowerCase()).not.toContain("</style");
+		expect(breakout).not.toContain("https://bad.test");
+		expect(sanitizeOfficeCss('p{color:red}</sty@import "x";le><img src="https://bad.test">').toLowerCase()).not.toContain("</style");
+		expect(sanitizeOfficeCss('p:before{content:"<"}')).toBe('p:before{content:"<"}');
+	});
 });

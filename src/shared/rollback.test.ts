@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { AppInstallInfo, AppReleaseNotes, AppUpdateStatus } from "./contracts/updates";
 import { eligibleRollbackReleases } from "./rollback";
 
+const VALID_DIGEST = `sha256:${"a".repeat(64)}`;
 const install: AppInstallInfo = { method: "dmg", appPath: null, command: null, scoopGlobal: false };
-const release = (version: string, digest?: string | null): AppReleaseNotes => ({
+const release = (version: string, digest: string | null | undefined = VALID_DIGEST): AppReleaseNotes => ({
 	version, body: "Published notes", url: null, publishedAt: 1,
 	platformAsset: { name: "visual-omp.dmg", url: "https://github.com/decoy-dev/visual-omp/releases/download/v0.7.9/visual-omp.dmg", size: 12, digest },
 });
@@ -29,10 +30,9 @@ describe("rollback entry eligibility", () => {
 		expect(eligibleRollbackReleases(status([release("0.7.11")]), { ...install, method: "manual" })).toEqual([]);
 		expect(eligibleRollbackReleases(status([{ ...release("0.7.11"), platformAsset: null }]), install)).toEqual([]);
 	});
-	it.each(["brew", "scoop"] as const)("requires a complete published SHA-256 digest for %s", method => {
-		const feed = status([release("0.7.11"), release("0.7.10", "sha256:bad"), release("0.7.9", `sha256:${"a".repeat(64)}`)]);
+	it.each(["dmg", "nsis", "brew", "scoop"] as const)("requires a complete published SHA-256 digest for %s", method => {
+		const feed = status([release("0.7.11", null), release("0.7.10", "sha256:bad"), release("0.7.9", VALID_DIGEST)]);
 		expect(eligibleRollbackReleases(feed, { ...install, method }).map(item => item.version)).toEqual(["0.7.9"]);
-		expect(eligibleRollbackReleases(feed, install)).toHaveLength(3);
 	});
 	it("keeps cached installers available offline and excludes prereleases for a stable copy", () => {
 		const feed = { ...status([release("0.7.11"), release("0.7.12-beta.1"), release("invalid")]), error: "Offline" };

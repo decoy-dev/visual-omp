@@ -155,3 +155,53 @@ it.each(["../media/%C2%85image.png", "../media/%zz", "../media/%c0%ae.png"])("re
 	const bytes = packageOf({ "word/_rels/document.xml.rels": `<Relationships><Relationship Id="x" Type="${rel}/image" Target="${target}"/></Relationships>` });
 	expect(() => rewriteOfficePackage(bytes, "docx")).toThrow("unsafe");
 });
+
+const pptx = "http://schemas.openxmlformats.org/presentationml/2006/main";
+const draw = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
+describe("PPTX XML and embedded SVG sanitization", () => {
+	it("strips p:oleObj and p:control while promoting mc:Fallback and nested p:pic images", () => {
+		const parts = {
+			"ppt/presentation.xml": "<presentation/>",
+			"ppt/media/fallback.png": new Uint8Array([1, 2, 3]),
+			"ppt/media/nested.png": new Uint8Array([4, 5, 6]),
+			"ppt/embeddings/embedded.bin": "payload",
+			"ppt/slides/_rels/slide1.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rPic1" Type="${rel}/image" Target="../media/fallback.png"/><Relationship Id="rPic2" Type="${rel}/image" Target="../media/nested.png"/><Relationship Id="rOle" Type="${rel}/oleObject" Target="../embeddings/embedded.bin"/></Relationships>`,
+			"ppt/slides/slide1.xml": `<p:sld xmlns:p="${pptx}" xmlns:a="${draw}" xmlns:r="${rel}" xmlns:mc="${mc}"><p:cSld><p:spTree><mc:AlternateContent><mc:Choice Requires="v"><p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole"><p:oleObj r:id="rOle" progId="Package"/></a:graphicData></a:graphic></p:graphicFrame></mc:Choice><mc:Fallback><p:pic><p:blipFill><a:blip r:embed="rPic1"/></p:blipFill></p:pic></mc:Fallback></mc:AlternateContent><p:oleObj r:id="rOle"><p:pic><p:blipFill><a:blip r:embed="rPic2"/></p:blipFill></p:pic></p:oleObj><p:control r:id="rOle"/></p:spTree></p:cSld></p:sld>`,
+		};
+		const output = inflateOffice(rewriteOfficePackage(packageOf(parts), "pptx").bytes);
+		const slide = strFromU8(output["ppt/slides/slide1.xml"]!);
+		expect(slide).not.toMatch(/oleObj|control/);
+		expect(slide).toContain('r:embed="rPic1"');
+		expect(slide).toContain('r:embed="rPic2"');
+	});
+
+	it("strips removed external media, links, and externalData while keeping internal blips and extension URIs", () => {
+		const parts = {
+			"ppt/presentation.xml": "<presentation/>",
+			"ppt/media/local.png": new Uint8Array([1]),
+			"ppt/slides/_rels/slide1.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rInt" Type="${rel}/image" Target="../media/local.png"/><Relationship Id="rExtImg" Type="${rel}/image" Target="file:///etc/passwd" TargetMode="External"/><Relationship Id="rExtLink" Type="${rel}/hyperlink" Target="https://evil.test/track" TargetMode="External"/><Relationship Id="rExtVid" Type="${rel}/video" Target="\\\\fileserver\\share\\clip.mp4" TargetMode="External"/></Relationships>`,
+			"ppt/slides/slide1.xml": `<p:sld xmlns:p="${pptx}" xmlns:a="${draw}" xmlns:r="${rel}" xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"><p:cSld><p:spTree><a:blip r:embed="rInt" r:link="rExtImg"/><a:blip r:link="rExtImg"/><a:hlinkClick r:id="rExtLink" action="ppaction://program"/><a:videoFile r:link="rExtVid"/><p:externalData r:id="rExtLink"/><a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}"><asvg:svgBlip r:embed="rInt"/></a:ext></a:extLst></p:spTree></p:cSld></p:sld>`,
+		};
+		const output = inflateOffice(rewriteOfficePackage(packageOf(parts), "pptx").bytes);
+		const slide = strFromU8(output["ppt/slides/slide1.xml"]!);
+		expect(slide).toContain('r:embed="rInt"');
+		expect(slide).toContain('uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}"');
+		expect(slide).not.toMatch(/rExtImg|rExtLink|rExtVid|hlinkClick|videoFile|externalData|ppaction/);
+	});
+
+	it.each(["docx", "pptx"] as const)("sanitizes embedded SVG parts in %s while preserving fragments and safe raster data", kind => {
+		const parts: Record<string, string | Uint8Array> = {
+			...(kind === "pptx" ? { "ppt/presentation.xml": "<presentation/>" } : {}),
+			"word/media/diagram.svg": `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="evil()"><defs><linearGradient id="g1"/><style>@import "https://evil.test/s.css"; .a { fill: url(file:///etc/passwd); stroke: url(#g1); }</style></defs><script>alert(1)</script><foreignObject><body xmlns="http://www.w3.org/1999/xhtml"><img src="https://evil.test/x.png"/></body></foreignObject><use href="#g1" onclick="evil()"/><use href="https://evil.test/defs.svg#a"/><image xlink:href="https://evil.test/pixel.png" width="10" height="10"/><image href="\\\\server\\share\\x.png" width="10" height="10"/><image href="data:image/svg+xml;base64,PHN2Zy8+" width="10" height="10"/><image href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/><rect fill="url(#g1)" filter="url(http://127.0.0.1/filter#x)"/></svg>`,
+		};
+		const output = inflateOffice(rewriteOfficePackage(packageOf(parts), kind).bytes);
+		const svg = strFromU8(output["word/media/diagram.svg"]!);
+		expect(svg).not.toMatch(/<script|foreignObject|onload|onclick|@import|evil\.test|\/etc\/passwd|fileserver|server\\share|svg\+xml/i);
+		expect(svg).toContain('href="#g1"');
+		expect(svg).toContain('fill="url(#g1)"');
+		expect(svg).toContain('stroke: url(#g1)');
+		expect(svg).toContain("data:image/png;base64,iVBORw0KGgo=");
+	});
+});

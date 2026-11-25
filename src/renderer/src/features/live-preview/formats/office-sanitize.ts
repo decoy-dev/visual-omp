@@ -4,17 +4,20 @@ const ELEMENTS = ["div", "section", "article", "header", "footer", "main", "p", 
 const ATTRIBUTES = ["class", "id", "title", "alt", "width", "height", "colspan", "rowspan", "scope", "dir", "start", "value", "style", "href", "src"];
 const RASTER = /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[a-z\d+/=\s]+$/i;
 
-/** Generated CSS never retains escapes, imports or a non-data resource reference. */
+/** Generated CSS never retains escapes, imports, closing style tags, or non-data resource references. */
 export function sanitizeOfficeCss(css: string): string {
 	// docx-preview terminates list-marker strings with an escaped tab. Normalize only that
 	// whitespace escape; every other escape still refuses the entire generated stylesheet.
 	css = css.replace(/\\9(?=["'])/g, " ");
 	if (/[\\\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(css)) return "";
-	return css.replace(/\/\*[\s\S]*?\*\//g, "")
+	let cleaned = css.replace(/\/\*[\s\S]*?\*\//g, "")
 		.replace(/@import\b[^;{}]*(?:;|$)/gi, "")
 		.replace(/(?:url\(\s*(["']?)(.*?)\1\s*\))/gi, (whole, _quote: string, target: string) =>
 			/^data:(?:image\/(?:png|jpe?g|gif|webp|bmp)|font\/[a-z\d.+-]+|application\/(?:vnd\.ms-opentype|x-font-ttf|font-woff));base64,[a-z\d+/=\s]+$/i.test(target) ? whole : "none")
 		.replace(/[^{};]*(?:image-set\s*\(|expression\s*\(|-moz-binding|behavior\s*:|https?:|javascript:)[^{};]*(?:;|(?=})|$)/gi, "");
+	// Strip closing style sequences last and repeatedly so prior removals cannot stitch one together.
+	while (/<\/\s*style/i.test(cleaned)) cleaned = cleaned.replace(/<\/\s*style/gi, "");
+	return cleaned;
 }
 
 /** Defense in depth after renderAsync, before the detached document is ever attached. */

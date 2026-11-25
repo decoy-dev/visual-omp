@@ -1,5 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import type { GitCloneOptions, GitCloneProgress, GitCloneResult } from "@shared/contracts/git";
 import { pathExists } from "../files";
 import { parseCloneProgress, repoNameFromUrl } from "./parse";
@@ -10,6 +10,20 @@ const clones = new Map<string, AbortController>();
 /** Cloning a large repository over a slow link legitimately takes a long time. */
 const CLONE_TIMEOUT_MS = 2 * 60 * 60_000;
 
+/** Resolve `parentDir/<name>`, rejecting traversal, separators, NULs, or colons before cloning or cleanup. */
+export function resolveCloneTarget(parentDir: string, rawName: string): string {
+	const name = rawName.trim();
+	if (!name || name === "." || name === ".." || /[/\\:\0]/.test(name)) {
+		throw new Error(`Invalid repository folder name: ${rawName}`);
+	}
+	const parent = resolve(parentDir);
+	const target = resolve(parent, name);
+	if (dirname(target) !== parent || relative(parent, target) !== name) {
+		throw new Error(`Invalid repository folder name: ${rawName}`);
+	}
+	return target;
+}
+
 /** `git clone --progress` into `parentDir/<name>`, reporting progress parsed from git's stderr. */
 export async function clone(
 	options: GitCloneOptions,
@@ -17,7 +31,7 @@ export async function clone(
 ): Promise<GitCloneResult> {
 	if (clones.has(options.id)) throw new Error(`A clone with id ${options.id} is already running`);
 	const name = options.name?.trim() || repoNameFromUrl(options.url);
-	const target = join(options.parentDir, name);
+	const target = resolveCloneTarget(options.parentDir, name);
 	const existed = await pathExists(target);
 	await mkdir(options.parentDir, { recursive: true });
 

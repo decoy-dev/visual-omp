@@ -1,12 +1,30 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import type * as FsPromises from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatCompactionStore, type ChatCompactionStore } from "../services/chat-compaction";
 import { afterOverlayReady, ChatCompactionOverlay, OVERLAY_RELOAD_MS, resumeSessionId } from "./chat-compaction-overlay";
 
+const fake = vi.hoisted(() => ({ failWritePath: null as string | null }));
+vi.mock("node:fs/promises", async importOriginal => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		open: async (...args: Parameters<typeof actual.open>) => {
+			if (fake.failWritePath && String(args[0]).startsWith(`${fake.failWritePath}.`)) {
+				throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+			}
+			return actual.open(...args);
+		},
+	};
+});
+
 const dirs: string[] = [];
-afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
+afterEach(async () => {
+	fake.failWritePath = null;
+	await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+});
 
 async function scratch(): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "vomp-compaction-"));
@@ -146,11 +164,10 @@ describe("per-chat compaction points", () => {
 		await writeFile(file, JSON.stringify({ "session-a": 400_000 }));
 		const store = createChatCompactionStore(file);
 		expect(await store.get("session-a")).toBe(400_000);
-		// The atomic write's temporary file cannot be created while a folder holds its name.
-		await mkdir(`${file}.${process.pid}.tmp`);
+		fake.failWritePath = file;
 		await expect(store.set("session-a", 600_000)).rejects.toThrow();
 		expect(await store.get("session-a")).toBe(400_000);
-		await rm(`${file}.${process.pid}.tmp`, { recursive: true });
+		fake.failWritePath = null;
 		await store.set("session-b", 100_000);
 		expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ "session-a": 400_000, "session-b": 100_000 });
 	});

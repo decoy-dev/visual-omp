@@ -15,6 +15,7 @@ import { listHosts, stopAllHosts } from "./omp/host";
 import { followSessions } from "./omp/follow";
 import { stopWatchingSessions, watchSessions } from "./omp/sessions";
 import { stopSavedSessionHandoffs } from "./omp/session-handoff";
+import { setNeutralCwd } from "./omp/config-file";
 import { getPrefs } from "./prefs";
 import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
@@ -25,6 +26,7 @@ import { startPreviewIsolationInspector } from "./services/preview-isolation-tes
 import { stopPreviewOffice } from "./services/preview-office";
 
 startDiagnostics({ classic: getPrefs().classicPresentation, hosts: () => listHosts().filter(host => host.phase !== "exited").length });
+setNeutralCwd(join(app.getPath("userData"), "neutral-cwd"));
 
 registerPreviewScheme();
 startPreviewIsolationInspector();

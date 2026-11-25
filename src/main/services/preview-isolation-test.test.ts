@@ -24,7 +24,7 @@ beforeEach(async () => {
 	vi.stubEnv("VOMP_DEV_PROFILE", join(root, "profile"));
 	await writeFile(join(root, "isolation.html"), "fixture");
 });
-afterEach(async () => { vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 
 it("keeps scripts and debug listeners off unless main captured the exact startup switch", async () => {
 	const gate = await import("./preview-isolation-test");
@@ -63,6 +63,17 @@ it("pins an existing canonical parent before the fixture file is created", async
 	const gate = await import("./preview-isolation-test");
 	await writeFile(join(root, "isolation.html"), "created later");
 	expect(gate.isIsolationTestDocument(await realpath(join(root, "isolation.html")), true)).toBe(true);
+});
+
+it("refuses isolation hooks when build-time isolation support is disabled even with test env vars set", async () => {
+	vi.stubGlobal("__VOMP_ISOLATION_TEST_ENABLED__", false);
+	vi.stubEnv("VOMP_PREVIEW_ISOLATION_TEST", "1");
+	const gate = await import("./preview-isolation-test");
+	expect(gate.previewIsolationTest).toBe(false);
+	expect(gate.isIsolationTestDocument(await realpath(join(root, "isolation.html")), true)).toBe(false);
+	gate.startPreviewIsolationInspector();
+	expect(fake.inspector).not.toHaveBeenCalled();
+	expect(fake.appendSwitch).not.toHaveBeenCalled();
 });
 
 it("rejects fixture symlink retargeting after startup and after authorization", async () => {
@@ -124,4 +135,15 @@ it("accepts the native canonical fixture when legacy realpath retains a Windows 
 	vi.mocked(realpathSync).mockReturnValueOnce("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\fixture");
 	const gate = await import("./preview-isolation-test");
 	expect(gate.isIsolationTestDocument(await realpath(join(root, "isolation.html")), true)).toBe(true);
+});
+
+it("refuses isolation hooks when build-time isolation support is disabled even with test env vars set", async () => {
+	vi.stubGlobal("__VOMP_ISOLATION_TEST_ENABLED__", false);
+	vi.stubEnv("VOMP_PREVIEW_ISOLATION_TEST", "1");
+	const gate = await import("./preview-isolation-test");
+	expect(gate.previewIsolationTest).toBe(false);
+	expect(gate.isIsolationTestDocument(await realpath(join(root, "isolation.html")), true)).toBe(false);
+	gate.startPreviewIsolationInspector();
+	expect(fake.inspector).not.toHaveBeenCalled();
+	expect(fake.appendSwitch).not.toHaveBeenCalled();
 });

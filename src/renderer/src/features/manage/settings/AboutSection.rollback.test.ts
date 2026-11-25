@@ -34,7 +34,13 @@ beforeEach(() => {
 	fake.updates.app = {
 		currentVersion: "0.7.12", latestVersion: "0.7.12", updateAvailable: false, tag: "v0.7.12", releaseName: null,
 		notes: null, releaseUrl: null, publishedAt: 1, assets: [], platformAsset: null, summary: null, checkedAt: 1, fromCache: true, error: null,
-		releases: ["0.7.9", "0.7.11", "0.7.10"].map(version => ({ version, body: "Notes", url: null, publishedAt: 1, platformAsset: { name: "visual-omp.dmg", url: "https://github.com/asset", size: 1 } })),
+		releases: ["0.7.9", "0.7.11", "0.7.10"].map(version => ({
+			version,
+			body: "Notes",
+			url: null,
+			publishedAt: 1,
+			platformAsset: { name: "visual-omp.dmg", url: "https://github.com/asset", size: 1, digest: `sha256:${"a".repeat(64)}` },
+		})),
 	};
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
@@ -50,7 +56,12 @@ it("opens the highest eligible previous release from About", async () => {
 it.each(["manual", "missing", "digest"])("disables About rollback with a reason when %s", async reason => {
 	if (reason === "manual") fake.updates.install!.method = "manual";
 	if (reason === "missing") fake.updates.app!.releases = [];
-	if (reason === "digest") fake.updates.install!.method = "brew";
+	if (reason === "digest") {
+		fake.updates.app!.releases = fake.updates.app!.releases!.map(entry => ({
+			...entry,
+			platformAsset: entry.platformAsset ? { ...entry.platformAsset, digest: null } : null,
+		}));
+	}
 	await act(async () => root.render(e(AboutSection)));
 	const action = [...element.querySelectorAll("button")].find(button => button.textContent === "Roll back…")!;
 	expect(action.disabled).toBe(true);

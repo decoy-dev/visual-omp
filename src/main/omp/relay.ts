@@ -27,6 +27,9 @@ const ENVELOPE_HEADER_LENGTH = 4;
 // omp 18.14 shrinks replicated entries/events below 1 MiB and targets Bun's 16 MB relay cap
 // (collab/replication-shrink.ts). Leave envelope/chunk headroom while bounding peer allocation.
 export const MAX_RELAY_PAYLOAD = 16 * 1024 * 1024;
+export const MAX_RELAY_ROOMS = 64;
+export const MAX_GUESTS_PER_ROOM = 32;
+export const MAX_OPENED_ROOMS_HISTORY = 4096;
 
 export const GUEST_BACKLOG_LIMIT = 128 * 1024 * 1024;
 export const GUEST_BEHIND_BYTES = 4 * 1024 * 1024;
@@ -96,8 +99,17 @@ export class LoopbackRelay {
 	readonly #rooms = new Map<string, Room>();
 	readonly #openedRooms = new Set<string>();
 	readonly #guestBacklogs = new WeakMap<WebSocket, GuestBacklog>();
+	readonly #maxRooms: number;
+	readonly #maxGuestsPerRoom: number;
+	readonly #maxOpenedRoomsHistory: number;
 	#port = 0;
 	events: RelayEvents = {};
+
+	constructor(limits?: { maxRooms?: number; maxGuestsPerRoom?: number; maxOpenedRoomsHistory?: number }) {
+		this.#maxRooms = limits?.maxRooms ?? MAX_RELAY_ROOMS;
+		this.#maxGuestsPerRoom = limits?.maxGuestsPerRoom ?? MAX_GUESTS_PER_ROOM;
+		this.#maxOpenedRoomsHistory = limits?.maxOpenedRoomsHistory ?? MAX_OPENED_ROOMS_HISTORY;
+	}
 
 	get port(): number {
 		return this.#port;
@@ -132,6 +144,7 @@ export class LoopbackRelay {
 			room.host.close(1001, "relay shutting down");
 		}
 		this.#rooms.clear();
+		this.#openedRooms.clear();
 		this.#wss.close();
 		for (const server of this.#servers) server.close();
 	}
@@ -229,6 +242,21 @@ export class LoopbackRelay {
 			ws.close(4009, "a host is already connected for this room");
 			return;
 		}
+		if (this.#rooms.size >= this.#maxRooms) {
+			ws.close(4029, "relay room limit reached");
+			return;
+		}
+		while (this.#openedRooms.size >= this.#maxOpenedRoomsHistory) {
+			let evicted = false;
+			for (const oldRoomId of this.#openedRooms) {
+				if (!this.#rooms.has(oldRoomId)) {
+					this.#openedRooms.delete(oldRoomId);
+					evicted = true;
+					break;
+				}
+			}
+			if (!evicted) break;
+		}
 		const room: Room = { host: ws, guests: new Map(), nextPeerId: 1, bridge: null };
 		this.#openedRooms.add(roomId);
 		this.#rooms.set(roomId, room);
@@ -279,6 +307,10 @@ export class LoopbackRelay {
 		const room = this.#rooms.get(roomId);
 		if (!room) {
 			ws.close(4004, "no such room");
+			return;
+		}
+		if (room.guests.size >= this.#maxGuestsPerRoom) {
+			ws.close(4029, "room guest limit reached");
 			return;
 		}
 		const peerId = room.nextPeerId++;

@@ -3,13 +3,18 @@ import { open as openInspector } from "node:inspector";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { app } from "electron";
 
+declare const __VOMP_ISOLATION_TEST_ENABLED__: boolean | undefined;
+const isolationTestEnabled = typeof __VOMP_ISOLATION_TEST_ENABLED__ === "boolean"
+	? __VOMP_ISOLATION_TEST_ENABLED__
+	: Boolean(process.env.VITEST);
+
 // Captured in main at startup. Neither IPC nor page content can enable this exception.
-export const previewIsolationTest = process.env.VOMP_PREVIEW_ISOLATION_TEST === "1";
-const fixtureFile = process.env.VOMP_PREVIEW_ISOLATION_FILE;
+export const previewIsolationTest = isolationTestEnabled && process.env.VOMP_PREVIEW_ISOLATION_TEST === "1";
+const fixtureFile = previewIsolationTest ? process.env.VOMP_PREVIEW_ISOLATION_FILE : undefined;
 const configuredPath = previewIsolationTest && fixtureFile && isAbsolute(fixtureFile) ? resolve(fixtureFile) : null;
 // The parent already exists when the fixture provider starts; the HTML file may be written later.
 const pinned = (() => {
-	if (!configuredPath) return null;
+	if (!previewIsolationTest || !configuredPath) return null;
 	try {
 		const parent = realpathSync.native(dirname(configuredPath));
 		const info = statSync(parent);
@@ -22,7 +27,7 @@ export interface IsolationReadIdentity { path: string; dev: number; ino: number 
 
 /** Check both the startup pin and, after reading, the identity of the opened document. */
 export function isIsolationTestDocument(path: string, saved: boolean, read?: IsolationReadIdentity): boolean {
-	if (!saved || !configuredPath || !pinned || path !== pinned.path) return false;
+	if (!previewIsolationTest || !saved || !configuredPath || !pinned || path !== pinned.path) return false;
 	try {
 		if (realpathSync.native(dirname(configuredPath)) !== pinned.parent || realpathSync.native(configuredPath) !== pinned.path) return false;
 		const parent = statSync(pinned.parent);

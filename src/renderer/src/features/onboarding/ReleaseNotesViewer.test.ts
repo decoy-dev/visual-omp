@@ -112,17 +112,12 @@ describe("release notes rollback preselection", () => {
 		expect(html).toContain(`Download v${version} installer`);
 	});
 
-	it.each(["brew", "scoop"] as const)("withholds the managed download when the selected %s asset has no SHA-256", method => {
+	it.each(["brew", "scoop", "dmg", "nsis"] as const)("withholds rollback download when the selected %s asset has no SHA-256", method => {
 		const html = viewer({ ...status, releases: status.releases!.map(release => ({ ...release, platformAsset: { ...asset, digest: null } })) }, method);
 		expect(html).toContain("no published SHA-256 checksum");
 		expect(html).not.toContain(`Download v${version} installer`);
+		expect(html).not.toContain(`Install v${version}`);
 		expect(html).not.toContain("Package-manager updates will stop managing this copy");
-	});
-
-	it("keeps direct installer rollback available without imposing managed-only digest guidance", () => {
-		const html = viewer({ ...status, releases: status.releases!.map(release => ({ ...release, platformAsset: { ...asset, digest: null } })) }, "dmg");
-		expect(html).toContain(`Install v${version}`);
-		expect(html).not.toContain("no published SHA-256 checksum");
 	});
 });
 

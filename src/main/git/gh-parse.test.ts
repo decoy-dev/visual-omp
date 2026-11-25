@@ -118,7 +118,34 @@ describe("pull request status", () => {
 			repo: "oh-my-pi",
 			jobId: "109935475243",
 		});
+		expect(
+			parseActionsJobUrl(
+				"https://GHE.Example.internal/org_1/repo.name/actions/runs/36729556785/job/109935475243?check_suite_focus=true#step:4:1",
+			),
+		).toEqual({
+			host: "ghe.example.internal",
+			owner: "org_1",
+			repo: "repo.name",
+			jobId: "109935475243",
+		});
 		expect(parseActionsJobUrl("https://docs.renovatebot.com/")).toBeNull();
+	});
+
+	it("rejects malformed or traversal-bearing Actions URLs", () => {
+		for (const url of [
+			"http://github.com/o/r/actions/runs/1/job/2",
+			"https://user@github.com/o/r/actions/runs/1/job/2",
+			"https://github.com:8443/o/r/actions/runs/1/job/2",
+			"https://-bad.example/o/r/actions/runs/1/job/2",
+			"https://github.com/../user/actions/runs/1/job/2",
+			"https://github.com/o/../actions/runs/1/job/2",
+			"https://github.com/./r/actions/runs/1/job/2",
+			"https://github.com/%2e%2e/r/actions/runs/1/job/2",
+			"https://github.com/o/r%2fextra/actions/runs/1/job/2",
+			"https://github.com/o/r?q=/actions/runs/1/job/2",
+		]) {
+			expect(parseActionsJobUrl(url), url).toBeNull();
+		}
 	});
 });
 

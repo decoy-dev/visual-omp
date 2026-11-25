@@ -81,7 +81,7 @@ export interface LiveSubject {
 }
 
 interface OfficeSnapshotIdentity { path: string; revision: number }
-export interface DocxFrameSnapshot extends OfficeSnapshotIdentity { format: "docx"; body: string; styles: string }
+export interface DocxFrameSnapshot extends OfficeSnapshotIdentity { format: "docx"; body: string; styles: string[] }
 export interface XlsxFrameSnapshot extends OfficeSnapshotIdentity { format: "xlsx"; sheets: OfficeSheet[]; window: OfficeCells }
 export type OfficeFrameSnapshot = DocxFrameSnapshot | XlsxFrameSnapshot;
 export interface OfficeFrameCache {

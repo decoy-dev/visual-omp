@@ -37,8 +37,9 @@ vi.mock("../../ui", () => {
 		PresenceSwap: ({ children }: PropsWithChildren) => e("div", null, children),
 		Notice: ({ children, actions }: PropsWithChildren<{ actions?: ReactNode }>) => e("aside", { role: "alert" }, children, actions),
 		SearchInput: ({ value, onValueChange, ...props }: { value: string; onValueChange(value: string): void }) => e("input", { ...props, value, onChange: (event: { currentTarget: HTMLInputElement }) => onValueChange(event.currentTarget.value) }),
-		// The setup screen's omp update row shows its label while omp's settings load.
-		Switch: ({ label }: { label?: ReactNode }) => e("div", null, label),
+		// The setup screen's omp update row and crash-reports option use Switch controls.
+		Switch: ({ label, checked, onCheckedChange }: { label?: ReactNode; checked?: boolean; onCheckedChange?(next: boolean): void }) =>
+			e("label", null, e("input", { type: "checkbox", checked: Boolean(checked), onChange: (event: { currentTarget: HTMLInputElement }) => onCheckedChange?.(event.currentTarget.checked) }), label),
 	};
 });
 
@@ -343,4 +344,19 @@ it("restores the persisted theme when appearance saving fails", async () => {
 	await act(async () => (element.querySelector('input[value="dark"]') as HTMLInputElement).click());
 	expect((element.querySelector('input[value="light"]') as HTMLInputElement).checked).toBe(true);
 	expect(element.querySelector('[role="alert"]')?.textContent).toContain("Could not save appearance");
+});
+
+it("keeps crash reporting enabled by default during onboarding and persists opting out", async () => {
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue"); await click("Continue");
+	const label = [...element.querySelectorAll("label")].find(node => node.textContent?.includes("Send crash reports"));
+	const toggle = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+	expect(toggle?.checked).toBe(true);
+
+	await act(async () => toggle!.click());
+	expect(fake.setPrefs).toHaveBeenCalledWith({ sendCrashReports: false });
+	expect(toggle?.checked).toBe(false);
+
+	fake.setPrefs.mockRejectedValueOnce(new Error("Could not save crash report preference"));
+	await act(async () => toggle!.click());
+	expect(element.querySelector('[role="alert"]')?.textContent).toContain("Could not save crash report preference");
 });

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -71,5 +71,40 @@ describe("trashSessionConversation", () => {
 		await writeFile(duplicate, `${JSON.stringify({ type: "session", id: "old", cwd: "/other" })}\n`);
 		await trashSessionConversation(latestFile);
 		expect((await allSessions()).map(session => session.file)).toEqual([duplicate]);
+	});
+
+	it("refuses files outside sessionsDir, traversal paths, and symlinks escaping sessionsDir", async () => {
+		const outside = join(dir, "outside.jsonl");
+		await writeFile(outside, '{"type":"session","id":"out","cwd":"/project"}\n');
+		await expect(trashSessionConversation(outside)).rejects.toThrow("not an omp session file");
+		await expect(trashSessionConversation(join(fake.root, "..", "outside.jsonl"))).rejects.toThrow("not an omp session file");
+
+		const linkFile = join(fake.root, "project", "linked.jsonl");
+		const outsideDir = join(dir, "outside-dir");
+		await mkdir(outsideDir);
+		const linkDir = join(fake.root, "linked-project");
+		let createdSymlinks = false;
+		try {
+			await symlink(outside, linkFile);
+			await symlink(outsideDir, linkDir);
+			createdSymlinks = true;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+		}
+		if (createdSymlinks) {
+			await expect(trashSessionConversation(linkFile)).rejects.toThrow("not an omp session file");
+			await writeFile(join(outsideDir, "escaped.jsonl"), '{"type":"session","id":"esc","cwd":"/project"}\n');
+			await expect(trashSessionConversation(join(linkDir, "escaped.jsonl"))).rejects.toThrow("not an omp session file");
+		}
+		expect(fake.trash).not.toHaveBeenCalled();
+	});
+
+	it("allows trashing a live host sessionFile even outside sessionsDir after stopping the host", async () => {
+		const customFile = join(dir, "custom-host-session.jsonl");
+		await writeFile(customFile, '{"type":"session","id":"custom","cwd":"/project"}\n');
+		fake.hosts = [{ hostId: "custom-host", sessionFile: customFile, phase: "live" }];
+		await trashSessionConversation(customFile);
+		expect(fake.stop).toHaveBeenCalledWith("custom-host");
+		expect(fake.trash).toHaveBeenCalledWith(customFile);
 	});
 });

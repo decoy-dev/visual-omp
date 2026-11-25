@@ -149,6 +149,46 @@ async function readJson(path, fallback) {
 	catch (error) { if (error.code === "ENOENT" && fallback !== undefined) return fallback; throw error; }
 }
 
+const VALID_OUTCOMES = new Set(["success", "failure", "cancelled", "skipped", "not run"]);
+const VALID_METADATA_STATUSES = new Set(["pending", "success", "failure"]);
+
+function safeOutcome(value) {
+	return typeof value === "string" && VALID_OUTCOMES.has(value) ? value : "not run";
+}
+
+export async function readOutcomes(dir, env = process.env) {
+	let raw = null;
+	try {
+		const parsed = JSON.parse(await readFile(join(dir, "outcomes.json"), "utf8"));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) raw = parsed;
+	} catch {}
+	return {
+		metadata: safeOutcome(raw?.metadata ?? env.WATCH_METADATA),
+		download: safeOutcome(raw?.download ?? env.WATCH_DOWNLOAD),
+		install: safeOutcome(raw?.install ?? env.WATCH_INSTALL),
+		typecheck: safeOutcome(raw?.typecheck ?? env.WATCH_TYPECHECK),
+		tests: safeOutcome(raw?.tests ?? env.WATCH_TESTS),
+		compat: safeOutcome(raw?.compat ?? env.WATCH_COMPAT),
+	};
+}
+
+export function normalizeReportMetadata(raw, repo, requestedVersion) {
+	const candidateVersion = requestedVersion ?? (typeof raw?.version === "string" ? raw.version : "");
+	const version = normalizeVersion(candidateVersion);
+	const status = typeof raw?.metadataStatus === "string" && VALID_METADATA_STATUSES.has(raw.metadataStatus)
+		? raw.metadataStatus
+		: "failure";
+	return {
+		version,
+		repo,
+		tagName: `v${version}`,
+		url: `https://github.com/${UPSTREAM}/releases/tag/v${version}`,
+		body: typeof raw?.body === "string" ? raw.body : "",
+		metadataStatus: status,
+		...(typeof raw?.metadataError === "string" && raw.metadataError ? { metadataError: raw.metadataError } : {}),
+	};
+}
+
 async function main() {
 	const [command, ...args] = process.argv.slice(2);
 	const dryRun = args.includes("--dry-run");
@@ -179,8 +219,8 @@ async function main() {
 		if (metadata.metadataStatus !== "success") process.exitCode = 1;
 		return;
 	}
-	const metadata = await readJson(metadataPath);
 	if (command === "download") {
+		const metadata = await readJson(metadataPath);
 		if (metadata.metadataStatus !== "success") throw new Error(`Release metadata is unavailable: ${metadata.metadataError || metadata.metadataStatus}`);
 		const name = "omp-linux-x64";
 		for (const required of [name, "SHA256SUMS.txt"]) {
@@ -199,15 +239,24 @@ async function main() {
 		return;
 	}
 	if (command !== "report") throw new Error("Usage: node scripts/omp-watch.mjs discover|prepare|download|report [--version X.Y.Z] [--dry-run]");
+	let rawMetadata = {};
+	try {
+		const parsed = JSON.parse(await readFile(metadataPath, "utf8"));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) rawMetadata = parsed;
+	} catch {}
+	const metadata = normalizeReportMetadata(rawMetadata, repo, requestedVersion);
+	const outcomes = await readOutcomes(dir, process.env);
 	const results = {
-		"Release metadata": metadata.metadataStatus || "not run",
-		"Binary and checksum": process.env.WATCH_DOWNLOAD || "not run",
-		"npm ci": process.env.WATCH_INSTALL || "not run",
-		Typecheck: process.env.WATCH_TYPECHECK || "not run",
-		"Full Vitest suite": process.env.WATCH_TESTS || "not run",
-		"Live compatibility": process.env.WATCH_COMPAT || "not run",
+		"Release metadata": rawMetadata.metadataStatus ? metadata.metadataStatus : outcomes.metadata,
+		"Binary and checksum": outcomes.download,
+		"npm ci": outcomes.install,
+		Typecheck: outcomes.typecheck,
+		"Full Vitest suite": outcomes.tests,
+		"Live compatibility": outcomes.compat,
 	};
-	const compat = await readJson(join(dir, "compat.json"), { status: "No live compatibility report was produced. See the workflow logs." });
+	const compat = await readJson(join(dir, "compat.json"), { status: "No live compatibility report was produced. See the workflow logs." }).catch(() => ({
+		status: "Compatibility report could not be parsed. See the workflow logs.",
+	}));
 	const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${metadata.repo}/actions/runs/${process.env.GITHUB_RUN_ID}` : null;
 	const body = reportBody(metadata, results, compat, runUrl);
 	const bodyFile = join(dir, "issue.md");

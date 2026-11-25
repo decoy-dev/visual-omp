@@ -10,7 +10,7 @@ vi.mock("./profile", () => ({}));
 vi.mock("./services/diagnostics/runtime", () => ({ attachWindowDiagnostics: vi.fn(), crashReportingReady: Promise.resolve(), startDiagnostics: vi.fn() }));
 vi.mock("electron", () => ({
 	app: {
-		isPackaged: true, requestSingleInstanceLock: () => true, quit: fake.quit, whenReady: () => Promise.resolve(),
+		isPackaged: true, requestSingleInstanceLock: () => true, getPath: () => "/app-data", quit: fake.quit, whenReady: () => Promise.resolve(),
 		on: (name: string, listener: (event: { preventDefault(): void }) => void) => fake.events.set(name, listener),
 	},
 	BrowserWindow: vi.fn(function () {
@@ -43,6 +43,7 @@ vi.mock("./services/diagnostics/events", () => ({ flushDiagnostics: fake.flush }
 vi.mock("./services/preview-isolation-test", () => ({ startPreviewIsolationInspector: vi.fn() }));
 vi.mock("./services/preview-office", () => ({ stopPreviewOffice: fake.stopOffice }));
 vi.mock("./omp/session-handoff", () => ({ stopSavedSessionHandoffs: fake.stopHandoffs }));
+vi.mock("./omp/config-file", () => ({ setNeutralCwd: vi.fn() }));
 
 beforeEach(async () => {
 	vi.clearAllMocks(); vi.resetModules(); fake.events.clear(); fake.windowEvents.clear();

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, access } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import type * as FsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { AppDownload, AppInstallMethod } from "@shared/contracts/updates";
 import { installerName } from "../services/updates";
@@ -42,6 +42,9 @@ vi.mock("node:fs/promises", async importOriginal => {
 			return actual.rm(...args);
 		},
 		open: async (...args: Parameters<typeof actual.open>) => {
+			if (fake.failPendingWrite && String(args[0]).includes("update-pending.json.")) {
+				throw new Error("Pending record write failed");
+			}
 			const file = await actual.open(...args);
 			const write = file.write.bind(file);
 			vi.spyOn(file, "write").mockImplementation((async (value: Uint8Array, offset = 0, length = value.byteLength - offset) => {
@@ -98,11 +101,14 @@ it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch))("
 		await fake.handlers.get("updates:app:check")!(true);
 		const started = await fake.handlers.get("updates:app:download")!() as AppDownload;
 		await expect.poll(() => fake.events.at(-1)?.state).toBe(matches ? "done" : "failed");
-		if (matches) expect(await readFile(started.filePath)).toEqual(Buffer.from(bytes));
-		else {
+		if (matches) {
+			expect(dirname(started.filePath)).toBe(join(fake.root, "updates"));
+			if (process.platform !== "win32") expect((await stat(dirname(started.filePath))).mode & 0o777).toBe(0o700);
+			expect(await readFile(started.filePath)).toEqual(Buffer.from(bytes));
+		} else {
 			expect(fake.events.at(-1)?.error).toContain("checksum did not match");
 			await expect(access(started.filePath)).rejects.toThrow();
-			await expect(access(`${started.filePath}.download`)).rejects.toThrow();
+			expect((await readdir(dirname(started.filePath))).some(entry => entry.endsWith(".download"))).toBe(false);
 		}
 	}
 });
@@ -136,7 +142,7 @@ it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch))("
 		await expect.poll(() => fake.events.at(-1)?.state).toBe("failed");
 		expect(fake.events.at(-1)?.error).toContain("could not be written to disk");
 		await expect(access(started.filePath)).rejects.toThrow();
-		await expect(access(`${started.filePath}.download`)).rejects.toThrow();
+		expect((await readdir(dirname(started.filePath))).some(entry => entry.endsWith(".download"))).toBe(false);
 	} finally {
 		fake.writeLimit = Infinity;
 	}
@@ -153,10 +159,62 @@ it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch))("
 		await expect.poll(() => fake.events.at(-1)?.state).toBe("failed");
 		expect(fake.events.at(-1)?.error).toContain("size did not match");
 		await expect(access(started.filePath)).rejects.toThrow();
-		await expect(access(`${started.filePath}.download`)).rejects.toThrow();
+		expect((await readdir(dirname(started.filePath))).some(entry => entry.endsWith(".download"))).toBe(false);
 	} finally {
 		fake.sizeOffset = 0;
 	}
+});
+
+it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch)).each([undefined, null, "", "md5:abc", `sha256:${"0".repeat(63)}`])(
+	"rejects packaged direct installer updates without a valid published SHA-256 digest: %s", async digest => {
+		fake.version++;
+		fake.events.length = 0;
+		fake.digest = digest;
+		try {
+			await fake.handlers.get("updates:app:check")!(true);
+			await expect(fake.handlers.get("updates:app:download")!()).rejects.toThrow("published SHA-256");
+			expect(fake.events).toHaveLength(0);
+			expect(fake.openPath).not.toHaveBeenCalled();
+		} finally {
+			fake.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+		}
+	},
+);
+
+it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch))("cleans stale staged installers, keeps downloadOnly in Downloads, and blocks opening tampered staged files", async () => {
+	fake.version++;
+	fake.events.length = 0;
+	fake.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+	fake.openPath.mockReset().mockResolvedValue("");
+	const staleFile = join(fake.root, "updates", "stale-old-installer.dmg");
+	const { mkdir } = await import("node:fs/promises");
+	await mkdir(dirname(staleFile), { recursive: true });
+	await writeFile(staleFile, "stale");
+	await fake.handlers.get("updates:app:check")!(true);
+	const staged = await fake.handlers.get("updates:app:download")!() as AppDownload;
+	expect(dirname(staged.filePath)).toBe(join(fake.root, "updates"));
+	await expect.poll(() => fake.events.at(-1)?.state).toBe("done");
+	await expect(access(staleFile)).rejects.toThrow();
+
+	// Tampering on disk causes runInstaller() to fail closed and removes the modified file.
+	await writeFile(staged.filePath, Buffer.from("tampered installer byte sequence"));
+	await expect(fake.handlers.get("updates:app:runInstaller")!()).rejects.toThrow(/did not match/);
+	expect(fake.openPath).not.toHaveBeenCalled();
+	await expect(access(staged.filePath)).rejects.toThrow();
+
+	// A subsequent download request re-downloads instead of reusing tampered or deleted state.
+	fake.events.length = 0;
+	await fake.handlers.get("updates:app:download")!();
+	await expect.poll(() => fake.events.at(-1)?.state).toBe("done");
+	await expect(readFile(staged.filePath)).resolves.toEqual(Buffer.from(bytes));
+
+	// Tampering right before a reuse download also forces re-download rather than returning stale done state.
+	await writeFile(staged.filePath, Buffer.from("X".repeat(bytes.length)));
+	fake.events.length = 0;
+	const redownload = await fake.handlers.get("updates:app:download")!() as AppDownload;
+	expect(redownload.state).toBe("downloading");
+	await expect.poll(() => fake.events.at(-1)?.state).toBe("done");
+	await expect(readFile(staged.filePath)).resolves.toEqual(Buffer.from(bytes));
 });
 
 // Preferences capture app.getPath at initialization, so these fixtures load it only after beforeAll creates the profile.
@@ -330,6 +388,7 @@ it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch)).e
 	try {
 		const started = await fake.handlers.get("updates:app:download")!(version, true) as AppDownload;
 		expect(started.downloadOnly).toBe(true);
+		expect(dirname(started.filePath)).toBe(fake.root);
 		expect(getPrefs().appUpdateSkipThrough).toBe(previousSkip ?? "2.0.0");
 		expect(JSON.parse(await readFile(join(fake.root, "preferences.json"), "utf8")).appUpdateSkipThrough).toBe(previousSkip ?? "2.0.0");
 		await expect.poll(() => fake.events.at(-1)?.state).toBe("done");

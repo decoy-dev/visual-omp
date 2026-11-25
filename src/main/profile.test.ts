@@ -10,7 +10,7 @@ beforeEach(() => {
 	vi.resetModules(); vi.clearAllMocks(); fake.packaged = true; vi.stubEnv("VOMP_PREVIEW_ISOLATION_TEST", ""); vi.stubEnv("VOMP_DEV_PROFILE", "");
 	scratch = mkdtempSync(join(tmpdir(), "vomp-profile-test-"));
 });
-afterEach(() => { vi.unstubAllEnvs(); rmSync(scratch, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); rmSync(scratch, { recursive: true, force: true }); });
 
 // These imports exercise profile setup at module load for each launch environment.
 it("leaves the packaged profile unchanged during ordinary launches", async () => {
@@ -53,4 +53,11 @@ it("keeps downloads inside an explicit scratch profile and leaves ordinary devel
 	await import("./profile");
 	expect(fake.setPath).toHaveBeenCalledWith("downloads", join(profile, "Downloads"));
 	expect(existsSync(join(profile, "Downloads"))).toBe(true);
+});
+it("ignores packaged isolation env overrides when build-time isolation support is disabled", async () => {
+	vi.stubGlobal("__VOMP_ISOLATION_TEST_ENABLED__", false);
+	vi.stubEnv("VOMP_PREVIEW_ISOLATION_TEST", "1");
+	vi.stubEnv("VOMP_DEV_PROFILE", "relative-profile");
+	await expect(import("./profile")).resolves.toBeDefined();
+	expect(fake.setPath).not.toHaveBeenCalled();
 });

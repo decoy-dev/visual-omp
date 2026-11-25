@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { access, type FileHandle, open, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
+import { access, chmod, type FileHandle, mkdir, open, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { app, shell } from "electron";
 import type { CliResult, Platform } from "@shared/ipc";
@@ -73,6 +74,7 @@ const PROGRESS_INTERVAL_MS = 100;
 const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const cacheFile = join(app.getPath("userData"), "update-check.json");
+const stagedUpdatesDir = join(app.getPath("userData"), "updates");
 const installOperation = new InstallOperation(operation => broadcast("updates:app:operation", operation));
 const pendingFile = join(app.getPath("userData"), "update-pending.json");
 
@@ -357,7 +359,47 @@ async function installedVersion(): Promise<string | null> {
 
 let download: AppDownload | null = null;
 let downloadAbort: AbortController | null = null;
+let downloadDigest: string | null = null;
+let downloadExpectedSize = 0;
 let downloadStarting = false;
+
+function normalizePathForCompare(path: string): string {
+	const resolved = resolve(path);
+	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function isPathWithin(target: string, root: string): boolean {
+	const rel = relative(normalizePathForCompare(root), normalizePathForCompare(target));
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+async function hashFileSha256(path: string): Promise<{ sha256: string; size: number }> {
+	const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+	try {
+		const info = await handle.stat();
+		if (!info.isFile()) throw new Error("The installer file is not a regular file.");
+		const hash = createHash("sha256");
+		const buffer = Buffer.allocUnsafe(64 * 1024);
+		let size = 0;
+		for (;;) {
+			const { bytesRead } = await handle.read(buffer, 0, buffer.length, size);
+			if (bytesRead === 0) break;
+			hash.update(buffer.subarray(0, bytesRead));
+			size += bytesRead;
+		}
+		return { sha256: hash.digest("hex"), size };
+	} finally {
+		await handle.close();
+	}
+}
+
+async function verifyExistingInstaller(filePath: string, digest: string | null | undefined, expectedSize: number): Promise<void> {
+	const actual = await hashFileSha256(filePath);
+	if (expectedSize > 0 && actual.size !== expectedSize) {
+		throw new Error("The installer size did not match the release. Download the installer again.");
+	}
+	verifyInstallerDigest(actual.sha256, digest, trust.anyHost);
+}
 
 function publishDownload(): void {
 	if (download) broadcast("updates:app:download", { ...download });
@@ -398,16 +440,35 @@ async function prepareDownload(requestedVersion?: string, downloadOnly = false):
 		asset = status.updateAvailable && status.tag ? installerAsset(status.assets, status.tag, trust) : null;
 	}
 	if (!version || !asset) throw new Error("This release has no installer for this computer.");
-	if (downloadOnly && !hasInstallerSha256(asset.digest)) throw new Error("This release has no published SHA-256 checksum for its installer.");
+	if (!trust.anyHost && !hasInstallerSha256(asset.digest)) throw new Error("This release has no published SHA-256 checksum for its installer.");
 	if (download?.state === "downloading" && (download.version !== version || !!download.downloadOnly !== downloadOnly)) throw new Error("Cancel the current installer download before choosing another version.");
 	if (download?.version === version && !!download.downloadOnly === downloadOnly) {
 		if (download.state === "downloading") return { ...download };
-		// Managed downloads are verified again against freshly fetched metadata, including their digest.
-		if (!downloadOnly && download.state === "done" && (await exists(download.filePath))) return { ...download };
+		if (!downloadOnly && download.state === "done" && isPathWithin(download.filePath, stagedUpdatesDir)) {
+			try {
+				await verifyExistingInstaller(download.filePath, asset.digest, asset.size);
+				downloadDigest = asset.digest ?? null;
+				downloadExpectedSize = asset.size || 0;
+				return { ...download };
+			} catch {
+				// Missing or modified staged installer: discard stale state and download again.
+			}
+		}
 	}
 	const url = new URL(asset.url);
 	const fileName = basename(asset.name);
-	const filePath = join(app.getPath("downloads"), fileName);
+	let destDir: string;
+	if (downloadOnly) {
+		destDir = app.getPath("downloads");
+	} else {
+		destDir = stagedUpdatesDir;
+		await mkdir(stagedUpdatesDir, { recursive: true, mode: 0o700 });
+		if (process.platform !== "win32") await chmod(stagedUpdatesDir, 0o700).catch(() => {});
+		for (const entry of await readdir(stagedUpdatesDir)) {
+			await rm(join(stagedUpdatesDir, entry), { recursive: true, force: true });
+		}
+	}
+	const filePath = join(destDir, fileName);
 	const current: AppDownload = { version, fileName, filePath, ...(downloadOnly ? { downloadOnly: true } : {}), received: 0, total: asset.size || null, state: "downloading", error: null };
 	let rollbackSkip: { previous: string | null } | undefined;
 	if (downloadOnly) {
@@ -429,12 +490,14 @@ async function prepareDownload(requestedVersion?: string, downloadOnly = false):
 	const abort = new AbortController();
 	download = current;
 	downloadAbort = abort;
+	downloadDigest = asset.digest ?? null;
+	downloadExpectedSize = asset.size || 0;
 	void receive(url, current, abort.signal, asset.digest, asset.size, rollbackSkip);
 	return { ...current };
 }
 
 async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined, expectedSize: number, rollbackSkip?: { previous: string | null }): Promise<void> {
-	const partPath = `${current.filePath}.download`;
+	const partPath = join(dirname(current.filePath), `.${current.fileName}.${randomBytes(8).toString("hex")}.download`);
 	let file: FileHandle | null = null;
 	let lastEmit = 0;
 	const hash = createHash("sha256");
@@ -443,7 +506,7 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 		if (!response.ok || !response.body) throw new Error(`The server answered ${response.status} ${response.statusText}`.trim());
 		const length = Number(response.headers.get("content-length"));
 		if (length > 0) current.total = length;
-		file = await open(partPath, "w");
+		file = await open(partPath, "wx", 0o600);
 		const reader = response.body.getReader();
 		for (;;) {
 			const { done, value } = await reader.read();
@@ -466,7 +529,7 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 		if ((expectedSize > 0 && current.received !== expectedSize) || (length > 0 && current.received !== length)) {
 			throw new Error("The installer size did not match the release. Download the installer again.");
 		}
-		verifyInstallerDigest(hash.digest("hex"), digest);
+		verifyInstallerDigest(hash.digest("hex"), digest, trust.anyHost);
 		signal.throwIfAborted();
 		await rename(partPath, current.filePath);
 		signal.throwIfAborted();
@@ -542,6 +605,18 @@ async function runInstaller(): Promise<void> {
 	const rollback = compareSemver(download.version, app.getVersion()) < 0;
 	const reinstall = compareSemver(download.version, app.getVersion()) === 0;
 	if ((rollback || reinstall) && (method === "brew" || method === "scoop")) throw new Error("Use the package manager that installed this copy to reinstall it or install an earlier version.");
+	if (!isPathWithin(download.filePath, stagedUpdatesDir)) {
+		throw new Error("The installer path is outside the staging directory.");
+	}
+	try {
+		await verifyExistingInstaller(download.filePath, downloadDigest, downloadExpectedSize);
+	} catch (error) {
+		await rm(download.filePath, { force: true }).catch(() => {});
+		const message = error instanceof Error ? error.message : String(error);
+		download = { ...download, state: "failed", error: message };
+		publishDownload();
+		throw error;
+	}
 	const previousSkip = rollback ? updateSkip() : null;
 	try {
 		if (rollback) {

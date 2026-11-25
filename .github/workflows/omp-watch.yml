@@ -56,7 +56,6 @@ jobs:
     if: needs.discover.outputs.needed == 'true'
     permissions:
       contents: read
-      issues: write
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -117,16 +116,29 @@ jobs:
           OMP_COMPAT_REPORT: ${{ runner.temp }}/omp-watch/compat.json
           PI_CODING_AGENT_DIR: ${{ runner.temp }}/omp-watch/agent
         run: npx vitest run src/main/omp/compat.live.test.ts src/main/omp/tsp/retire.live.test.ts
-      - name: Open the compatibility review issue
+      - name: Save step outcomes
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
+          WATCH_METADATA: ${{ steps.metadata.outcome }}
           WATCH_DOWNLOAD: ${{ steps.download.outcome }}
           WATCH_INSTALL: ${{ steps.install.outcome }}
           WATCH_TYPECHECK: ${{ steps.typecheck.outcome }}
           WATCH_TESTS: ${{ steps.tests.outcome }}
           WATCH_COMPAT: ${{ steps.compat.outcome }}
-        run: node scripts/omp-watch.mjs report
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            fs.mkdirSync(process.env.OMP_WATCH_DIR, { recursive: true });
+            fs.writeFileSync(path.join(process.env.OMP_WATCH_DIR, "outcomes.json"), JSON.stringify({
+              metadata: process.env.WATCH_METADATA,
+              download: process.env.WATCH_DOWNLOAD,
+              install: process.env.WATCH_INSTALL,
+              typecheck: process.env.WATCH_TYPECHECK,
+              tests: process.env.WATCH_TESTS,
+              compat: process.env.WATCH_COMPAT,
+            }, null, 2));
+          '
       - name: Keep compatibility evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -136,7 +148,7 @@ jobs:
             ${{ runner.temp }}/omp-watch/release.json
             ${{ runner.temp }}/omp-watch/checksum.json
             ${{ runner.temp }}/omp-watch/compat.json
-            ${{ runner.temp }}/omp-watch/issue.md
+            ${{ runner.temp }}/omp-watch/outcomes.json
           if-no-files-found: warn
           retention-days: 30
       - name: Fail when a check failed
@@ -152,3 +164,36 @@ jobs:
           for result in "$METADATA" "$DOWNLOAD" "$INSTALL" "$TYPECHECK" "$TESTS" "$COMPAT"; do
             if [[ "$result" != success ]]; then exit 1; fi
           done
+
+  report:
+    needs: [discover, watch]
+    if: ${{ always() && needs.discover.outputs.needed == 'true' }}
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Download compatibility evidence
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: omp-compatibility-${{ matrix.version }}
+          path: ${{ runner.temp }}/omp-watch
+      - name: Open the compatibility review issue
+        env:
+          OMP_WATCH_DIR: ${{ runner.temp }}/omp-watch
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_VERSION: ${{ matrix.version }}
+        run: node scripts/omp-watch.mjs report --version "$SELECTED_VERSION"

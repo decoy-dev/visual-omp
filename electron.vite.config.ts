@@ -74,55 +74,80 @@ function rendererChunkMetadata(): Plugin {
 // `build.externalizeDeps`), which is node-pty alone: its native addon cannot be bundled. Every
 // other package they import is a devDependency and is bundled into out/, so electron-builder
 // ships no node_modules copy of it.
-export default defineConfig({
-	main: {
-		// Compile ws's optional native loaders out before shipping. CommonJS leaves these two
-		// requires untouched so define can fold their guarded branches without resolving packages.
-		define: {
-			"process.env.WS_NO_BUFFER_UTIL": JSON.stringify("1"),
-			"process.env.WS_NO_UTF_8_VALIDATE": JSON.stringify("1"),
-		},
-		plugins: [{
-			name: "vomp:no-ws-native-loaders",
-			generateBundle(_options, bundle) {
-				for (const output of Object.values(bundle)) {
-					if (output.type === "chunk" && /\brequire\s*\(\s*["'](?:bufferutil|utf-8-validate)["']\s*\)/.test(output.code)) {
-						this.error(`Optional ws native loader remains in ${output.fileName}`);
-					}
-				}
+const PACKAGED_ISOLATION_PATTERN = /(?:VOMP_PREVIEW_ISOLATION_TEST|remote-debugging-port|node:inspector)/;
+
+export default defineConfig(({ command }) => {
+	const isolationTestBuild = command === "serve" || process.env.VOMP_ISOLATION_TEST_BUILD === "1";
+	return {
+		main: {
+			// Compile ws's optional native loaders out before shipping. CommonJS leaves these two
+			// requires untouched so define can fold their guarded branches without resolving packages.
+			define: {
+				"process.env.WS_NO_BUFFER_UTIL": JSON.stringify("1"),
+				"process.env.WS_NO_UTF_8_VALIDATE": JSON.stringify("1"),
+				"__VOMP_ISOLATION_TEST_ENABLED__": JSON.stringify(isolationTestBuild),
 			},
-		}],
-		resolve: {
-			alias: {
-				"@shared": shared,
-				// The package's `module` field names lib/xterm.mjs, which it does not ship.
-				"@xterm/headless": "@xterm/headless/lib-headless/xterm-headless.mjs",
+			plugins: [
+				{
+					name: "vomp:no-ws-native-loaders",
+					generateBundle(_options, bundle) {
+						for (const output of Object.values(bundle)) {
+							if (output.type === "chunk" && /\brequire\s*\(\s*["'](?:bufferutil|utf-8-validate)["']\s*\)/.test(output.code)) {
+								this.error(`Optional ws native loader remains in ${output.fileName}`);
+							}
+						}
+					},
+				},
+				...(!isolationTestBuild
+					? [{
+							name: "vomp:no-packaged-isolation-test",
+							generateBundle(_options, bundle) {
+								for (const output of Object.values(bundle)) {
+									if (output.type === "chunk" && PACKAGED_ISOLATION_PATTERN.test(output.code)) {
+										this.error(`Packaged isolation test hook remains in ${output.fileName}`);
+									}
+								}
+							},
+						} satisfies Plugin]
+					: []),
+			],
+			resolve: {
+				alias: {
+					"@shared": shared,
+					// The package's `module` field names lib/xterm.mjs, which it does not ship.
+					"@xterm/headless": "@xterm/headless/lib-headless/xterm-headless.mjs",
+				},
+			},
+			build: {
+				commonjsOptions: { ignore: ["bufferutil", "utf-8-validate"] },
+				rollupOptions: {
+					treeshake: {
+						moduleSideEffects: id => id !== "node:inspector" && id !== "inspector",
+					},
+				},
 			},
 		},
-		build: {
-			commonjsOptions: { ignore: ["bufferutil", "utf-8-validate"] },
+		preload: {
+			resolve: { alias: { "@shared": shared } },
+			build: { rollupOptions: { output: { format: "cjs" } } },
 		},
-	},
-	preload: {
-		resolve: { alias: { "@shared": shared } },
-		build: { rollupOptions: { output: { format: "cjs" } } },
-	},
-	renderer: {
-		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata(), ...(process.env.VOMP_SPEED === "1" ? [speedProbe()] : [])],
-		worker: { plugins: () => [rendererWorkerMetadata()] },
-		// Discover Office dependencies before a fixture starts, rather than reloading away its early saved frames.
-		optimizeDeps: { include: ["docx-preview", "fflate", "@xmldom/xmldom", "xlsx"] },
-		resolve: {
-			alias: {
-				"@shared": shared,
-				"@": resolve(__dirname, "src/renderer/src"),
-				"@oh-my-pi/pi-wire": resolve(__dirname, "src/renderer/src/collab/wire/index.ts"),
-				"@oh-my-pi/pi-utils/marked": "marked",
-				"@oh-my-pi/pi-utils/math-delimiters": resolve(__dirname, "src/renderer/src/collab/math-delimiters.ts"),
+		renderer: {
+			plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata(), ...(process.env.VOMP_SPEED === "1" ? [speedProbe()] : [])],
+			worker: { plugins: () => [rendererWorkerMetadata()] },
+			// Discover Office dependencies before a fixture starts, rather than reloading away its early saved frames.
+			optimizeDeps: { include: ["docx-preview", "fflate", "@xmldom/xmldom", "xlsx"] },
+			resolve: {
+				alias: {
+					"@shared": shared,
+					"@": resolve(__dirname, "src/renderer/src"),
+					"@oh-my-pi/pi-wire": resolve(__dirname, "src/renderer/src/collab/wire/index.ts"),
+					"@oh-my-pi/pi-utils/marked": "marked",
+					"@oh-my-pi/pi-utils/math-delimiters": resolve(__dirname, "src/renderer/src/collab/math-delimiters.ts"),
+				},
 			},
+			// electron-vite leaves the renderer unminified by default; minified, the startup chunk the window parses
+			// is less than half the size. Source maps are not shipped, so stack traces name minified functions.
+			build: { minify: true },
 		},
-		// electron-vite leaves the renderer unminified by default; minified, the startup chunk the window parses
-		// is less than half the size. Source maps are not shipped, so stack traces name minified functions.
-		build: { minify: true },
-	},
+	};
 });

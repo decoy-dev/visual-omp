@@ -197,7 +197,11 @@ function hydrateLocalImages(root: HTMLElement, base: string | null): void {
 export function hydrateRichContent(root: HTMLElement, streaming = false, base: string | null = null): () => void {
 	markTableTokens(root);
 	let live = true;
-	const loadImage = (event: MouseEvent) => handleRemoteImage(event, root);
+	const remoteImageUrls: string[] = [];
+	const loadImage = (event: MouseEvent) => handleRemoteImage(event, root, url => {
+		if (live) remoteImageUrls.push(url);
+		else URL.revokeObjectURL(url);
+	});
 	root.addEventListener("click", loadImage);
 	hydrateLocalFileLinks(root, base);
 	hydrateLocalImages(root, base);
@@ -273,6 +277,7 @@ export function hydrateRichContent(root: HTMLElement, streaming = false, base: s
 		live = false;
 		observer.disconnect();
 		root.removeEventListener("click", loadImage);
+		for (const url of remoteImageUrls.splice(0)) URL.revokeObjectURL(url);
 		for (const slot of root.querySelectorAll<HTMLElement>("[data-pending]")) {
 			delete slot.dataset.pending;
 			delete slot.dataset.revision;

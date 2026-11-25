@@ -243,6 +243,35 @@ describe("LoopbackRelay", () => {
 		}
 		expect(await slowClosed).toBe(1006);
 	});
+
+	it("caps concurrent rooms, guests per room, and closed room history", async () => {
+		relay = new LoopbackRelay({ maxRooms: 2, maxGuestsPerRoom: 2, maxOpenedRoomsHistory: 2 });
+		await relay.start();
+		const r1 = await open(relay, "host", "room_0000000001");
+		const r2 = await open(relay, "host", "room_0000000002");
+
+		const thirdRoom = await open(relay, "host", "room_0000000003");
+		expect(await closed(thirdRoom)).toBe(4029);
+
+		const g1 = await open(relay, "guest", "room_0000000001");
+		const g2 = await open(relay, "guest", "room_0000000001");
+		const thirdGuest = await open(relay, "guest", "room_0000000001");
+		expect(await closed(thirdGuest)).toBe(4029);
+
+		const r1Closed = closed(r1);
+		g1.close();
+		g2.close();
+		r1.close();
+		await r1Closed;
+		await expect.poll(() => relay.hasRoom("room_0000000001")).toBe(false);
+
+		// Evicts the closed room from history while keeping active room_0000000002 blocked from duplicate hosts.
+		const r3 = await open(relay, "host", "room_0000000003");
+		const dup2 = await open(relay, "host", "room_0000000002");
+		expect(await closed(dup2)).toBe(4009);
+		r2.close();
+		r3.close();
+	});
 });
 
 function text(message: { data: Buffer }): unknown {

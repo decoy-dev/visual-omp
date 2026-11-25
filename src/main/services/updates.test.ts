@@ -402,10 +402,22 @@ describe("trustedCachedStatus", () => {
 
 	it("discards a spoofed installer, version or release page, and caches from another version", () => {
 		const evil = { name: "visual-omp-0.2.0-mac-arm64.dmg", url: "https://evil.test/visual-omp-0.2.0-mac-arm64.dmg", size: 100 };
+		const historyEntry = {
+			version: "0.2.0", tag: "v0.2.0", body: "Notes",
+			url: "https://github.com/decoy-dev/visual-omp/releases/tag/v0.2.0",
+			publishedAt: 1, platformAsset: releaseAssets[0]!,
+		};
 		expect(trustedCachedStatus({ ...cached, platformAsset: evil }, "0.1.0", packaged)).toBeNull();
 		expect(trustedCachedStatus({ ...cached, assets: [evil], platformAsset: evil }, "0.1.0", packaged)).toBeNull();
 		expect(trustedCachedStatus({ ...cached, latestVersion: "9.9.9" }, "0.1.0", packaged)).toBeNull();
 		expect(trustedCachedStatus({ ...cached, releaseUrl: "https://evil.test/release" }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releaseUrl: "https://github.com:8443/decoy-dev/visual-omp/releases/tag/v0.2.0" }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releaseUrl: "https://user:pass@github.com/decoy-dev/visual-omp/releases/tag/v0.2.0" }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releases: [historyEntry] }, "0.1.0", packaged)).not.toBeNull();
+		expect(trustedCachedStatus({ ...cached, releases: [{ ...historyEntry, url: "https://evil.test/release" }] }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releases: [{ ...historyEntry, url: "https://github.com:8443/decoy-dev/visual-omp/releases/tag/v0.2.0" }] }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releases: [{ ...historyEntry, platformAsset: evil }] }, "0.1.0", packaged)).toBeNull();
+		expect(trustedCachedStatus({ ...cached, releases: [{ ...historyEntry, tag: undefined }] }, "0.1.0", packaged)).toBeNull();
 		expect(trustedCachedStatus(cached, "0.1.1", packaged)).toBeNull();
 		expect(trustedCachedStatus({ nonsense: true }, "0.1.0", packaged)).toBeNull();
 	});
