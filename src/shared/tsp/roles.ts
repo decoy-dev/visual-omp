@@ -1,4 +1,4 @@
-import type { TspNode } from "../tsp";
+import type { TspMenuEntry, TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import { projectPlanReview, projectPlanSave } from "./plan-review";
 import { advisorScope } from "./advisor";
@@ -9,6 +9,7 @@ import { shellProps } from "./shell";
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
+	editorBash: "omp.editor.bash", editorPython: "omp.editor.python", editorBtw: "omp.editor.btw", editorBtwAsk: "omp.editor.btw-ask",
 	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden", askCard: "omp.ask.card",
 	askCardHead: "omp.ask.card.head", askFold: "omp.ask.fold", askOpen: "omp.ask.open", askLegend: "omp.ask.legend", workingStop: "omp.working.stop",
 	autocomplete: "omp.autocomplete",
@@ -28,7 +29,8 @@ export const TSP_ROLES = {
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
 	hookInputTitle: "omp.hook-input.title", hookInputDescription: "omp.hook-input.detail",
 	hookEditorTitle: "omp.hook-editor.title", hookEditorDescription: "omp.hook-editor.detail",
-	planReview: "omp.overlay.planReview", planBody: "omp.plan.body", planOptions: "omp.plan.options",
+	planReview: "omp.overlay.planReview", planBody: "omp.plan.body", planDoc: "omp.plan.doc", planDock: "omp.plan.dock",
+	planApprove: "omp.plan.approve", planModel: "omp.plan.model", planOptions: "omp.plan.options",
 	planSlider: "omp.plan.slider", planStrategy: "omp.plan.strategy", planTools: "omp.plan.tools",
 	planPrompt: "omp.plan.prompt", planToc: "omp.plan.toc", planNote: "omp.plan.note", planFeedback: "omp.plan.feedback",
 	planSave: "omp.overlay.planSave", advisor: "omp.overlay.advisor",
@@ -68,10 +70,29 @@ export function isAskFormAction(action: string): boolean {
 export function isJobsSourceAction(action: string): boolean {
 	return /^source:[^\u0000-\u001f\u007f]+$/.test(action);
 }
-export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action) || isAskCardAction(action) || isJobsSourceAction(action); }
+export function isPlanReviewChoiceAction(action: string): boolean {
+	return action === "execute" || action === "compact" || action === "keep" || action === "refine";
+}
+export function isPlanTierAction(action: string): boolean {
+	return /^tier:(?:0|[1-9]\d{0,3})$/.test(action);
+}
+/** Extract declared action ids from `actions.menu` / `actions.hold`, ignoring separators and section headers. */
+export function menuEntryActions(entries: readonly TspMenuEntry[] | undefined): string[] {
+	if (!entries) return [];
+	const actions: string[] = [];
+	for (const entry of entries) {
+		if (typeof entry === "string") {
+			if (entry !== "-" && entry !== "---") actions.push(entry);
+		} else if ("id" in entry) actions.push(entry.id);
+	}
+	return actions;
+}
+export function isKnownAction(action: string): boolean {
+	return knownActions.has(action) || isAskFormAction(action) || isAskCardAction(action) || isJobsSourceAction(action) || isPlanReviewChoiceAction(action) || isPlanTierAction(action);
+}
 /** Recorded actions without an app interaction path stay display-only. */
 // The BTW note controls (omp 18.21.0) stay omp's own: the app opens the side-question history with `/btw` instead.
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "save-note": true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true, "btw-copy": true, "btw-branch": true, "btw-blur": true, "btw-history": true, "btw-fold": true, "btw-focus": true, "btw-stop": true };
 /**
  * omp 19.0.0's ask card in the transcript opens a folded question (`open:<question>`) and picks or flips an option pill
  * (`pick:<question>:<option>`) without submitting. The omp screen sends them only for the control inside a visible card
@@ -273,6 +294,15 @@ const knownRoles: ReadonlySet<string> = new Set([
 	// omp 19.1.0-19.1.1 additions: status tree, compaction HUD, and the jobs step and source sheet.
 	"omp.status.tree", "omp.hud.compaction",
 	"omp.jobs.about", "omp.jobs.follow", "omp.jobs.source", "omp.jobs.sources", "omp.jobs.stream",
+	// omp 19.2.0 additions: form fields, dock covering, cleanse verdict/lane, composer parts, status/welcome/screen, and agents tray.
+	"omp.field", "omp.dock.covering", "omp.cleanse.verdict", "omp.cleanse.lane",
+	"omp.composer.mode", "omp.composer.crumb", "omp.composer.agent", "omp.composer.exit", "omp.composer.rate", "omp.composer.dictation",
+	"omp.status.panel", "omp.status.hook", "omp.welcome.block", "omp.app.screen",
+	"omp.tray", "omp.tray.card", "omp.tray.name", "omp.tray.meta", "omp.tray.line", "omp.tray.time",
+	"omp.tray.done", "omp.tray.done.item", "omp.tray.done.more", "omp.tray.peek", "omp.tray.peek.head", "omp.tray.peek.meta", "omp.tray.peek.task",
+	"omp.tray.tail", "omp.tray.ev", "omp.tray.ev.tool", "omp.tray.ev.text",
+	// omp 19.2.1 additions: native prefs search input.
+	"omp.prefs.search",
 ]);
 export function isKnownRole(role?: string): boolean {
 	return !role || knownRoles.has(role) || role.startsWith(`${TSP_ROLES.planToc}.`) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));

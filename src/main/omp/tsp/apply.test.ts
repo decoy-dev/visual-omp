@@ -71,4 +71,15 @@ describe("upstream TSP document semantics", () => {
 		expect(() => { if (text?.k === "text" && text.p) text.p.text = "external mutation"; }).toThrow(TypeError);
 		expect(doc.get("a")?.p).toMatchObject({ text: "hello" });
 	});
+
+	it("applies text and splice ops to doc nodes", () => {
+		const doc = new TspDocument("s:1");
+		expect(apply(doc, [["add", "main", "s:1", null, { id: "main", k: "col", c: [
+			{ id: "plan-doc", k: "doc", p: { text: "Step one" } },
+		] }]])).toEqual([]);
+		expect(apply(doc, [["text", "plan-doc", "append", "\nStep two"], ["splice", "plan-doc", 5, 3, "1"]])).toEqual([]);
+		expect(doc.get("plan-doc")).toEqual({ id: "plan-doc", k: "doc", p: { text: "Step 1\nStep two" } });
+		expect(apply(doc, [["text", "plan-doc", "replace", "# Updated plan"]])).toEqual([]);
+		expect(doc.get("plan-doc")?.p).toMatchObject({ text: "# Updated plan" });
+	});
 });

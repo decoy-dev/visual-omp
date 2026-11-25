@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import { isClaimable, isClaimed, TSP_PLAN_OPTIONS, TSP_ROLES } from "./roles";
-import { planChoice, planReview, planSavePrompt, projectPlanReview } from "./plan-review";
+import { planChoice, planReview, planSavePrompt, planSliderEvent, projectPlanReview } from "./plan-review";
 import { openOverlay, unclaimed } from "./view-state";
 
 /** Synthetic document follows v18.15.0 PlanReviewOverlay.describe, including keyed item ids. */
@@ -23,7 +23,8 @@ describe("TSP plan review projection", () => {
 		expect(review.title).toBe("A precise implementation plan");
 		expect(review.body).toBe("Implement the requested behavior.\n\n## Validation\n\n- [ ] Cover the visible result.");
 		expect(review.options[0]).toMatchObject({ id: "o0", selected: true, action: "execute" });
-		expect(review.slider).toEqual({ id: "tabs", items: [{ id: "t0", label: "smol" }, { id: "t1", label: "default" }], selected: 1 });
+		expect(review.slider).toEqual({ id: "tabs", kind: "tabs", items: [{ id: "t0", label: "smol" }, { id: "t1", label: "default" }], selected: 1 });
+		expect(planSliderEvent(review, 0)).toEqual({ ev: "select", sf: "s:1", id: "tabs", item: "t0" });
 		expect(review.cancelId).toBe("cancel");
 		expect(() => planChoice(review, "keep")).toThrow("did not offer");
 	});
@@ -73,6 +74,108 @@ describe("TSP plan review projection", () => {
 		const other = syntheticPlanReview();
 		other.c = [...other.c!, { id: "new-action", k: "button", p: { text: "New action", actions: { click: "save" } } }];
 		expect(projectPlanReview(other, "s:1")).toBeNull();
+	});
+	it("projects omp 19.2 doc and dock layouts with approve menu, tier menu, refine, save and cancel", () => {
+		const dockOverlay = (options?: { refine?: boolean; save?: boolean; disabledKeep?: boolean; extraItem?: boolean; feedback?: boolean; chooser?: boolean }): Extract<TspNode, { k: "overlay" }> => ({
+			id: "review",
+			k: "overlay",
+			p: { role: TSP_ROLES.planReview, head: "Plan title from doc" },
+			c: [
+				{ id: "body", k: "col", p: { role: TSP_ROLES.planBody }, c: [{ id: "doc", k: "doc", p: { role: TSP_ROLES.planDoc, text: "Step one.\n\nStep two." } }] },
+				{
+					id: "dock",
+					k: "row",
+					p: { role: TSP_ROLES.planDock },
+					c: [
+						{
+							id: "approve",
+							k: "buttons",
+							p: { role: TSP_ROLES.planApprove, variant: "split" },
+							c: [
+								{ id: "main", k: "button", p: { text: options?.refine ? "Refine" : "Approve", actions: { click: options?.refine ? "refine" : "approve" } } },
+								{
+									id: "more",
+									k: "menu",
+									p: {
+										items: [
+											{ id: "execute", label: TSP_PLAN_OPTIONS.execute, detail: "Start fresh with just the plan" },
+											{ id: "compact", label: TSP_PLAN_OPTIONS.compact },
+											{ id: "keep", label: `${TSP_PLAN_OPTIONS.keep} (~4k / 128k)`, ...(options?.disabledKeep ? { disabled: "Context nearly full" } : {}) },
+											...(options?.extraItem ? [{ id: "unknown", label: "Unknown" }] : []),
+										],
+									},
+								},
+							],
+						},
+						{
+							id: "model",
+							k: "menu",
+							p: {
+								role: TSP_ROLES.planModel,
+								items: [
+									{ id: "tier:0", label: "smol", detail: "Claude Haiku", radio: "tier", checked: false },
+									{ id: "tier:1", label: "default", detail: "Claude Opus", radio: "tier", checked: true },
+								],
+							},
+						},
+						...(options?.save ? [{ id: "save", k: "button" as const, p: { role: "omp.btn", text: "Save", actions: { click: "save" } } }] : []),
+						{ id: "cancel", k: "button", p: { role: "omp.btn", text: "Cancel", actions: { click: "cancel" } } },
+					],
+				},
+				...(options?.feedback ? [{ id: "fb", k: "col" as const, p: { role: TSP_ROLES.planFeedback }, c: [{ id: "note", k: "editor" as const, p: { text: "" } }] }] : []),
+				...(options?.chooser ? [{ id: "chooser", k: "list" as const, p: { selected: "c0" }, c: [{ id: "c0", k: "item" as const, p: { label: "Edit note" } }] }] : []),
+			],
+		});
+
+		const base = planReview([planSurface(dockOverlay({ disabledKeep: true, save: true }))])!;
+		expect(base.title).toBe("Plan title from doc");
+		expect(base.body).toBe("Step one.\n\nStep two.");
+		expect(base.optionsId).toBeNull();
+		expect(base.cancelId).toBe("cancel");
+		expect(base.options.map(option => ({ action: option.action, selected: option.selected, disabled: option.disabled }))).toEqual([
+			{ action: "execute", selected: true, disabled: false },
+			{ action: "compact", selected: false, disabled: false },
+			{ action: "keep", selected: false, disabled: true },
+			{ action: "saveCopy", selected: false, disabled: false },
+		]);
+		expect(base.slider).toEqual({
+			id: "model",
+			kind: "menu",
+			items: [
+				{ id: "tier:0", label: "smol", detail: "Claude Haiku" },
+				{ id: "tier:1", label: "default", detail: "Claude Opus" },
+			],
+			selected: 1,
+		});
+		expect(planChoice(base, "execute")).toEqual({ ev: "action", sf: "s:1", id: "more", act: "execute" });
+		expect(planChoice(base, "compact")).toEqual({ ev: "action", sf: "s:1", id: "more", act: "compact" });
+		expect(() => planChoice(base, "keep")).toThrow("did not offer");
+		expect(planChoice(base, "saveCopy")).toEqual({ ev: "action", sf: "s:1", id: "save", act: "save" });
+		expect(planSliderEvent(base, 0)).toEqual({ ev: "action", sf: "s:1", id: "model", act: "tier:0", checked: true });
+		expect(isClaimable(dockOverlay({ save: true }))).toBe(true);
+
+		const withRefine = projectPlanReview(dockOverlay({ refine: true }), "s:1")!;
+		expect(planChoice(withRefine, "refine")).toEqual({ ev: "action", sf: "s:1", id: "main", act: "refine" });
+
+		const committedNode: Extract<TspNode, { k: "overlay" }> = {
+			id: "review",
+			k: "overlay",
+			p: { role: TSP_ROLES.planReview, head: "Committed plan" },
+			c: [
+				{ id: "body", k: "col", p: { role: TSP_ROLES.planBody }, c: [{ id: "doc", k: "doc", p: { role: TSP_ROLES.planDoc, text: "Step one." } }] },
+				{ id: "spin", k: "spinner", p: { label: "Submitting" } },
+			],
+		};
+		const committed = projectPlanReview(committedNode, "s:1")!;
+		expect(committed.committed).toBe(true);
+		expect(() => planSliderEvent(committed, 0)).toThrow();
+
+		expect(projectPlanReview(dockOverlay({ extraItem: true }), "s:1")).toBeNull();
+		expect(projectPlanReview(dockOverlay({ feedback: true }), "s:1")).toBeNull();
+		expect(projectPlanReview(dockOverlay({ chooser: true }), "s:1")).toBeNull();
+		const disabledMenu = dockOverlay();
+		(disabledMenu.c![1]!.c![1] as Extract<TspNode, { k: "menu" }>).p!.disabled = true;
+		expect(projectPlanReview(disabledMenu, "s:1")).toBeNull();
 	});
 });
 

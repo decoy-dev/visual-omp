@@ -106,6 +106,39 @@ describe("recorded model fallbacks", () => {
 	it("shows the saved fallback without needing a running omp", () => {
 		expect(composerModel([selected, swapped], undefined, null)).toMatchObject({ model: { provider: live.provider, id: live.id }, fallback: { from: primary } });
 	});
+
+	it.each(["request-error", "agent-loop", "usage-preflight", "missing-credential"] as const)("reads persisted omp 19.2 %s fallback metadata without overwriting its reason", trigger => {
+		const persisted: ModelChangeEntry = {
+			...base("persisted-fallback"),
+			type: "model_change",
+			model: target,
+			role: "fallback",
+			resolvedModelIsFallback: true,
+			fallback: {
+				from: "anthropic/claude-sonnet-4-5",
+				trigger,
+				reason: `Triggered by ${trigger}`,
+			},
+		};
+		const laterError = message({
+			stopReason: "error",
+			errorMessage: "Unrelated later error",
+			retryRecovery: { kind: "auto-retry", recovery: "model", supersededBy: { provider: live.provider, model: live.id } },
+		});
+		const fallbacks = modelFallbacks([selected, persisted, entry(laterError)]);
+		expect(fallbacks.get("persisted-fallback")).toEqual({
+			from: "anthropic/claude-sonnet-4-5",
+			to: target,
+			reason: `Triggered by ${trigger}`,
+			source: "retry",
+		});
+		expect(composerModel([selected, persisted, entry(laterError)], live, null).fallback).toEqual({
+			from: "anthropic/claude-sonnet-4-5",
+			to: target,
+			reason: `Triggered by ${trigger}`,
+			source: "retry",
+		});
+	});
 });
 
 describe("provider fallback content", () => {

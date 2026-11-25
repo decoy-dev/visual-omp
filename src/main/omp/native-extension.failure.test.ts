@@ -12,10 +12,11 @@ it("keeps mode requests and location reports working when a terminal variable is
 	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, sessionModes: { getState: () => modes, set }, sessionManager: { getCwd: () => "/correct/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "main-session" } };
 	const fetch = async (url: string, options?: { body: string }) => { sent.push({ url, body: options?.body }); return { ok: true, json: async () => { const result = queued; queued = []; return result; } }; };
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
-	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "ompSdk", body)(
+	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "themeColor", "existsSync", "homedir", "join", "ompSdk", body)(
 		{ env: { VOMP_NATIVE_BRIDGE: "http://127.0.0.1:1/token" }, platform: "darwin" }, fetch, () => 1, () => undefined,
-		async () => ({ terminal: { background: "missing-variable" } }), () => "broken-terminal",
-		() => { throw new Error("Variable reference not found: missing-variable"); }, () => "#000000", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, {},
+		async () => ({ terminal: { background: "missing-variable" } }),
+		{ resolveVarRefs: () => { throw new Error("Variable reference not found: missing-variable"); }, ansi256ToHex: () => "#000000" },
+		() => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, { getCurrentThemeName: () => "broken-terminal" },
 	);
 	factory({ on: (name: string, handler: (event: unknown, context?: unknown) => Promise<void>) => handlers.set(name, handler), pi: { getAgentDir: () => "/tmp/omp-1814/agent-HostParity", discoverSlashCommands: async () => [] } });
 	await handlers.get("session_start")!({}, context);

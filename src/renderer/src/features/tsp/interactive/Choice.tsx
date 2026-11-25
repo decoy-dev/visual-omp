@@ -1,6 +1,6 @@
 import type { TspNode, TspPickerItem, TspText, TspTreeNode } from "@shared/tsp";
 import { Check } from "@phosphor-icons/react";
-import { isKnownAction, selectionCommits, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
+import { isKnownAction, menuEntryActions, selectionCommits, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
@@ -61,7 +61,7 @@ export function Choice({ node, context }: NodeProps) {
 	};
 	const rowTitle = (row: ChoiceRow) => {
 		const actions = row.child?.p?.actions ?? (Array.isArray(p?.actions) ? undefined : p?.actions);
-		const unsupported = [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])].filter((action): action is string => !!action && !isKnownAction(action));
+		const unsupported = [actions?.click, actions?.dblclick, ...menuEntryActions(actions?.menu)].filter((action): action is string => !!action && !isKnownAction(action));
 		return [row.title ?? plain(row.detail ?? row.label), ...unsupported.map(action => t("tsp.unsupportedAction", { action }))].filter(Boolean).join("\n");
 	};
 	const selectedRow = rows.find(row => row.id === selected && !row.disabled);

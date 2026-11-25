@@ -143,7 +143,8 @@ describe("installed omp presentation bridge", () => {
 		const worker = await start();
 		const launch = state.launches[0]!;
 		expect(launch.executable).toBe(executable);
-		expect(launch.args).toEqual(expect.arrayContaining(["--no-session", "--no-tools", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-title", "--no-lsp"]));
+		expect(launch.args).toEqual(expect.arrayContaining(["--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-title", "--no-lsp", "-e"]));
+		expect(launch.args).not.toContain("--no-tools");
 		expect(launch.args).not.toContain("--model");
 		expect(launch.options.stdio).toEqual(["ignore", "ignore", "ignore"]);
 		expect(launch.options).not.toHaveProperty("shell");
@@ -447,7 +448,8 @@ describe("Windows presentation worker job integration", () => {
 		const worker = await start();
 		const root = join(state.launches[0]!.options.env!.PI_CODING_AGENT_DIR!, "..");
 		const configuration = JSON.parse(await readFile(join(root, "monitor.json"), "utf8"));
-		expect(configuration).toMatchObject({ executable: "C:\\isolated\\omp.exe", args: expect.arrayContaining(["--no-session", "--no-tools", "-e"]) });
+		expect(configuration).toMatchObject({ executable: "C:\\isolated\\omp.exe", args: expect.arrayContaining(["--no-session", "-e"]) });
+		expect(configuration.args).not.toContain("--no-tools");
 		expect(await readFile(join(root, "monitor.ps1"), "utf8")).toContain("CreateProcessW");
 		expect(state.execs).toEqual([]);
 		expect(state.windowsJobs).toHaveLength(1);

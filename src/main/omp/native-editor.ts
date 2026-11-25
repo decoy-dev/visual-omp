@@ -3,7 +3,7 @@ import type { EditorDraftRequest, EditorDraftResult } from "@shared/contracts/co
 interface ExactEditorUI {
 	getEditorText(): string;
 	setEditorText(text: string): void;
-	theme?: { symbol(key: "chip.image"): string };
+	theme?: { symbol?(key: "chip.image"): string; symbols?: { symbol?(key: "chip.image"): string } };
 }
 
 /** Embedded in the trusted extension. This function must remain self-contained when serialized. */
@@ -13,7 +13,7 @@ export function exactEditorDraft(ui: ExactEditorUI, request: EditorDraftRequest,
 	try { text = ui.getEditorText(); }
 	catch (error) { return { text: null, cleared: false, error: String(error) }; }
 	let imageChips: number | undefined;
-	const symbol = ui.theme?.symbol("chip.image");
+	const symbol = ui.theme?.symbol?.("chip.image") ?? ui.theme?.symbols?.symbol?.("chip.image");
 	if (symbol) {
 		imageChips = 0;
 		for (let offset = text.indexOf(`${symbol} #`); offset >= 0; offset = text.indexOf(`${symbol} #`, offset + symbol.length + 2)) {

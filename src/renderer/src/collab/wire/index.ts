@@ -95,6 +95,7 @@ export interface AssistantMessage {
 	usage: WireUsage;
 	stopReason: StopReason;
 	errorMessage?: string;
+	errorFromAgentLoop?: boolean;
 	/** omp's persisted attribution of an error recovered by retrying. */
 	retryRecovery?: {
 		kind: "auto-retry";
@@ -198,6 +199,11 @@ export interface ModelChangeEntry extends EntryBase {
 	role?: string;
 	/** omp sets this for retry-chain and usage-preflight fallbacks; role alone is insufficient. */
 	resolvedModelIsFallback?: boolean;
+	fallback?: {
+		from?: string;
+		trigger?: "request-error" | "agent-loop" | "usage-preflight" | "missing-credential";
+		reason?: string;
+	};
 }
 
 export interface ThinkingLevelChangeEntry extends EntryBase {
@@ -320,7 +326,7 @@ export interface AgentProgress {
 	/** Intent the model attached to the current call; undefined when that call carried none. */
 	currentToolIntent?: string;
 	currentToolStartMs?: number;
-	recentTools: { tool: string; args: string; argsKey?: string; intent?: string; isError?: boolean; endMs: number }[];
+	recentTools: { tool: string; args: string; argsKey?: string; intent?: string; isError?: boolean; added?: number; removed?: number; endMs: number }[];
 	recentOutput: string[];
 	toolCount: number;
 	requests: number;
@@ -370,6 +376,8 @@ export type CollabUiRequestDraft =
 			checkedIndices?: number[];
 			markableCount?: number;
 			helpText?: string;
+			/** The select asks for a permission (a tool approval, a settings change), not an answer. */
+			approval?: boolean;
 	  }
 	| {
 			kind: "editor";

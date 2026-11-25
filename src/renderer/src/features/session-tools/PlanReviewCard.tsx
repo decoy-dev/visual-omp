@@ -20,7 +20,7 @@ import { useTspPlanReview } from "./planReviewTsp";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 
-import type { PlanAction, TspPlanSave } from "@shared/tsp/plan-review";
+import { planSliderEvent, type PlanAction, type TspPlanSave } from "@shared/tsp/plan-review";
 import { planOptionAction, TSP_PLAN_OPTIONS } from "@shared/tsp/roles";
 
 /** omp disables "keep context" above this context use (`PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT`). */
@@ -112,7 +112,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const semantic = view.host?.transport === "tsp";
 	const review: PlanReviewScreen | null = semantic ? tsp.review ? {
 		options: tsp.review.options,
-		slider: tsp.review.slider ? { roles: tsp.review.slider.items.map(item => item.label), selected: tsp.review.slider.selected, model: null } : null,
+		slider: tsp.review.slider ? { roles: tsp.review.slider.items.map(item => item.label), selected: tsp.review.slider.selected, model: tsp.review.slider.items[tsp.review.slider.selected]?.detail ?? null } : null,
 	} : null : overlays > 0 ? parsePlanReview(lines) : null;
 	const [plan, setPlan] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState(true);
@@ -258,7 +258,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 								disabled={semantic && (!!busy || unavailable)}
 								onValueChange={role => {
 									const index = slider.roles.indexOf(role);
-									if (semantic && tsp.review?.slider) void tsp.send({ ev: "select", sf: tsp.review.sf, id: tsp.review.slider.id, item: tsp.review.slider.items[index]!.id }).catch(reportFailure);
+									if (semantic && tsp.review?.slider) void tsp.send(planSliderEvent(tsp.review, index)).catch(reportFailure);
 									else void slideTo(session, slider.selected, index);
 								}}
 							/>

@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, reviewed against omp v19.1.1 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, reviewed against omp v19.2.1 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
@@ -275,7 +275,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	{ name: "agents", description: "Open the agents hub (per-agent model, prewalk, and advisor)" },
 	{ name: "git", description: "Open the git UI (split diff viewer, staging, commit composer)", hint: "[revision]" },
 	{ name: "hub", aliases: ["subagents"], description: "Open the live Agent Hub (subagents, including finished ones)" },
-	{ name: "branch", aliases: ["rewind"], description: "Rewind to a previous message, keeping the old path as a branch" },
+	{ name: "branch", aliases: ["rewind"], description: "Rewind to a previous message in a new session, keeping this one unchanged" },
 	{
 		name: "fork",
 		description: "Fork this session, or open it in a multiplexer pane or window",

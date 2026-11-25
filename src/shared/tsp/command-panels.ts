@@ -15,6 +15,8 @@ export interface SettledCommandPanel {
 	path?: string;
 }
 
+const STATUS_SYMBOL_PREFIX = /^(?:[✔✘⚠✓✕✖\uf00c\uf00d\uf12a]|\[[+\-!]\])\s+/;
+
 /** The footer is the outcome contract. A stopped spinner alone never establishes completion. */
 export function settledCommandPanel(node: TspNode): SettledCommandPanel | null {
 	const role = node.p?.role;
@@ -28,7 +30,7 @@ export function settledCommandPanel(node: TspNode): SettledCommandPanel | null {
 	const head = node.c?.find(child => child.p?.role === TSP_ROLES.sheetHead);
 	const footer = node.c?.at(-1);
 	if (!head || !footer || footer === head) return null;
-	const outcome = panelText(footer).trim();
+	const outcome = panelText(footer).trim().replace(STATUS_SYMBOL_PREFIX, "");
 	const command = panelText(head);
 	const body = node.c?.filter(child => child !== head && child !== footer).map(panelText).filter(Boolean) ?? [];
 	if (role === TSP_ROLES.cleanse) {

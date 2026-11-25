@@ -139,7 +139,24 @@ export type TspText = string | readonly TspSpan[];
  * What a pointer gesture on a node does. `zoom` shows an `image` (and the images
  * beside it) large in the terminal's viewer; it is an image's click by default.
  */
-export type TspAction = "toggle" | "copy" | "open" | "zoom" | "select" | "activate" | (string & {});
+export type TspAction = "toggle" | "copy" | "open" | "zoom" | "select" | "activate" | "annotate" | (string & {});
+
+/**
+ * One entry of `actions.menu` or `actions.hold`: an action name (labeled from it), `"-"` a separator, a dim
+ * `{ header }`, or a row running action `id`, with its `label`, `icon` and `detail` (the hold menu shows it dim
+ * at the row's end).
+ */
+export type TspMenuEntry =
+	| TspAction
+	| { header: string }
+	| {
+			id: TspAction;
+			label?: string;
+			icon?: string;
+			detail?: string;
+			disabled?: boolean | string;
+			danger?: boolean;
+	  };
 
 /** Props every node accepts. */
 export interface TspCommonProps {
@@ -152,7 +169,18 @@ export interface TspCommonProps {
 	basis?: "auto" | "content" | number;
 	min?: { w?: TspExtent; h?: TspExtent };
 	max?: { w?: TspExtent; h?: TspExtent };
-	actions?: { click?: TspAction; dblclick?: TspAction; menu?: readonly TspAction[] };
+	/**
+	 * What a pointer does: `menu` lists what a right-click offers; `hold` what a long press on a touch screen
+	 * offers (a phone's hold menu over the lifted node), which a desktop ignores.
+	 */
+	actions?: {
+		click?: TspAction;
+		dblclick?: TspAction;
+		menu?: readonly TspMenuEntry[];
+		hold?: readonly TspMenuEntry[];
+		/** Runs on every press starting outside the node (and outside the dock's composer). */
+		outside?: TspAction;
+	};
 	title?: string;
 	/** Accessible name for icon-only or visual-only nodes. */
 	aria?: string;
@@ -175,6 +203,20 @@ export interface TspCommonProps {
 	 * that don't know it ignore it and keep showing `title`.
 	 */
 	hovercard?: TspPropNode;
+	/**
+	 * `layout` makes the node a layout-transition container: descendants carrying a {@link motionKey} glide to
+	 * their new place and size when an update moves, resizes, adds or removes them; new keys fade in, leaving
+	 * ones fade out. Reduced motion turns it off.
+	 */
+	transition?: "layout";
+	/** A `transition` container's duration in ms (200 by default, at most 1000; 0 snaps). */
+	transitionMs?: number;
+	/**
+	 * The node's identity in its nearest `transition` container. Unlike `key`, it survives a move to another
+	 * parent, so the node glides there; give two shapes of one thing (a folded and an open question) the
+	 * same one so it resizes instead of swapping.
+	 */
+	motionKey?: string;
 }
 
 /** A {@link TspCommonProps.mark}. */
@@ -188,12 +230,60 @@ export type TspPreview = { lines: number } | "auto";
 export interface TspColProps {
 	gap?: TspSpace;
 	align?: "start" | "center" | "end" | "stretch";
+	/**
+	 * On a dock composer's container: fold it to its compact row now, as an unfocused pane's composer folds,
+	 * while the keys are elsewhere in the document (a question above it).
+	 */
+	folded?: boolean;
+	/** On `omp.tray`: a counter the program bumps to move keyboard focus into the tray (acted on a change, never on first sight). */
+	focus?: number;
+	/** On `omp.tray`: the `ref` of the card its `omp.tray.peek` child belongs to. */
+	peek?: string;
+	/** On `omp.tray` (sent while it has cards): what the main agent is doing. */
+	main?: TspTrayMain;
+	/**
+	 * On `omp.tray`: it holds only finished work (nothing queued, running or failed). The host keeps a
+	 * quiet tray out of sight until the user asks for it.
+	 */
+	quiet?: boolean;
+	/** On `omp.tray.card`: what the card stands for. */
+	item?: TspTrayItem;
+	/** On `omp.tray.card` and `omp.tray.peek`: the item's id (an agent id, a job id, or `done`). */
+	ref?: string;
+	/** On `omp.tray.card`: the item's state. */
+	status?: TspTrayStatus;
+	/**
+	 * On an agent's `omp.tray.card` while `running`: the call it is in only waits on its own agents or
+	 * jobs (`wait`, `vibe_wait`), so it does no work of its own until that call returns.
+	 */
+	waiting?: boolean;
+	/** On an agent's `omp.tray.card`: epoch ms of its last operation (its latest tool call start, or when it settled). */
+	acted?: number;
+	/** On `omp.tray.card`: `false` when its closer look would add nothing to its face (`tray.peek` on it is ignored). */
+	look?: boolean;
 }
+/** What an `omp.tray.card` stands for. */
+export type TspTrayItem = "agent" | "job" | "done";
+/** The state of an `omp.tray.card`. */
+export type TspTrayStatus = "queued" | "running" | "done" | "failed" | "stopped";
+/**
+ * The main agent on `omp.tray`: `idle` once it has yielded (no turn runs, or the run waits only on
+ * outside work); `waiting` while every call it executes only blocks on its agents or jobs (a `wait`,
+ * a `vibe_wait`, a `task` call running an agent inline), or its last calls were such and it has
+ * started nothing else since; `working` otherwise.
+ */
+export type TspTrayMain = "idle" | "working" | "waiting";
 export interface TspRowProps {
 	gap?: TspSpace;
 	align?: "start" | "center" | "baseline" | "end" | "stretch";
 	justify?: "start" | "between" | "end";
 	wrap?: boolean;
+	/** On `omp.tray.ev`: how the operation went, or `run` while it is in flight. */
+	state?: "ok" | "err" | "run";
+	/** On `omp.tray.done.item`: the finished agent's id. */
+	ref?: string;
+	/** On `omp.tray.done.item`: how the agent ended, which colors its dot. */
+	status?: "done" | "failed" | "stopped";
 }
 export interface TspCardProps {
 	/** Header content, inline. */
@@ -236,6 +326,33 @@ export interface TspMarkdownProps {
 	/** Literal runs drawn as these spans wherever they occur in prose (a sent prompt's chip tokens). */
 	marks?: readonly TspSpan[];
 }
+/** One marked line of a {@link TspCodeProps.marks}. */
+export interface TspCodeMark {
+	line: number;
+	tone?: TspTone;
+	heat?: number;
+	/**
+	 * Scores in [0, 1] washing the row on the `heat` ramp in place of `heat`'s wash: one flat, several a gradient across
+	 * the row, an evenly spaced stop per score from left to right. `heat` still sizes the line's overview bar.
+	 */
+	wash?: readonly number[];
+}
+/** A run of lines a {@link TspCodeProps} draws as one row until it is opened. */
+export interface TspCodeFold {
+	/** First and last folded line, in the gutter's numbering. */
+	from: number;
+	to: number;
+	/** The folded row's text, in the code's face (default `… [lines {from}-{to}]`, `… [line {from}]` for one line). */
+	label?: string;
+	/** What the fold hides, after a sparkline of its lines' mark `heat`. */
+	note?: TspText;
+	/** `error` tints the row; any tone colors the note. */
+	tone?: TspTone;
+	/** Drawn open; a click on the folded row (or on an open fold's head) toggles it in place. */
+	open?: boolean;
+	/** A card shown while the pointer rests on the folded row, as the common {@link TspCommonProps.hovercard}. */
+	hovercard?: TspPropNode;
+}
 export interface TspCodeProps {
 	text?: string;
 	/** The language of text that is no file's (`bash`, `json`); wins over `path`. */
@@ -252,10 +369,23 @@ export interface TspCodeProps {
 	 */
 	nums?: readonly number[];
 	numbers?: boolean;
-	marks?: readonly { line: number; tone: TspTone }[];
+	/**
+	 * Marked lines (`line` is the drawn line number). `heat` in [0, 1] washes the row in a heat ramp, `wash` runs that
+	 * ramp across it; `tone` draws a bar, and any tone but `accent` also tints an unwashed row. A mark without `heat`
+	 * or `wash` has tone `accent` by default; one with only those draws no bar.
+	 */
+	marks?: readonly TspCodeMark[];
 	wrap?: boolean;
 	/** Clamp to the first `lines` drawn lines under a "N more lines" button; gives way inside an open disclosure. */
 	preview?: TspPreview;
+	/** Runs of lines drawn folded: sorted, not overlapping; marks inside apply once a fold is open. */
+	folds?: readonly TspCodeFold[];
+	/**
+	 * An overview strip above the lines: one bar per line (its height the mark's `heat`, its color the mark's tone),
+	 * a band under it over the lines outside folds, and a bracket over the lines in view. A click or drag on it
+	 * scrolls the code there.
+	 */
+	overview?: boolean;
 }
 export interface TspDiffHunk {
 	oldStart: number;
@@ -436,6 +566,8 @@ export interface TspEditorDecoration {
 	to: number;
 	s: string;
 	fx?: TspEffect;
+	/** An image blob the range stands for (an attachment token): copying the range copies the image. */
+	blob?: string;
 }
 export interface TspEditorProps {
 	text?: string;
@@ -491,6 +623,10 @@ export interface TspToastProps {
 	text: string;
 	sub?: string;
 	ttl?: number;
+	/** A button after the text (Undo): clicking it takes the toast down and sends this action for the node. */
+	action?: TspAction;
+	/** The button's text; defaults to the action's name labeled (`undo` -> Undo). */
+	label?: string;
 }
 export interface TspRowsProps {
 	/** Width the rows were rendered at. */
@@ -582,6 +718,28 @@ export interface TspPickerAction {
 	end?: boolean;
 	/** A toggle's state (`Task model ⌥P`): drawn pressed when true. */
 	on?: boolean;
+	/** Drawn in the head as an icon-only button before its esc keycap (`icon`, else the label's initial), its label and keys as tooltip; `on` tints it. */
+	head?: boolean;
+	/** A head action's icon name. */
+	icon?: string;
+	disabled?: string | true;
+}
+
+/** A picker's stepped slider. */
+export interface TspPickerLevel {
+	/** What it sets ("Thinking"): shown, or with `icon` its tooltip and accessible name. */
+	label: string;
+	/** An icon drawn in place of the label. */
+	icon?: string;
+	/** A dim note after the value in its chip (the model switcher: the highlighted model's provider). */
+	detail?: string;
+	/** Its steps, low to high: the terminal heats the track up the ladder (color, then motion). */
+	steps: readonly { id: string; label: string }[];
+	/** The current step's id. */
+	value: string;
+	/** The keys the program binds to step it, shown in its tooltip (`["alt", "left", "right"]`). */
+	keys?: readonly string[];
+	/** Drawn but frozen, the reason as its tooltip. */
 	disabled?: string | true;
 }
 
@@ -607,6 +765,19 @@ export interface TspPickerProps {
 	/** Plural noun for counts and empty copy ("models", "sessions"). */
 	noun?: string;
 	size?: "md" | "lg" | "screen";
+	/**
+	 * Where the sheet sits: absent, its size's place in the layer; `"composer"`, rising from the program's composer
+	 * (its `composerPart: "composer"` column), left edges aligned: a drop-up for a picker acting on the draft, such as
+	 * the model switcher. Placed as if absent while no composer is drawn, and on a phone.
+	 */
+	anchor?: "composer";
+	/**
+	 * Where the search sits: the head (default), or `"list"`: no head row, the query leading the column heads' row
+	 * (count and esc gone), head actions atop a `rail`. Ignored on a phone.
+	 */
+	search?: "head" | "list";
+	/** How tall rows run: regular (default), or `"snug"`: 30px rows and 26px group headers, the chrome tightened to match. Ignored on a phone. */
+	density?: "regular" | "snug";
 	layout?: "rows" | "cards" | "timeline" | "tree";
 	/** The program's search text (keys stay the program's); `null` hides the field. */
 	query?: string | null;
@@ -615,6 +786,8 @@ export interface TspPickerProps {
 	placeholder?: string;
 	scopes?: readonly TspPickerScope[];
 	scope?: string;
+	/** How `scopes` draw: a labeled column (default), or `"rail"`: icons only, label and count as the tooltip, kept on narrow sheets. A `group` change draws a separator. */
+	scopeStyle?: "column" | "rail";
 	tabs?: readonly { id: string; label: TspText; count?: number }[];
 	tab?: string;
 	columns?: readonly TspPickerColumn[];
@@ -641,6 +814,8 @@ export interface TspPickerProps {
 		items: readonly { id: string; label: TspText; on?: boolean; dot?: string }[];
 		selected?: string;
 	} | null;
+	/** A stepped slider docked above the action bar (the model switcher's thinking effort). A press or drag ending on another step sends `action {act:"level", value: <step id>}`. */
+	level?: TspPickerLevel | null;
 	state?: "ready" | "loading" | "error";
 	message?: TspText;
 	empty?: TspText;
@@ -1044,7 +1219,7 @@ export type TspPropNode = {
 }[TspKind];
 
 /** Kinds whose primary text the `text` and `splice` ops address (the `text` prop). */
-export const TSP_TEXT_KINDS = ["text", "md", "code", "ansi", "math", "editor", "input", "shimmer"] as const;
+export const TSP_TEXT_KINDS = ["text", "md", "code", "ansi", "math", "editor", "input", "shimmer", "doc"] as const;
 
 /** A node on the wire. */
 export type TspNode = {
@@ -1129,18 +1304,43 @@ export type TspReply =
 	  }
 	| { r: "blobs"; have: readonly string[] };
 
+/**
+ * An encoded picture a terminal hands back (an annotated `image`): standard base64 `data` of a
+ * `mime` image, `w`x`h` pixels.
+ */
+export interface TspPicture {
+	mime: "image/png" | "image/jpeg";
+	data: string;
+	w: number;
+	h: number;
+}
+
 /** Verb `e`: terminal → program events. */
 export type TspEvent =
 	| { ev: "ack"; sf: string; s: number }
 	| { ev: "resize"; sf?: string; cols: number; cell?: { w: number; h: number }; visible?: boolean }
 	| { ev: "theme"; dark: boolean }
 	| { ev: "motion"; reduce: boolean }
+	/** The terminal's features changed (a setting: Tern's Agents tray drops `tray`); the list replaces `hello.features`. */
 	| { ev: "features"; features: readonly string[] }
 	| { ev: "visible"; sf?: string; visible: boolean }
+	/** The window reads and shows this pane's checkout (branch, changes, pull request) itself: show them from `shown` and read none of it yourself while `true`. */
+	| { ev: "checkout"; sf?: string; shown: boolean }
 	| { ev: "toggle"; sf: string; id: string; key?: string; collapsed: boolean }
+	/** Menu opening/closing; a toggle of a named sub-item also reports its id. */
+	| { ev: "toggle"; sf: string; id: string; open: boolean; item?: string }
 	| { ev: "select"; sf: string; id: string; item: string }
 	| { ev: "activate"; sf: string; id: string; item: string }
-	| { ev: "action"; sf: string; id: string; act: string; value?: string; mods?: readonly string[]; checked?: boolean }
+	/** A click action; a `menu` check or radio row adds its new `checked` state. */
+	| {
+			ev: "action";
+			sf: string;
+			id: string;
+			act: string;
+			value?: string;
+			mods?: readonly string[];
+			checked?: boolean;
+	  }
 	/** A typed value changed by pointer (prefs rows, picker toggles); `null` resets to the default. */
 	| {
 			ev: "change";
@@ -1149,6 +1349,24 @@ export type TspEvent =
 			item: string;
 			value: boolean | number | string | readonly string[] | null;
 	  }
+	/**
+	 * The user finished annotating `image` node `id` (one whose `actions.click` is `"annotate"`; sent only
+	 * on Done, only when `hello` lists `"annotate"`): `value` is the annotated picture, at its new size (a crop
+	 * makes it smaller).
+	 */
+	| { ev: "change"; sf: string; id: string; value: TspPicture }
+	/** The user edited a `doc` (~300 ms after typing pauses, and when editing ends): `text` is its full new source. */
+	| { ev: "change"; sf: string; id: string; text: string }
+	/**
+	 * A comment on a `doc`: a new one on `quote` (`at` its UTF-16 offset in the source the user saw), or the
+	 * edited `note` of existing comment `comment`.
+	 */
+	| { ev: "comment"; sf: string; id: string; quote: string; at: number; note: string }
+	| { ev: "comment"; sf: string; id: string; comment: string; note: string }
+	/** Comment `comment` of a `doc` deleted. */
+	| { ev: "uncomment"; sf: string; id: string; comment: string }
+	/** In-place editing of a `doc` started (`on`) or ended. */
+	| { ev: "editing"; sf: string; id: string; on: boolean }
 	/**
 	 * An edit over the terminal's selection in an `editor`/`input` node: replace
 	 * `[from, to)` with `text`, caret to `cursor` (UTF-16 offsets; `len` is the

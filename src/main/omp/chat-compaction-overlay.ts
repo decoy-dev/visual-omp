@@ -2,8 +2,8 @@ import { open } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ChatCompactionStore } from "../services/chat-compaction";
 
-/** omp reloads a changed `--config` overlay after a 200 ms quiet period (`CONFIG_WATCH_DEBOUNCE_MS`, omp 18.15+). */
-export const OVERLAY_RELOAD_MS = 300;
+/** omp 19.2+ polls a changed `--config` overlay every 500 ms before its 200 ms quiet period (`CONFIG_WATCH_DEBOUNCE_MS`, omp 18.15+). */
+export const OVERLAY_RELOAD_MS = 800;
 
 /** The session id in a saved session's header record, or null when the file has none. omp may write a title record first. */
 export async function resumeSessionId(file: string): Promise<string | null> {
@@ -88,8 +88,8 @@ export class ChatCompactionOverlay {
 	}
 
 	/**
-	 * Resolves once every queued overlay change has been written and omp's config watcher has had its 200 ms quiet
-	 * period plus a margin to read it. The app cannot observe omp's reload itself. After a failed overlay write
+	 * Resolves once every queued overlay change has been written and omp's config watcher has had its poll interval
+	 * plus 200 ms quiet period (up to 700 ms on omp 19.2+) and a margin to read it. The app cannot observe omp's reload itself. After a failed overlay write
 	 * it rewrites the current session's point once more, and rejects while that still fails.
 	 */
 	async ready(): Promise<void> {

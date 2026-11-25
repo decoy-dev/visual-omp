@@ -5,7 +5,7 @@ export async function readComposerAssist(
 	request: ComposerAssistRequest,
 	engine: {
 		complete?: (lines: string[], line: number, col: number) => Promise<{ items: { value: string; description?: string }[]; prefix: string } | null>;
-		ranges?: (text: string) => { from: number; to: number }[];
+		ranges?: (text: string, words?: readonly string[]) => { from: number; to: number }[];
 		keywords?: readonly { id: string; word: string; description: string }[];
 		enabled?: (id?: string) => boolean;
 	},
@@ -21,7 +21,8 @@ export async function readComposerAssist(
 	};
 	try {
 		if (request.keywords !== false && engine.enabled?.()) {
-			for (const range of engine.ranges?.(request.text) ?? []) {
+			const words = engine.keywords?.map(item => item.word) ?? [];
+			for (const range of engine.ranges?.(request.text, words) ?? []) {
 				const keyword = engine.keywords?.find(item => item.word === request.text.slice(range.from, range.to));
 				if (keyword && engine.enabled(keyword.id)) keywords.push({
 					start: range.from, end: range.to, description: effects[keyword.id] ?? `omp: ${keyword.description}`,

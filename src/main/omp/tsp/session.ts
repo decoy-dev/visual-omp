@@ -3,7 +3,7 @@ import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, typ
 import type { TspAvailability, TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { TspRendererEvent } from "../../../shared/tsp-host.schema";
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isAskCardAction, isAskFormAction, isHookNode, isJobsSourceAction, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
+import { isAskCardAction, isAskFormAction, isHookNode, isJobsSourceAction, isKnownAction, isPlanReviewChoiceAction, isPlanTierAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents } from "../../../shared/tsp/dialogs";
 import { TspHookAnswer } from "../../../shared/tsp/dialogs.schema";
 import { planReview } from "../../../shared/tsp/plan-review";
@@ -19,9 +19,10 @@ import { assertShellEvent, shellProps } from "../../../shared/tsp/shell";
 
 /**
  * Kinds advertised to omp in `hello.kinds`. `TSP_KINDS` accepts the full wire grammar so
- * unconditional emitters (such as omp 19.1's Jobs panel `menu`) never fail the stream, while
- * omitting `web`, `buttons` and `doc` keeps omp on its `md` + `list` fallbacks (including
- * PlanReviewOverlay) until visual-omp implements interactive in-place document editing and web frames.
+ * unconditional emitters (such as omp 19.1's Jobs panel `menu` and omp 19.2's PlanReview `doc` and
+ * `buttons`) never fail the stream, while omitting `web`, `buttons` and `doc` keeps omp on fallback
+ * presentations elsewhere until visual-omp implements interactive in-place document editing and web frames.
+ * `projectPlanReview` supports both legacy `md` + `list` layouts and omp 19.2's `doc` + `dock` layout.
  */
 export const TSP_ADVERTISED_KINDS = TSP_KINDS.filter(kind => kind !== "web" && kind !== "buttons" && kind !== "doc");
 
@@ -91,13 +92,27 @@ function askEditorOwnsDock(surfaces: readonly TspSurfaceSnapshot[]): boolean {
  * From omp 19.0.0 a question waits as a card in the transcript (`omp.ask.card`) instead of replacing the dock editor,
  * and the session surface keeps no focused node while it does. Like the ask editor, it never grants input to other UI.
  */
+function hasEnabledMenuItem(items: readonly unknown[] | undefined, act: string): boolean {
+	return !!items?.some(entry => {
+		if (typeof entry === "string") return entry !== "-" && entry !== "---" && entry === act;
+		if (!entry || typeof entry !== "object" || !("id" in entry)) return false;
+		const item = entry as { id?: unknown; disabled?: unknown; items?: readonly unknown[] };
+		if (item.id === act) return item.disabled !== true && typeof item.disabled !== "string";
+		return hasEnabledMenuItem(item.items, act);
+	});
+}
+
 function askCardWaits(surfaces: readonly TspSurfaceSnapshot[]): boolean {
 	const live = liveSurfaces(surfaces);
 	const main = live.filter(surface => surface.open.mode === "inline" && surface.open.role === TSP_ROLES.session);
-	if (live.length !== 1 || main.length !== 1 || main[0]!.focus !== null) return false;
+	if (live.length !== 1 || main.length !== 1) return false;
 	const nodes = [...walkNodes(main[0]!.document)];
 	if (nodes.some(node => node.p?.role === TSP_ROLES.composerFocus)) return false;
-	return nodes.filter(node => node.p?.role === TSP_ROLES.askCard && !node.p?.hidden).length === 1;
+	const cards = nodes.filter(node => node.p?.role === TSP_ROLES.askCard && !node.p?.hidden);
+	if (cards.length !== 1) return false;
+	const cardNodes = [...walkNodes(cards[0]!)];
+	if (cardNodes.some(node => node.k === "editor" && node.p?.mode === "PTY")) return false;
+	return main[0]!.focus === null || cardNodes.some(node => node.id === main[0]!.focus);
 }
 
 export type TspUpdate = "hello" | "open" | "frame" | "close";
@@ -367,15 +382,20 @@ export class TspSession {
 					if (!card || Array.isArray(node.p?.actions) || node.p?.actions?.click !== event.act || node.k === "button" && (node.p?.disabled === true || typeof node.p?.disabled === "string" || node.p?.busy)) throw new TspInputStateError("omp screen: The question card no longer offers this action.");
 				}
 				if (event.ev === "action" && isJobsSourceAction(event.act)) {
-					const hasItem = (items: readonly unknown[] | undefined): boolean => !!items?.some(entry => {
-						if (typeof entry === "string") return entry !== "-" && entry !== "---" && entry === event.act;
-						if (!entry || typeof entry !== "object" || !("id" in entry)) return false;
-						const item = entry as { id?: unknown; disabled?: unknown; items?: readonly unknown[] };
-						if (item.id === event.act) return item.disabled !== true && typeof item.disabled !== "string";
-						return hasItem(item.items);
-					});
-					if (node.k !== "menu" || node.p?.hidden || node.p?.disabled === true || typeof node.p?.disabled === "string" || !hasItem(node.p?.items)) {
+					if (node.k !== "menu" || node.p?.hidden || node.p?.disabled === true || typeof node.p?.disabled === "string" || !hasEnabledMenuItem(node.p?.items, event.act)) {
 						throw new TspInputStateError("omp screen: That job output source is no longer available.");
+					}
+				}
+				if (event.ev === "action" && (isPlanReviewChoiceAction(event.act) || isPlanTierAction(event.act))) {
+					const overlay = [...walkNodes(surface.doc.snapshot())].find(root => root.k === "overlay" && root.p?.role === TSP_ROLES.planReview && !root.p?.hidden && [...walkNodes(root)].some(child => child.id === node.id));
+					if (!overlay) throw new TspInputStateError("omp screen: Plan Review is no longer available.");
+					if (event.act === "refine") {
+						const clickAction = Array.isArray(node.p?.actions) ? undefined : node.p?.actions?.click;
+						if (node.k !== "button" || node.p?.hidden || node.p?.disabled === true || typeof node.p?.disabled === "string" || node.p?.busy || clickAction !== "refine") {
+							throw new TspInputStateError("omp screen: Plan Review no longer offers Refine.");
+						}
+					} else if (node.k !== "menu" || node.p?.hidden || node.p?.disabled === true || typeof node.p?.disabled === "string" || !hasEnabledMenuItem(node.p?.items, event.act)) {
+						throw new TspInputStateError("omp screen: Plan Review no longer offers that choice.");
 					}
 				}
 				if ((event.ev === "select" || event.ev === "activate") && node.k === "tabs" && node.p?.role === TSP_ROLES.askQuestions

@@ -22,7 +22,10 @@ describe("omp composer projection", () => {
 		const text = "ultrathink `ultrathink` chillax";
 		const keywords = [{ id: "ultrathink", word: "ultrathink", description: "Maximum thinking" }, { id: "chillax", word: "chillax", description: "Lowest effort" }];
 		const start = text.indexOf("chillax");
-		const ranges = () => [{ from: 0, to: 10 }, { from: start, to: start + 7 }];
+		const ranges = vi.fn((_input: string, words?: readonly string[]) => {
+			expect(words).toEqual(["ultrathink", "chillax"]);
+			return [{ from: 0, to: 10 }, { from: start, to: start + 7 }];
+		});
 		const request = { text, cursor: text.length, complete: false };
 		expect((await readComposerAssist(request, { keywords, ranges, enabled: () => false })).keywords).toEqual([]);
 		expect((await readComposerAssist(request, { keywords, ranges, enabled: id => id !== "ultrathink" })).keywords).toEqual([{ start, end: start + 7, description: "Requests the model's lowest thinking effort where supported and adds instructions for brief reasoning." }]);

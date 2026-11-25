@@ -36,8 +36,11 @@ export function modelFallbacks(entries: readonly SessionEntry[]): ReadonlyMap<st
 			pending = undefined;
 			if (typeof entry.model !== "string" || !entry.model.trim()) continue;
 			if (isModelFallback(entry)) {
-				pending = { from: previous, to: entry.model, source: "retry" };
-				result.set(entry.id, pending);
+				const from = typeof entry.fallback?.from === "string" && entry.fallback.from.trim() ? entry.fallback.from : previous;
+				const reason = typeof entry.fallback?.reason === "string" && entry.fallback.reason.trim() ? entry.fallback.reason : undefined;
+				const fallback: ModelFallback = { from, to: entry.model, ...(reason ? { reason } : {}), source: "retry" };
+				result.set(entry.id, fallback);
+				pending = reason ? undefined : fallback;
 			}
 			previous = entry.model;
 		} else if (entry.type === "message" && entry.message.role === "user") {

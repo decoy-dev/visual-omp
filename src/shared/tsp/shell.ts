@@ -85,6 +85,7 @@ export interface TspShellProps {
 	inspector?: boolean;
 	replayEpoch?: number;
 	liveOrigin?: boolean;
+	stream?: boolean;
 	cwd?: string;
 	lang?: "bash" | "zsh";
 	preview?: { lines: number };
@@ -216,6 +217,7 @@ export function shellProps(value: unknown): TspShellProps | null {
 	if (!object(value)) return null;
 	if (propsCache.has(value)) return propsCache.get(value)!;
 	const valid = boundedJson(value) && optional(value.inspector, boolean) && optional(value.liveOrigin, boolean)
+		&& optional(value.stream, boolean)
 		&& optional(value.replayEpoch, integer) && optional(value.cwd, text)
 		&& optional(value.lang, lang => lang === "bash" || lang === "zsh")
 		&& optional(value.preview, preview => object(preview) && integer(preview.lines) && preview.lines > 0)

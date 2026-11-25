@@ -60,6 +60,8 @@ describe("exact trusted editor transfer", () => {
 		const ui = { getEditorText: () => "IMAGE #1 IMAGE #2 PASTE #3", setEditorText: vi.fn(), theme: { symbol: () => "IMAGE" } };
 		expect(exactEditorDraft(ui, { operation: "peek", sessionId: "session" }, "session")).toMatchObject({ imageChips: 2, cleared: false });
 		expect(ui.setEditorText).not.toHaveBeenCalled();
+		const resolvedUi = { getEditorText: () => "📷 #1 📷 #2", setEditorText: vi.fn(), theme: { symbols: { symbol: () => "📷" } } };
+		expect(exactEditorDraft(resolvedUi, { operation: "peek", sessionId: "session" }, "session")).toMatchObject({ imageChips: 2, imageSymbol: "📷", cleared: false });
 	});
 	it("restores the original editor text only after an exact same-session comparison", () => {
 		let buffer = "draft /tmp/broken.png";

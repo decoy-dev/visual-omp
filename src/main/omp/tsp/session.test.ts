@@ -414,13 +414,20 @@ describe("TSP session", () => {
 
 	it("treats omp 19's waiting ask card like the ask editor, and only while nothing else holds focus", () => {
 		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
-		h.frame(2, [["set", "editor", { sendable: true }], ["add", "card", "main", null, { id: "card", k: "col", p: { role: "omp.ask.card" } }], ["focus", null]]);
+		h.frame(2, [["set", "editor", { sendable: true }], ["add", "card", "main", null, { id: "card", k: "col", p: { role: "omp.ask.card" }, c: [{ id: "field", k: "input", p: { text: "" } }] }], ["focus", null]]);
 		expect(h.session.availability()).toMatchObject({ available: false, reasonCode: "ask-editor" });
-		h.frame(3, [["add", "viewing", "dock", null, { id: "viewing", k: "row", p: { role: "omp.composer.focus" } }]]);
+		// omp 19.2 keeps focus inside an inline form input/editor mounted in omp.ask.card.
+		h.frame(3, [["focus", "field"]]);
+		expect(h.session.availability()).toMatchObject({ available: false, reasonCode: "ask-editor" });
+		// A PTY editor inside the ask card disqualifies it from bypassing ask ownership.
+		h.frame(4, [["add", "pty-field", "card", null, { id: "pty-field", k: "editor", p: { text: "", mode: "PTY" } }]]);
 		expect(h.session.availability().reasonCode).toBeUndefined();
-		h.frame(4, [["del", "viewing"], ["focus", "editor"]]);
+		h.frame(5, [["del", "pty-field"], ["focus", null]]);
+		h.frame(6, [["add", "viewing", "dock", null, { id: "viewing", k: "row", p: { role: "omp.composer.focus" } }]]);
+		expect(h.session.availability().reasonCode).toBeUndefined();
+		h.frame(7, [["del", "viewing"], ["focus", "editor"]]);
 		expect(h.session.availability()).toMatchObject({ available: true });
-		h.frame(5, [["del", "card"], ["focus", null]]);
+		h.frame(8, [["del", "card"], ["focus", null]]);
 		expect(h.session.availability().reasonCode).toBeUndefined();
 	});
 
@@ -680,4 +687,49 @@ it("reads the dock queue as the main chat's only while the main editor is there 
 	const replaced = composerFacts(h.session.snapshot().surfaces);
 	expect(replaced.queued).toEqual(["Main steer", "Main follow-up"]);
 	expect(replaced.queuedItems).toBeUndefined();
+});
+
+it("validates omp 19.2 plan review choice, refine and tier menu actions against the live overlay", async () => {
+	const h = harness(); h.hello(); h.open();
+	h.frame(1, [
+		["add", "layer", "s:1", null, {
+			id: "layer",
+			k: "col",
+			c: [{
+				id: "review",
+				k: "overlay",
+				p: { role: TSP_ROLES.planReview, head: "Plan" },
+				c: [{
+					id: "dock",
+					k: "row",
+					p: { role: TSP_ROLES.planDock },
+					c: [
+						{ id: "main", k: "button", p: { text: "Refine", actions: { click: "refine" } } },
+						{ id: "more", k: "menu", p: { items: [{ id: "execute", label: "Approve and execute" }, { id: "compact", label: "Approve and compact context" }, { id: "keep", label: "Approve and keep context", disabled: true }] } },
+						{ id: "model", k: "menu", p: { role: TSP_ROLES.planModel, items: [{ id: "tier:0", label: "smol", radio: "tier", checked: true }] } },
+					],
+				}],
+			}],
+		}],
+		["add", "outside", "s:1", null, { id: "outside", k: "button", p: { text: "Outside", actions: { click: "refine" } } }],
+	]);
+	await h.flush(); h.messages.length = 0;
+
+	await h.session.send({ ev: "action", sf: "s:1", id: "more", act: "execute" });
+	await h.session.send({ ev: "action", sf: "s:1", id: "more", act: "compact" });
+	await h.session.send({ ev: "action", sf: "s:1", id: "main", act: "refine" });
+	await h.session.send({ ev: "action", sf: "s:1", id: "model", act: "tier:0", checked: true });
+	expect(h.bodies()).toEqual([
+		{ ev: "action", sf: "s:1", id: "more", act: "execute" },
+		{ ev: "action", sf: "s:1", id: "more", act: "compact" },
+		{ ev: "action", sf: "s:1", id: "main", act: "refine" },
+		{ ev: "action", sf: "s:1", id: "model", act: "tier:0", checked: true },
+	]);
+	h.messages.length = 0;
+
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "more", act: "keep" })).rejects.toThrow("no longer offers");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "model", act: "tier:1", checked: true })).rejects.toThrow("no longer offers");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "main", act: "execute" })).rejects.toThrow("no longer offers");
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "outside", act: "refine" })).rejects.toThrow("no longer available");
+	expect(h.bodies()).toEqual([]);
 });

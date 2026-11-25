@@ -181,6 +181,8 @@ describe("canonical shell action vocabulary", () => {
 	it("validates omp 19.1 step-mode props, projects pinned step output, and allows jobs-overlay shell actions", () => {
 		const value = presentation();
 		expect(shellProps({ presentation: value, steps: true, focus: ["opaque:execution:1"] })).toMatchObject({ steps: true, focus: ["opaque:execution:1"] });
+		expect(shellProps({ presentation: value, stream: true })).toMatchObject({ stream: true });
+		expect(shellProps({ presentation: value, stream: "yes" })).toBeNull();
 		expect(shellProps({ presentation: value, steps: "yes" })).toBeNull();
 		expect(shellProps({ presentation: value, focus: [1] })).toBeNull();
 		const steppedTool = tool();

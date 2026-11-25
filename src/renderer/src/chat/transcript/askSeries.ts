@@ -199,18 +199,30 @@ function formSelectMismatch(question: AskQuestion, request: CollabUiRequest): st
 	if (checked.some(index => !Number.isInteger(index) || index < 0 || index >= rows.length)) return "a checked index is out of range";
 	if (new Set(checked).size !== checked.length) return "a checked index is repeated";
 	if (request.markableCount !== undefined && request.markableCount !== rows.length) return "the option count differs";
-	const tail = field.multi
-		? [...(field.other ? [ASK_OTHER] : []), ...(!field.required || checked.length > 0 ? [ASK_NEXT] : [])]
-		: field.other ? [ASK_OTHER] : [];
-	const expected = [...labels, ...tail];
-	if (request.options.length !== expected.length) return "the option count differs";
-	for (let index = 0; index < expected.length; index++) {
-		if (optionLabel(request, index) !== expected[index]) return index < labels.length ? "the options differ" : "the trailing options differ";
-	}
+	const other = field.other ? [ASK_OTHER] : [];
+	const tail = field.multi ? [...other, ...(!field.required || checked.length > 0 ? [ASK_NEXT] : [])] : other;
+	const optionalTail = field.multi && field.required && checked.length === 0 ? [...other, ASK_NEXT] : undefined;
+	const mismatch = matchRequestOptions(request, labels, tail, optionalTail);
+	if (mismatch) return mismatch;
 	if (field.multi) return null;
 	if (checked.length > 0) return "a single-choice request has checked options";
 	const initial = defaultAnswer(question).selected[0] ?? 0;
 	if ((request.initialIndex ?? 0) !== initial) return "the initial choice differs";
+	return null;
+}
+
+function matchRequestOptions(
+	request: Extract<CollabUiRequest, { kind: "select" }>,
+	labels: readonly string[],
+	requiredTail: readonly string[],
+	optionalTail?: readonly string[],
+): string | null {
+	const candidates = optionalTail ? [[...labels, ...requiredTail], [...labels, ...optionalTail]] : [[...labels, ...requiredTail]];
+	const expected = candidates.find(candidate => candidate.length === request.options.length);
+	if (!expected) return "the option count differs";
+	for (let index = 0; index < expected.length; index++) {
+		if (optionLabel(request, index) !== expected[index]) return index < labels.length ? "the options differ" : "the trailing options differ";
+	}
 	return null;
 }
 
@@ -236,12 +248,8 @@ export function selectMismatch(question: AskQuestion, request: CollabUiRequest):
 	const checked = request.checkedIndices ?? [];
 	if (checked.some(index => !Number.isInteger(index) || index < 0 || index >= count)) return "a checked index is out of range";
 	const tail = question.multi ? [ASK_OTHER, ...(checked.length > 0 ? [ASK_NEXT] : []), ASK_CHAT] : [ASK_OTHER, ASK_CHAT];
-	if (request.options.length !== count + tail.length) return "the option count differs";
-	const expected = [...displayLabels(question), ...tail];
-	for (let index = 0; index < expected.length; index++) {
-		if (optionLabel(request, index) !== expected[index]) return index < count ? "the options differ" : "the trailing options differ";
-	}
-	return null;
+	const optionalTail = question.multi && checked.length === 0 ? [ASK_OTHER, ASK_NEXT, ASK_CHAT] : undefined;
+	return matchRequestOptions(request, displayLabels(question), tail, optionalTail);
 }
 /** omp's first request of a series: question 1 with the form's own defaults. */
 export function isSeriesStart(questions: readonly AskQuestion[], request: CollabUiRequest): boolean {

@@ -4,13 +4,8 @@ import { expandedPromptTextMatches } from "../../shared/prompt-input";
 import { sessionAccountSnapshot } from "./native-accounts";
 import { readComposerAssist } from "./native-composer";
 
-/** Written into each app-hosted chat's private directory. omp resolves these public SDK and pi-tui exports from its compiled module map. */
+/** Written into each app-hosted chat's private directory. Optional omp SDK and pi-tui exports load lazily at runtime. */
 export const NATIVE_EXTENSION_SOURCE = String.raw`
-import { loadThemeJson } from "@oh-my-pi/pi-tui/theme/loader";
-import { getCurrentThemeName } from "@oh-my-pi/pi-tui/theme";
-import { ansi256ToHex, resolveVarRefs } from "@oh-my-pi/pi-tui/theme/color";
-import { discoverSlashCommands } from "@oh-my-pi/pi-coding-agent";
-import * as ompSdk from "@oh-my-pi/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -44,17 +39,54 @@ export default function visualOmpNative(pi) {
 	const promptWatches = new Map();
 	let autocomplete;
 	let keywordEngine;
-	// Optional subpath exports are capability checks, not version checks. Missing helpers disable only decorations.
+	// Optional host exports resolve dynamically so omp subpath moves never block extension load or prompt submission.
+	const sdkModule = typeof ompSdk === "object" && ompSdk ? Promise.resolve(ompSdk) : import("@oh-my-pi/pi-coding-agent").catch(() => ({}));
+	const themeHelpers = (async () => {
+		const sdk = await sdkModule;
+		const themeLoader = typeof loadThemeJson === "function"
+			? { loadThemeJson }
+			: await import("@oh-my-pi/pi-tui/theme/loader").catch(() => undefined);
+		const colors = typeof themeColor === "object" && themeColor
+			? themeColor
+			: await import("@oh-my-pi/pi-tui/theme/color").catch(() => undefined);
+		const legacyTheme = typeof sdk.getCurrentThemeName === "function" ? undefined : await import("@oh-my-pi/pi-tui/theme").catch(() => undefined);
+		const themeRuntime = typeof sdk.getCurrentThemeName === "function" || typeof legacyTheme?.getCurrentThemeName === "function"
+			? undefined
+			: await import("@oh-my-pi/pi-tui/theme/runtime").catch(() => undefined);
+		const themeValues = typeof colors?.resolveVarRefs === "function"
+			? undefined
+			: await import("@oh-my-pi/pi-tui/theme/theme").catch(() => undefined);
+		return {
+			loadTheme: typeof themeLoader?.loadThemeJson === "function" ? themeLoader.loadThemeJson : undefined,
+			getCurrentThemeName: typeof sdk.getCurrentThemeName === "function"
+				? sdk.getCurrentThemeName
+				: typeof legacyTheme?.getCurrentThemeName === "function"
+					? legacyTheme.getCurrentThemeName
+					: typeof themeRuntime?.currentTheme === "function"
+						? () => themeRuntime.currentTheme()?.name ?? null
+						: undefined,
+			resolveVar: typeof colors?.resolveVarRefs === "function"
+				? colors.resolveVarRefs
+				: typeof themeValues?.resolveColorValue === "function"
+					? themeValues.resolveColorValue
+					: undefined,
+			toHex: typeof colors?.ansi256ToHex === "function"
+				? colors.ansi256ToHex
+				: typeof colors?.paletteHex === "function"
+					? colors.paletteHex
+					: undefined,
+		};
+	})();
 	const keywordModules = Promise.all([
 		import("@oh-my-pi/pi-coding-agent/modes/magic-keywords"),
 		import("@oh-my-pi/pi-coding-agent/modes/settings"),
-		import("@oh-my-pi/pi-coding-agent"),
-		import("@oh-my-pi/pi-tui/prompt/magic-keywords"),
+		sdkModule,
+		import("@oh-my-pi/pi-coding-agent/session/magic-keywords").catch(() => import("@oh-my-pi/pi-tui/prompt/magic-keywords")),
 	]).then(([words, handles, sdk, prose]) => {
 		if (!Array.isArray(words.MAGIC_KEYWORDS) || typeof prose.magicKeywordRanges !== "function" || typeof handles.cfgMagicKeywordsEnabled?.get !== "function" || !handles.cfgMagicKeyword) return;
 		keywordEngine = {
 			keywords: words.MAGIC_KEYWORDS,
-			ranges: prose.magicKeywordRanges,
+			ranges: (text, wordList) => prose.magicKeywordRanges(text, wordList),
 			enabled: id => id === undefined ? handles.cfgMagicKeywordsEnabled.get(sdk.settings) : handles.cfgMagicKeyword[id]?.get(sdk.settings) === true,
 		};
 	}).catch(() => undefined);
@@ -83,30 +115,40 @@ export default function visualOmpNative(pi) {
 		if (images !== (watch.images ?? 0)) return false;
 		return expandedPromptTextMatches(event.text, watch.text, watch.images);
 	}
-	const fingerprint = theme => JSON.stringify([theme.getAllThemeColorHexes(), theme.getBgHex("statusLineBg"), theme.getBgHex("selectedBg")]);
+	const bgHex = (theme, key) => typeof theme?.getBgHex === "function" ? theme.getBgHex(key) : typeof theme?.hex === "function" ? theme.hex(key) : undefined;
+	const fgHex = (theme, key) => typeof theme?.getColorHex === "function" ? theme.getColorHex(key) : typeof theme?.hex === "function" ? theme.hex(key) : undefined;
+	const fingerprint = theme => typeof theme?.getAllThemeColorHexes === "function"
+		? JSON.stringify([theme.getAllThemeColorHexes(), bgHex(theme, "statusLineBg"), bgHex(theme, "selectedBg")])
+		: JSON.stringify([theme?.name ?? null, theme?.json ?? null, bgHex(theme, "statusLineBg"), bgHex(theme, "selectedBg"), fgHex(theme, "text")]);
 	async function readTheme(ctx) {
 		const active = ctx.ui.theme;
 		if (!active || active === lastTheme) return themeIdentity;
+		const { loadTheme, getCurrentThemeName, resolveVar, toHex } = await themeHelpers;
 		const signature = fingerprint(active);
-		const currentName = getCurrentThemeName();
+		const currentName = typeof getCurrentThemeName === "function" ? getCurrentThemeName() : undefined;
 		let name = null;
+		const activeName = typeof active.name === "string" && active.name ? active.name : null;
 		const current = currentName ? await ctx.ui.getTheme(currentName) : undefined;
 		if (current && fingerprint(current) === signature) name = currentName;
-		else {
+		else if (activeName) {
+			const named = currentName === activeName ? current : await ctx.ui.getTheme(activeName);
+			if (named ? fingerprint(named) === signature : activeName === currentName) name = activeName;
+		}
+		if (!name) {
 			// A selector preview may differ from the committed theme. Resolve only an unambiguous preview.
 			const matches = [];
-			for (const info of await ctx.ui.getAllThemes()) {
+			for (const info of (await ctx.ui.getAllThemes?.()) ?? []) {
 				const candidate = await ctx.ui.getTheme(info.name);
 				if (candidate && fingerprint(candidate) === signature) matches.push(info.name);
 			}
 			if (matches.length === 1) name = matches[0];
 		}
 		let terminal;
-		if (name) {
-			const definition = await loadThemeJson(name);
+		if (name && typeof loadTheme === "function") {
+			const definition = await loadTheme(name);
 			const resolve = value => {
-				const resolved = resolveVarRefs(value, definition.vars ?? {});
-				return typeof resolved === "number" ? ansi256ToHex(resolved) : resolved;
+				const resolved = typeof resolveVar === "function" ? resolveVar(value, definition.vars ?? {}) : value;
+				return typeof resolved === "number" && typeof toHex === "function" ? toHex(resolved) : resolved;
 			};
 			if (definition.terminal) terminal = {
 				background: definition.terminal.background === undefined ? undefined : resolve(definition.terminal.background),
@@ -115,7 +157,7 @@ export default function visualOmpNative(pi) {
 			};
 		}
 		lastTheme = active;
-		themeIdentity = { name, terminal, background: active.getBgHex("statusLineBg"), foreground: active.getColorHex("text"), revision: ++themeRevision };
+		themeIdentity = { name, terminal, background: bgHex(active, "statusLineBg"), foreground: fgHex(active, "text"), revision: ++themeRevision };
 		return themeIdentity;
 	}
 	function runningJobs(ctx) {
@@ -147,13 +189,14 @@ export default function visualOmpNative(pi) {
 			lastTheme = ctx.ui.theme;
 			// A terminal-only JSON error must not prevent mode or location publication.
 			if (!theme) {
-				try { theme = { name: null, background: ctx.ui.theme.getBgHex("statusLineBg"), foreground: ctx.ui.theme.getColorHex("text"), revision: ++themeRevision }; }
+				try { theme = { name: null, background: bgHex(ctx.ui.theme, "statusLineBg"), foreground: fgHex(ctx.ui.theme, "text"), revision: ++themeRevision }; }
 				catch { theme = null; }
 			}
 			themeIdentity = theme;
 		}
+		const sdk = await sdkModule;
 		if (stopped || current !== lifecycle) return;
-		const snapshot = { ompVersion: typeof ompSdk.VERSION === "string" ? ompSdk.VERSION : undefined, modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, sessionAccounts: sessionAccountSnapshot(ctx), asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
+		const snapshot = { ompVersion: typeof sdk.VERSION === "string" ? sdk.VERSION : undefined, modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, sessionAccounts: sessionAccountSnapshot(ctx), asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
 		const encoded = JSON.stringify(snapshot);
 		if (encoded === last) return;
 		const response = await fetch(url + "/snapshot", { method: "POST", body: encoded, signal: AbortSignal.timeout(2000) });
@@ -259,8 +302,10 @@ export default function visualOmpNative(pi) {
 					}
 					if (item.kind === "sideCommands") {
 						try {
+							const sdk = await sdkModule;
+							const discover = typeof discoverSlashCommands === "function" ? discoverSlashCommands : sdk.discoverSlashCommands;
 							const shadowed = new Set(pi.getCommands().map(command => command.name));
-							const files = await discoverSlashCommands({ cwd: context.sessionManager.getCwd() });
+							const files = typeof discover === "function" ? await discover({ cwd: context.sessionManager.getCwd() }) : [];
 							const commands = files.filter(command => command.side === true && !shadowed.has(command.name)).map(command => command.name);
 							await fetch(url + "/commands/" + item.id, { method: "POST", body: JSON.stringify({ commands }), signal: AbortSignal.timeout(2000) });
 						} catch (error) {

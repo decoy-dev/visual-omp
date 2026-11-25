@@ -1,6 +1,6 @@
 import type { TspNode, TspText } from "../tsp";
 import type { TspHostSnapshot } from "../tsp-host";
-import { isReplicatedRole, TSP_CLAIMS, TSP_NOTICE_ROLES, TSP_ROLES } from "./roles";
+import { isReplicatedRole, menuEntryActions, TSP_CLAIMS, TSP_NOTICE_ROLES, TSP_ROLES } from "./roles";
 
 export interface OutputLocation { kind: "url" | "path"; value: string }
 export interface MainOutput {
@@ -34,7 +34,7 @@ function supportedOutput(node: TspNode): boolean {
 	if (node.p?.hidden) return true;
 	if (excluded(node) || !readable[node.k] || node.k === "button" && !node.p?.href) return false;
 	const actions = node.p?.actions;
-	if (actions && [actions.click, actions.dblclick, ...(actions.menu ?? [])].some(action => action && !supportedActions[action])) return false;
+	if (actions && [actions.click, actions.dblclick, ...menuEntryActions(actions.menu)].some(action => action && !supportedActions[action])) return false;
 	return node.c?.every(supportedOutput) ?? true;
 }
 function actionContent(node: TspNode): unknown[] {

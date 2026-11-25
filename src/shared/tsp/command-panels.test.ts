@@ -80,6 +80,28 @@ describe("settled command panels", () => {
 		replacePanelChild(saved.c!.at(-1)!, 0, { id: "registered", k: "text", p: { text: `Registered live · ${path}` } });
 		expect(settledCommandPanel(saved)?.path).toBe(path);
 	});
+	it.each([
+		["✔ Clean", "success", "Clean"],
+		["\uf00c Clean", "success", "Clean"],
+		["[+] Clean", "success", "Clean"],
+		["⚠ No runnable checker", "warning", "No runnable checker"],
+		["✘ Error", "error", "Error"],
+		["[-] Error", "error", "Error"],
+		["[!] Cancelled", "cancelled", "Cancelled"],
+	])("strips omp 19.2 status symbol prefix from cleanse outcome %s", (outcome, status, normalized) => {
+		const panel = recordedPanel("cleanse");
+		replacePanelChild(panel.c!.at(-1)!, 0, { id: "outcome", k: "text", p: { spans: [{ t: outcome, s: status }] } });
+		expect(settledCommandPanel(panel)).toMatchObject({ status, lines: [normalized, "No supported checker with an available executable was found."] });
+	});
+	it.each([
+		["⚠ Not saved", "warning", "Not saved"],
+		["✘ Error", "error", "Error"],
+		["[!] Cancelled", "cancelled", "Cancelled"],
+	])("strips omp 19.2 status symbol prefix from omfg outcome %s", (outcome, status, normalized) => {
+		const panel = recordedPanel("omfg-error-panel");
+		replacePanelChild(panel.c!.at(-1)!, 0, { id: "outcome", k: "text", p: { spans: [{ t: outcome, s: status }] } });
+		expect(settledCommandPanel(panel)).toMatchObject({ status, lines: [normalized, "Could not create rule.", "The model did not return a valid TTSR rule."] });
+	});
 	it("does not claim new controls, unknown outcomes or routine HUD/editor/activity rows", () => {
 		const panel = recordedPanel("cleanse"); panel.c = [...panel.c!, { id: "unknown", k: "button", p: { text: "Apply", actions: { click: "apply" } } }];
 		expect(settledCommandPanel(panel)).toBeNull(); expect(isClaimable(panel)).toBe(false);

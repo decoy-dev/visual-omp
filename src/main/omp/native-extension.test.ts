@@ -13,6 +13,7 @@ interface CommandFixture {
 	pendingMessages?: boolean;
 	shutdownUnavailable?: boolean;
 	ompVersion?: string | null;
+	modernTheme?: boolean;
 }
 // Exercise generated code with the public SDK exports injected; runtime integration uses the isolated binary fixture.
 function harness(options: CommandFixture = {}) {
@@ -24,17 +25,24 @@ function harness(options: CommandFixture = {}) {
 		requests.push({ url, body: request?.body });
 		return { ok: true, headers: { get: (_name: string): string | null => options.jobsEpoch ?? null }, json: async (): Promise<unknown[]> => url.endsWith("/requests") ? options.requests ?? [] : [] };
 	});
-	const theme = { getAllThemeColorHexes: () => ["#ffffff"], getBgHex: () => "#000000", getColorHex: () => "#ffffff", symbol: () => "IMAGE" };
+	const theme = options.modernTheme
+		? { name: "custom", json: { statusLineBg: "#000000", text: "#ffffff" }, hex: (key: string) => key === "statusLineBg" ? "#000000" : "#ffffff", symbols: { symbol: () => "IMAGE" } }
+		: { getAllThemeColorHexes: () => ["#ffffff"], getBgHex: () => "#000000", getColorHex: () => "#ffffff", symbol: () => "IMAGE" };
 	const modes = { plan: { status: "inactive" }, vibe: { status: "inactive" }, goal: { status: "inactive" }, loop: { status: "inactive" } };
 	const shutdown = vi.fn();
-	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, shutdown: options.shutdownUnavailable ? undefined : shutdown, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }], delivery: options.delivery ?? { queued: 0, delivering: false } })), isIdle: () => !options.streaming, hasPendingMessages: () => options.pendingMessages === true };
+	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme, getAllThemes: async () => [{ name: "custom" }] }, shutdown: options.shutdownUnavailable ? undefined : shutdown, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }], delivery: options.delivery ?? { queued: 0, delivering: false } })), isIdle: () => !options.streaming, hasPendingMessages: () => options.pendingMessages === true };
 	const handlers = new Map<string, (event: unknown, ctx?: unknown) => Promise<void>>();
 	const discover = vi.fn(async (_options: { cwd: string }) => options.files ?? []);
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
-	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "discoverSlashCommands", "ompSdk", body)(
+	const themeColor = options.modernTheme
+		? { resolveVarRefs: (value: string | number, vars: Record<string, string>) => vars[value] ?? value, paletteHex: () => "#eeeeee" }
+		: { resolveVarRefs: (value: string | number, vars: Record<string, string>) => vars[value] ?? value, ansi256ToHex: () => "#eeeeee" };
+	const sdkBase = options.modernTheme ? { getCurrentThemeName: () => "custom" } : {};
+	const ompSdk = options.ompVersion === null ? sdkBase : { ...sdkBase, VERSION: options.ompVersion ?? "18.17.0" };
+	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "themeColor", "existsSync", "homedir", "join", "discoverSlashCommands", "ompSdk", body)(
 		{ env, platform: "darwin" }, fetch, (callback: () => void | Promise<void>, delay: number) => { const id = ++nextTimer; timers.set(id, { callback, delay }); return id; }, (id: number) => timers.delete(id),
 		async () => ({ vars: { background: "#123456" }, terminal: { background: "background", foreground: 255, ansi: Array(16).fill("#abcdef") } }),
-		() => "custom", (value: string | number, vars: Record<string, string>) => vars[value] ?? value, () => "#eeeeee", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, discover, options.ompVersion === null ? {} : { VERSION: options.ompVersion ?? "18.17.0" },
+		themeColor, () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, discover, ompSdk,
 	);
 	factory({
 		pi: { getAgentDir: () => "/tmp/omp-1814/agent-HostParity" },
@@ -54,18 +62,20 @@ function harness(options: CommandFixture = {}) {
 }
 
 describe("hosted extension lifecycle", () => {
-	it("reads named compiled/custom theme JSON, scrubs the bridge from tool env and restores it only for shutdown/restart", async () => {
-		const test = harness();
-		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
-		await test.handlers.get("session_start")!({}, test.context);
-		const snapshot = JSON.parse(test.requests.find(item => item.url.endsWith("/snapshot"))!.body!);
-		expect(snapshot.ompVersion).toBe("18.17.0");
-		expect(snapshot.theme).toMatchObject({ name: "custom", terminal: { background: "#123456", foreground: "#eeeeee", ansi: Array(16).fill("#abcdef") } });
-		expect(snapshot.location.cwd).toBe("/project");
-		await test.handlers.get("session_shutdown")!({});
-		expect(test.env.VOMP_NATIVE_BRIDGE).toBe("http://127.0.0.1:1234/token");
-		await test.handlers.get("session_start")!({}, test.context);
-		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+	it("reads named compiled/custom theme JSON across legacy and omp 19.2 ResolvedTheme shapes, scrubs the bridge from tool env and restores it only for shutdown/restart", async () => {
+		for (const modernTheme of [false, true]) {
+			const test = harness({ modernTheme, ...(modernTheme ? { ompVersion: "19.2.0" } : {}) });
+			expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+			await test.handlers.get("session_start")!({}, test.context);
+			const snapshot = JSON.parse(test.requests.find(item => item.url.endsWith("/snapshot"))!.body!);
+			expect(snapshot.ompVersion).toBe(modernTheme ? "19.2.0" : "18.17.0");
+			expect(snapshot.theme).toMatchObject({ name: "custom", background: "#000000", foreground: "#ffffff", terminal: { background: "#123456", foreground: "#eeeeee", ansi: Array(16).fill("#abcdef") } });
+			expect(snapshot.location.cwd).toBe("/project");
+			await test.handlers.get("session_shutdown")!({});
+			expect(test.env.VOMP_NATIVE_BRIDGE).toBe("http://127.0.0.1:1234/token");
+			await test.handlers.get("session_start")!({}, test.context);
+			expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+		}
 	});
 	it("keeps mode and location reports when the SDK has no VERSION export", async () => {
 		const test = harness({ ompVersion: null });
@@ -454,5 +464,11 @@ describe("exact native prompt observation", () => {
 			expect(read).toHaveBeenCalledTimes(2);
 			expect(states(test).map(item => item.state)).toEqual(["armed", "input"]);
 		}
+	});
+
+	it("keeps all @oh-my-pi imports lazy so removed or moved subpaths cannot break extension loading", () => {
+		const staticImports = [...NATIVE_EXTENSION_SOURCE.matchAll(/^\s*import\s+[\s\S]*?(?:from\s+)?["']([^"']+)["'];?\s*$/gm)].map(match => match[1] ?? "");
+		expect(staticImports).toEqual(["node:fs", "node:os", "node:path"]);
+		expect(staticImports.some(spec => spec.startsWith("@oh-my-pi/"))).toBe(false);
 	});
 });

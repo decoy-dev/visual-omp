@@ -185,7 +185,7 @@ export async function createInstalledShellWorker(options: InstalledShellWorkerOp
 		const address = server.address();
 		if (!address || typeof address === "string") throw new ShellWorkerFailure("unavailable");
 		env.VOMP_SHELL_PRESENTATION_BRIDGE = `http://127.0.0.1:${address.port}/${token}`;
-		const args = ["--mode", "rpc", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "--no-tools", "-e", extension];
+		const args = ["--mode", "rpc", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "-e", extension];
 		startup = setTimeout(() => fail("timeout"), SHELL_WORKER_LIMITS.startupMs);
 		if (process.platform === "win32") {
 			const windows = env.SYSTEMROOT ?? env.WINDIR;

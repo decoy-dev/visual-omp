@@ -1,7 +1,7 @@
 import type { TspKind, TspMenuItem, TspNode } from "@shared/tsp";
 import { shellProps } from "@shared/tsp/shell";
 import type { TerminalColors } from "@shared/contracts/native";
-import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
+import { isHookNode, isKnownAction, isKnownRole, menuEntryActions, TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { HookDialog } from "../interactive/HookDialog";
 import { CaretDown, CheckCircle, Circle, DotsThree, File, Globe, Image, Info, Warning } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -62,7 +62,7 @@ function warnMenuActions(items: readonly TspMenuItem[] | undefined): void {
 }
 function warnUnsupportedActions(node: TspNode): void {
 	const actions = node.p?.actions;
-	const declared = Array.isArray(actions) ? actions.map(action => action.id) : [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])];
+	const declared = Array.isArray(actions) ? actions.map(action => action.id) : [actions?.click, actions?.dblclick, ...menuEntryActions(actions?.menu)];
 	for (const action of declared) if (action && !isKnownAction(action)) warnOnce(`action:${action}`);
 	if (node.k === "prefs") for (const section of node.p?.sections ?? []) for (const row of section.rows) {
 		if (row.control.k === "action" && !isKnownAction(row.control.act)) warnOnce(`action:${row.control.act}`);

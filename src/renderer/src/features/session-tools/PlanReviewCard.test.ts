@@ -601,8 +601,82 @@ it.each(["write failure", "epoch change", "unmount"] as const)("releases a tier 
 	await click("smol");
 	expect(screenActivity.has(scope, "drive")).toBe(true);
 	if (end === "write failure") await act(async () => write.reject(new Error("Tier refused")));
-	else if (end === "epoch change") await act(async () => update({ ...snapshot, revision: snapshot.revision + 1, epoch: snapshot.epoch + 1 }));
+	else if (end === "epoch change") await act(async () => update({ ...snapshot, revision: snapshot.revision + 1, generation: snapshot.epoch + 1 }));
 	else await act(async () => root.render(null));
 	expect(screenActivity.has(scope, "drive")).toBe(false);
 	if (end !== "write failure") await act(async () => write.resolve(undefined));
+});
+
+it("renders model detail beside tier switcher and dispatches menu action events on omp 19.2 dock reviews", async () => {
+	const emitted: unknown[][] = [];
+	invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+		if (channel === "host:tsp-snapshot") return snapshot;
+		if (channel === "host:tsp-event") emitted.push([channel, ...args]);
+		return undefined;
+	});
+	const dockReview: Extract<TspNode, { k: "overlay" }> = {
+		id: "review",
+		k: "overlay",
+		p: { role: TSP_ROLES.planReview, head: "omp 19.2 plan" },
+		c: [
+			{ id: "body", k: "col", p: { role: TSP_ROLES.planBody }, c: [{ id: "doc", k: "doc", p: { role: TSP_ROLES.planDoc, text: "Step one." } }] },
+			{
+				id: "dock",
+				k: "row",
+				p: { role: TSP_ROLES.planDock },
+				c: [
+					{
+						id: "approve",
+						k: "buttons",
+						p: { role: TSP_ROLES.planApprove, variant: "split" },
+						c: [
+							{ id: "main", k: "button", p: { text: "Approve", actions: { click: "approve" } } },
+							{
+								id: "more",
+								k: "menu",
+								p: {
+									items: [
+										{ id: "execute", label: "Approve and execute" },
+										{ id: "compact", label: "Approve and compact context" },
+									],
+								},
+							},
+						],
+					},
+					{
+						id: "model",
+						k: "menu",
+						p: {
+							role: TSP_ROLES.planModel,
+							items: [
+								{ id: "tier:0", label: "smol", detail: "Claude Haiku", radio: "tier", checked: false },
+								{ id: "tier:1", label: "default", detail: "Claude Opus", radio: "tier", checked: true },
+							],
+						},
+					},
+					{ id: "cancel", k: "button", p: { role: "omp.btn", text: "Cancel", actions: { click: "cancel" } } },
+				],
+			},
+		],
+	};
+	const surface: TspHostSnapshot["surfaces"][number] = {
+		open: { id: "s:1", mode: "inline", role: TSP_ROLES.session },
+		sequence: 1,
+		closed: false,
+		suspended: false,
+		settled: [],
+		focus: null,
+		documentGeneration: 1,
+		document: { id: "root", k: "col", c: [{ id: "layer", k: "col", c: [dockReview] }] },
+	};
+	await act(async () => update({ ...snapshot, revision: snapshot.revision + 1, surfaces: [surface] }));
+	await render();
+	expect(element.textContent).toContain("Claude Opus");
+
+	await click("smol");
+	await click("Approve and run");
+	expect(emitted).toEqual([
+		["host:tsp-event", "host", 1, { ev: "action", sf: "s:1", id: "model", act: "tier:0", checked: true }, snapshot.epoch],
+		["host:tsp-event", "host", 1, { ev: "action", sf: "s:1", id: "more", act: "execute" }, snapshot.epoch],
+	]);
 });

@@ -14,9 +14,9 @@ function harness() {
 	const reload = vi.fn().mockResolvedValue(undefined);
 	const context = { agent: { kind: "main" }, model: { provider: "anthropic" }, modelRegistry: { authStorage: { credentials: { reload }, oauth: { accounts } } }, ui: { theme, getTheme: async () => theme }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" } };
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
-	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "discoverSlashCommands", "ompSdk", body)(
+	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "themeColor", "existsSync", "homedir", "join", "discoverSlashCommands", "ompSdk", body)(
 		{ env: { VOMP_NATIVE_BRIDGE: "http://127.0.0.1:1234/token" }, platform: "darwin" }, fetch, () => 1, () => {},
-		async () => ({}), () => "theme", (value: unknown) => value, () => "#ffffff", () => false, () => "/home", (...parts: string[]) => parts.join("/"), async () => [], { VERSION: "18.17.0" },
+		async () => ({}), { resolveVarRefs: (value: unknown) => value, ansi256ToHex: () => "#ffffff" }, () => false, () => "/home", (...parts: string[]) => parts.join("/"), async () => [], { VERSION: "18.17.0", getCurrentThemeName: () => "theme" },
 	);
 	factory({ on: (name: string, handler: (event: unknown, ctx: unknown) => Promise<void>) => handlers.set(name, handler), pi: { getAgentDir: () => "/scratch/agent" } });
 	return { context, handlers, requests, accounts, reload };

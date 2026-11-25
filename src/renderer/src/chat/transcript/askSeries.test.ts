@@ -244,10 +244,13 @@ describe("replayStep against omp's guest ask", () => {
 		expect(replayStep(questions, answers, REPLAY_START, select({ options: ["SQLite", "Postgres", "MySQL", ASK_OTHER, ASK_CHAT], markableCount: 3 }))).toMatchObject({ kind: "mismatch" });
 		expect(replayStep(questions, answers, REPLAY_START, select({ selectionMarker: "checkbox" }))).toMatchObject({ kind: "mismatch" });
 		expect(replayStep(questions, answers, REPLAY_START, { reqId: 1, kind: "editor", title: "Notes" })).toMatchObject({ kind: "mismatch" });
-		// A Next row before anything is checked is not omp's multi-select shape.
+		// omp 19.2 includes Next on round 1 even before anything is checked (older omp omits it).
 		const multi = [q("lang", ["TS", "Go"], { multi: true }), q("db", ["SQLite"])];
 		const early: CollabUiRequest = { reqId: 1, kind: "select", title: "Which lang?", options: ["TS", "Go", ASK_OTHER, ASK_NEXT, ASK_CHAT], selectionMarker: "checkbox", checkedIndices: [], markableCount: 2 };
-		expect(replayStep(multi, [{ selected: [0], custom: "" }, defaultAnswer(multi[1] as AskQuestion)], REPLAY_START, early)).toMatchObject({ kind: "mismatch" });
+		expect(replayStep(multi, [{ selected: [0], custom: "" }, defaultAnswer(multi[1] as AskQuestion)], REPLAY_START, early)).toMatchObject({ kind: "answer", value: "TS" });
+		// A single-select question still rejects Next, and a checked multi-select still requires Next.
+		expect(replayStep(questions, answers, REPLAY_START, select({ options: ["SQLite", "Postgres", ASK_OTHER, ASK_NEXT, ASK_CHAT] }))).toMatchObject({ kind: "mismatch", reason: "the option count differs" });
+		expect(replayStep(multi, [{ selected: [0], custom: "" }, defaultAnswer(multi[1] as AskQuestion)], REPLAY_START, { ...early, options: ["TS", "Go", ASK_OTHER, ASK_CHAT], checkedIndices: [0] })).toMatchObject({ kind: "mismatch", reason: "the option count differs" });
 		// After the last answer, any further request is unexpected.
 		expect(replayStep(questions, answers, { question: 2, awaiting: "select", steps: 0 }, select({}))).toMatchObject({ kind: "mismatch" });
 		// The editor is expected after Other; a select instead stops the replay.
@@ -494,5 +497,51 @@ describe("findSeriesAsk", () => {
 		expect(isAskRequest(source, { reqId: 9, kind: "editor", title: "Custom answer: Another question?" })).toBe(false);
 		expect(isAskRequest({ ...source, activeTools: new Map(), entries: [assistant("saved", args)] }, request)).toBe(true);
 		expect(isAskRequest({ ...source, activeTools: new Map(), entries: [assistant("saved", args), result("saved")] }, request)).toBe(false);
+	});
+
+	it("accepts omp 19.2 round-1 Next sentinel on unchecked multi-select asks and required form checkboxes", () => {
+		const multiQuestions = [q("lang", ["TS", "Go"], { multi: true }), q("db", ["SQLite"])];
+		const roundOneMulti: CollabUiRequest = {
+			reqId: 10,
+			kind: "select",
+			title: "Which lang?",
+			options: ["TS", "Go", ASK_OTHER, ASK_NEXT, ASK_CHAT],
+			selectionMarker: "checkbox",
+			checkedIndices: [],
+			markableCount: 2,
+		};
+		expect(isSeriesStart(multiQuestions, roundOneMulti)).toBe(true);
+		const multiSource = {
+			activeTools: new Map([["call-multi", { toolCallId: "call-multi", toolName: "ask", args: { questions: [{ id: "lang", question: "Which lang?", options: [{ label: "TS" }, { label: "Go" }], multi: true }, { id: "db", question: "Which db?", options: [{ label: "SQLite" }] }] } }]]),
+			entries: [],
+			stream: null,
+			working: true,
+		};
+		expect(isAskRequest(multiSource, roundOneMulti)).toBe(true);
+
+		const formQuestions = parseAskFormQuestions(`<form>
+			<fieldset><legend>Checks</legend>
+				<label><input type="checkbox" name="checks" required>One</label>
+				<label><input type="checkbox" name="checks" required>Two</label>
+			</fieldset>
+			<label>Note<input name="note" value="ok"></label>
+		</form>`)!;
+		const formLegacy: CollabUiRequest = {
+			reqId: 11,
+			kind: "select",
+			title: "Checks",
+			options: ["One", "Two", ASK_OTHER],
+			selectionMarker: "checkbox",
+			checkedIndices: [],
+			markableCount: 3,
+		};
+		const form192: CollabUiRequest = {
+			...formLegacy,
+			options: ["One", "Two", ASK_OTHER, ASK_NEXT],
+		};
+		for (const req of [formLegacy, form192]) {
+			expect(isSeriesStart(formQuestions, req)).toBe(true);
+			expect(replayStep(formQuestions, [{ selected: [0], custom: "", text: "" }, { selected: [], custom: "", text: "ok" }], REPLAY_START, req)).toMatchObject({ kind: "answer", value: "One" });
+		}
 	});
 });

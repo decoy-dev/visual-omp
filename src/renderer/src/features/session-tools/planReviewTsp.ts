@@ -44,7 +44,9 @@ export function useTspPlanReview(session: SessionController | null) {
 	const send = async (event: TspRendererEvent) => {
 		if (!review) throw new Error("Plan Review is no longer available.");
 		const { next, live } = liveReview(review);
-		if (event.ev !== "select" || event.sf !== live.sf || event.id !== live.slider?.id || !live.slider.items.some(item => item.id === event.item)) throw new Error("omp did not offer that plan tier.");
+		const validTabsSlider = live.slider?.kind === "tabs" && event.ev === "select" && event.id === live.slider.id && live.slider.items.some(item => item.id === event.item);
+		const validMenuSlider = live.slider?.kind === "menu" && event.ev === "action" && event.id === live.slider.id && live.slider.items.some(item => item.id === event.act) && event.checked === true;
+		if (event.sf !== live.sf || (!validTabsSlider && !validMenuSlider)) throw new Error("omp did not offer that plan tier.");
 		const release = screenActivity.hold(next, "drive");
 		const off = store.subscribe(() => { try { assertCurrent(); } catch { release(); } });
 		const offSession = session!.subscribe(() => { try { assertCurrent(); } catch { release(); } });

@@ -130,7 +130,7 @@ describe.skipIf(!runtime.binary || !runtime.agentDir)("isolated omp 18.14 compos
 			await save(config, JSON.stringify({ commands: { enableClaudeUser: test.user, enableClaudeProject: test.project }, disabledProviders: test.disabled }));
 			const privateDir = join(files.root, `bridge-${index}`); await mkdir(privateDir);
 			const bridge = await createNativeBridge(`composer-${index}`, privateDir); bridges.push(bridge);
-			const child = spawn(runtime.binary!, ["--mode", "rpc", "--model", "anthropic/claude-sonnet-4-6", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "--no-tools", "--config", config, "-e", bridge.extensionPath, "-e", shadowExtension], { cwd: files.project, env: { ...draftEnvironment(runtime.env), VOMP_NATIVE_BRIDGE: bridge.url }, stdio: "pipe" });
+			const child = spawn(runtime.binary!, ["--mode", "rpc", "--model", "anthropic/claude-sonnet-4-6", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "--config", config, "-e", bridge.extensionPath, "-e", shadowExtension], { cwd: files.project, env: { ...draftEnvironment(runtime.env), VOMP_NATIVE_BRIDGE: bridge.url }, stdio: "pipe" });
 			children.push(child); child.stdout.resume();
 			let diagnostic = ""; child.stderr.on("data", data => { diagnostic += String(data); });
 			const exited = Promise.withResolvers<never>();
@@ -153,7 +153,7 @@ describe.skipIf(!runtime.binary || !runtime.agentDir)("isolated omp 18.14 compos
 		const debugPath = `/tmp/composer-wrap-${process.pid}-${Date.now()}.sock`; sockets.push(debugPath);
 		// Load the native PTY binding only in this explicitly opted-in platform integration case.
 		const { spawn: spawnPty } = await import("node-pty");
-		const child = spawnPty(runtime.binary!, ["--model", "anthropic/claude-sonnet-4-6", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "--no-tools", "-e", bridge.extensionPath, "-e", editorFixture], { cwd: files.project, env: { ...draftEnvironment(runtime.env), VOMP_NATIVE_BRIDGE: bridge.url, OMP_TUI_DEBUG: debugPath, TERM: "xterm-256color" }, name: "xterm-256color", cols: 60, rows: 30 });
+		const child = spawnPty(runtime.binary!, ["--model", "anthropic/claude-sonnet-4-6", "--no-session", "--no-extensions", "--no-context-files", "--no-rules", "--no-skills", "--no-lsp", "--no-title", "-e", bridge.extensionPath, "-e", editorFixture], { cwd: files.project, env: { ...draftEnvironment(runtime.env), VOMP_NATIVE_BRIDGE: bridge.url, OMP_TUI_DEBUG: debugPath, TERM: "xterm-256color" }, name: "xterm-256color", cols: 60, rows: 30 });
 		ptys.push(child);
 		let diagnostic = "";
 		child.onData(data => { diagnostic = (diagnostic + data).slice(-8000); });
