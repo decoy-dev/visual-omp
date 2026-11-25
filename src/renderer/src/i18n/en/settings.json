@@ -52,11 +52,6 @@
 	"general": {
 		"description": "Choose how much omp may do on its own and how your chats look.",
 		"safety": "Safety",
-		"updates": "omp updates",
-		"autoUpdate": {
-			"label": "Update omp automatically",
-			"description": "omp installs new releases in the background through your install method and uses them next launch. Open chats keep their current version until you restart them. Managed installs, Nix and source checkouts use their own update method."
-		},
 		"approvalMode": {
 			"label": "Permission mode",
 			"always-ask": "Ask me first",
@@ -454,6 +449,8 @@
 		"downloadingPercent": "Downloading the installer ({{percent}}%)",
 		"showProgress": "Show progress",
 		"ompUpdate": "v{{version}} is available",
+		"ompNeedsAppUpdate": "Up to date for this version of visual-omp. omp v{{version}} needs a newer version of visual-omp.",
+		"ompNeedsAppUpdateGeneric": "Up to date for this version of visual-omp. Newer omp releases need a newer version of visual-omp.",
 		"ompManaged": "Managed by {{app}}",
 		"updateOmp": "Update omp",
 		"staleChats_one": "1 open chat still runs the previous omp",

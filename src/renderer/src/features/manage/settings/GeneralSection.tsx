@@ -10,7 +10,6 @@ import { useResource } from "../shared";
 import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, OmpReading, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
-import { AutoUpdateSwitch } from "./AutoUpdateSetting";
 import { CompactAtField } from "../../compaction/CompactAtField";
 import { pickNewChatFolder, saveNewChatFolder } from "../../projects/newChatFolder";
 import { useState } from "react";
@@ -82,9 +81,6 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 					}
 				/>
 			</SettingsSection>
-			{(omp.pending || omp.byKey.has("update.auto")) && <SettingsSection title={t("general.updates")} busy={omp.pending}>
-				<AutoUpdateSwitch omp={omp} />
-			</SettingsSection>}
 
 			<SettingsSection title={t("general.chats")} busy={omp.pending}>
 				{prefs && (

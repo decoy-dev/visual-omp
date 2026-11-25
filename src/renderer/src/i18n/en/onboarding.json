@@ -109,6 +109,8 @@
 			"bodyWindows": "The installer is a single PowerShell command, and its output appears in this window.",
 			"updateBody": "visual-omp runs omp's own updater and shows its output in this window.",
 			"managedUpdate": "{{app}} manages this omp installation. Update omp in {{app}}, then choose Check for omp.",
+			"unsupportedUpdate": "The latest omp ({{version}}) needs a newer version of visual-omp. Update visual-omp first, then choose Check for omp.",
+			"unsupportedUpdateGeneric": "The latest omp release needs a newer version of visual-omp. Update visual-omp first, then choose Check for omp.",
 			"run": "Run installer",
 			"copy": "Copy command",
 			"copyHint": "Copy the install command to run it yourself in a terminal.",
@@ -527,12 +529,6 @@
 			"retry": "Try again",
 			"updated": "omp updated to {{version}}",
 			"whatsNew": "What's new in omp",
-			"autoOff": {
-				"action": "Turn off automatic updates",
-				"done": "Automatic omp updates are off",
-				"doneBody": "omp no longer installs new versions in the background. To update it, use Check for updates in Settings › About. You can turn automatic updates back on in Settings › General.",
-				"failed": "Couldn't turn off automatic omp updates"
-			},
 			"notesLoading": "Loading omp's release notes…",
 			"notesFailed": "Couldn't load omp's release notes: {{reason}}",
 			"done": "omp is up to date",

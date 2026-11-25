@@ -381,6 +381,8 @@ export class SessionHost {
 		return {
 			collab: { autoStart: "control", relayUrl: this.#relay.url, displayName: "visual-omp" },
 			startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
+			// Disable omp's background self-updater in app-hosted chats without changing the user's global config.
+			update: { auto: false },
 			// A marker-sized paste followed by Enter becomes an attachment chip; never open the local paste menu.
 			paste: { largeMenuThreshold: 0 },
 			marketplace: { autoUpdate: "off" },

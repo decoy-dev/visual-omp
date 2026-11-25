@@ -321,7 +321,7 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 	const running = state === "running";
 	const failed = state === "failed" || state === "unsupported";
 	const busy = state === "busy";
-	const latest = useUpdates.getState().omp?.latestVersion;
+	const latest = useUpdates(state => state.omp?.updateAvailable ? state.omp.latestVersion : null);
 
 	return (
 		<Dialog open={presence.open} onOpenChange={open => !open && close()}>

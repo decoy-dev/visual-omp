@@ -29,6 +29,8 @@ export function SetupScreen({ onReady, embedded = false, progress, onStatus }: {
 	const helpButton = useRef<HTMLButtonElement>(null);
 	const [updateOpen, setUpdateOpen] = useState(false);
 	const [managedBy, setManagedBy] = useState<string | null>(null);
+	const [updateBlocked, setUpdateBlocked] = useState(false);
+	const [unsupportedLatest, setUnsupportedLatest] = useState<string | null>(null);
 	const [checkingUpdate, setCheckingUpdate] = useState(false);
 	const ready = useRef(onReady);
 	ready.current = onReady;
@@ -58,14 +60,21 @@ export function SetupScreen({ onReady, embedded = false, progress, onStatus }: {
 	const refused = Boolean(omp?.refused);
 	const done = check === "done";
 	const installing = install.state === "running";
+	const updateUnavailable = Boolean(managedBy) || updateBlocked;
 
 	useEffect(() => {
 		if (!tooOld) return;
 		let active = true;
+		setManagedBy(null);
+		setUpdateBlocked(false);
+		setUnsupportedLatest(null);
 		setCheckingUpdate(true);
 		void window.vomp.invoke("updates:omp:check", true)
 			.then(status => {
-				if (active) setManagedBy(status.managedBy ?? null);
+				if (!active) return;
+				setManagedBy(status.managedBy ?? null);
+				setUpdateBlocked(Boolean(status.requiresAppUpdate));
+				setUnsupportedLatest(status.requiresAppUpdate ? (status.latestVersion ?? null) : null);
 			})
 			.catch(reason => { if (active) setError(String(reason)); })
 			.finally(() => {
@@ -209,9 +218,15 @@ export function SetupScreen({ onReady, embedded = false, progress, onStatus }: {
 						number={1}
 						done={step1Done}
 						title={tooOld ? t("setup.step1.update") : t("setup.step1.install")}
-						body={tooOld ? t(managedBy ? "setup.step1.managedUpdate" : "setup.step1.updateBody", { app: managedBy }) : windows ? t("setup.step1.bodyWindows") : t("setup.step1.body")}
+						body={tooOld
+							? managedBy
+								? t("setup.step1.managedUpdate", { app: managedBy })
+								: updateBlocked
+									? (unsupportedLatest ? t("setup.step1.unsupportedUpdate", { version: unsupportedLatest }) : t("setup.step1.unsupportedUpdateGeneric"))
+									: t("setup.step1.updateBody")
+							: windows ? t("setup.step1.bodyWindows") : t("setup.step1.body")}
 					>
-						{omp && !managedBy && (
+						{omp && !(tooOld && updateUnavailable) && (
 							<code className="mt-3 block select-all break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">
 								{windows && !tooOld && <span className="mr-2 text-fg-faint">PS&gt;</span>}
 								{tooOld ? "omp update" : omp.installCommand}
@@ -246,7 +261,7 @@ export function SetupScreen({ onReady, embedded = false, progress, onStatus }: {
 									icon={<Play aria-hidden />}
 									onClick={() => tooOld ? setUpdateOpen(true) : void startInstall()}
 									loading={startingInstall || (tooOld && checkingUpdate)}
-									disabled={!omp || done || Boolean(managedBy)}
+									disabled={!omp || done || (tooOld && updateUnavailable)}
 								>
 									{tooOld ? t("setup.step1.update") : t("setup.step1.run")}
 								</Button>
@@ -255,7 +270,7 @@ export function SetupScreen({ onReady, embedded = false, progress, onStatus }: {
 								variant="ghost"
 								icon={<Copy aria-hidden />}
 								onClick={() => void copy()}
-								disabled={!omp || Boolean(managedBy)}
+								disabled={!omp || (tooOld && updateUnavailable)}
 								title={t(tooOld ? "setup.step1.copyUpdateHint" : "setup.step1.copyHint")}
 							>
 								{t("setup.step1.copy")}

@@ -150,7 +150,12 @@ export interface OmpUpdateStatus {
 	currentVersion: string | null;
 	/** Newer version omp offers; null when up to date or unknown. */
 	latestVersion: string | null;
+	/** True when a newer omp release is both available and supported by this visual-omp release. */
 	updateAvailable: boolean;
+	/** Newest omp version this visual-omp release supports updating to in-app. */
+	maxSupportedVersion?: string;
+	/** True when `latestVersion` is newer than this visual-omp release supports updating to. */
+	requiresAppUpdate?: boolean;
 	channel: OmpUpdateChannel;
 	/** omp's npm package was renamed; updating migrates the install to this package. */
 	packageMovedTo: string | null;
@@ -160,7 +165,7 @@ export interface OmpUpdateStatus {
 	checkedAt: number;
 	/** True when served from the 30-minute cache. */
 	fromCache: boolean;
-	/** Why the check failed (e.g. GitHub rate limit — set GITHUB_TOKEN/GH_TOKEN, omp not installed). */
+	/** Why the check failed (for example, GitHub rate limit; set GITHUB_TOKEN or GH_TOKEN, or omp is not installed). */
 	error: string | null;
 }
 
@@ -249,8 +254,9 @@ declare module "../ipc" {
 		/** `omp update --check`, cached 30 minutes; `force` bypasses the cache. Never rejects. */
 		"updates:omp:check": { args: [force?: boolean]; result: OmpUpdateStatus };
 		/**
-		 * Start `omp update` (omp picks brew/bun/npm/mise/binary itself). Returns immediately with the
-		 * run snapshot; output streams via `updates:omp:output`, completion via `updates:omp:finished`.
+		 * Start `omp update` (omp picks brew/bun/npm/mise/binary itself). Refuses full omp upgrades
+		 * when the latest upstream release exceeds `MAX_SUPPORTED_OMP_VERSION`. Returns immediately with
+		 * the run snapshot; output streams via `updates:omp:output`, completion via `updates:omp:finished`.
 		 * If a run is already in progress, returns that run instead of starting another. Running chat
 		 * sessions keep the old engine until they are restarted.
 		 */

@@ -12,12 +12,10 @@ import { OmpLoginDialog, type OmpLoginTarget } from "../manage/settings/OmpLogin
 import { ipcErrorMessage } from "../manage/shared";
 import { finishSetup, ompNeedsSetup, type SetupStep, setupSteps, useSetup } from "./setup";
 import { SetupScreen } from "./SetupScreen";
-import { lazyView } from "../../registry/lazy";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { MiniShell } from "./MiniShell";
 import "./setup-wizard.css";
 
-const SetupAutoUpdateSetting = lazyView(() => import("../manage/settings/AutoUpdateSetting").then(module => module.SetupAutoUpdateSetting));
 const MODES: readonly ApprovalMode[] = ["always-ask", "always-ask-cached", "write", "yolo"];
 const THEMES: readonly AppPreferences["theme"][] = ["system", "light", "dark"];
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
@@ -391,7 +389,6 @@ export function SetupWizard() {
 										})}
 									</div>
 								)}
-								{shown === "appearance" && <SetupAutoUpdateSetting />}
 								{shown === "appearance" && (
 									<Switch
 										className="py-3"

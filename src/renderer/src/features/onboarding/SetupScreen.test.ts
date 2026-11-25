@@ -88,6 +88,31 @@ it("reuses the existing update dialog for an unsupported omp", async () => {
 	expect(fake.start).not.toHaveBeenCalled();
 });
 
+it("disables updating omp when the latest omp release requires a newer visual-omp", async () => {
+	useApp.setState({ omp: { ...ready, supported: false, version: "18.0.0" } });
+	fake.invoke.mockImplementation(async (channel: string) => {
+		if (channel === "app:info") return { homeDir: "/mock" };
+		if (channel === "omp:status") return ready;
+		if (channel === "updates:omp:check") {
+			return {
+				currentVersion: "18.0.0",
+				latestVersion: "99.0.0",
+				updateAvailable: false,
+				requiresAppUpdate: true,
+				maxSupportedVersion: "19.2.1",
+				managedBy: null,
+			};
+		}
+	});
+	await render();
+	await act(async () => {});
+	expect(element.textContent).toContain("The latest omp (99.0.0) needs a newer version of visual-omp.");
+	expect(element.querySelector("code")).toBeNull();
+	expect(button("Update omp").disabled).toBe(true);
+	expect(button("Copy command").disabled).toBe(true);
+	expect(button("Check for omp").disabled).toBe(false);
+});
+
 it("shows an installer startup error without leaving the step", async () => {
 	fake.start.mockRejectedValueOnce(new Error("Shell unavailable"));
 	await render(); await act(async () => button("Run installer").click());

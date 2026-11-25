@@ -217,9 +217,10 @@ Each SessionHost:
    `compaction.thresholdTokens` in the overlay. When omp reports another session (resume, `/new`, branch),
    `ChatCompactionOverlay` rewrites the overlay with that session's point, or without one, in order with any
    Save. `host:setCompactAt` names the generation and session id the point was chosen for and is refused once
-   either changes. omp's config watcher rereads a changed `--config` file after a 200 ms quiet period (omp 18.15
-   and later). The app cannot observe that reload, so a prompt waits until every queued overlay write has
-   finished and 300 ms have passed since the last one. A failed overlay write holds prompts until a rewrite of
+   either changes. omp's config watcher polls a changed `--config` file every 500 ms before its 200 ms quiet
+   period in omp 19.2+ (after only the 200 ms quiet period in omp 18.15 to 19.1). The app cannot observe that
+   reload, so a prompt waits until every queued overlay write has finished and 800 ms have passed since the last
+   one. A failed overlay write holds prompts until a rewrite of
    the current session's point succeeds, and a prompt whose chat changes generation, session or semantic screen
    while it waits is refused. The store keeps a change only once it is on disk; an unreadable file is reported,
    left untouched, and chats run on omp's own settings. The overlay outranks the global and project
@@ -227,7 +228,13 @@ Each SessionHost:
    omp's global point, so the per-model extended-window opt-in is untouched. Settings › General writes the
    global point to `compaction.thresholdTokens` through the config service. An omp the app does not host,
    such as one followed from a terminal, does not use a chat's point.
-   omp's `update.auto` stays untouched by the host overlay. `TERM_PROGRAM=tern` selects TSP,
+   The host overlay sets `update.auto: false`, so app-hosted chats never let omp update itself in
+   the background while leaving the user's global `~/.omp/agent/config.yml` untouched for terminal use.
+   In-app omp update checks and runs are capped at `MAX_SUPPORTED_OMP_VERSION` (`src/shared/ompUpdates.ts`,
+   re-exported from `src/main/omp/locate.ts`): upstream releases above that ceiling keep
+   `updateAvailable` false (`requiresAppUpdate: true`) and direct the user to update visual-omp first,
+   while startup detection (`ompStatus`) continues to require only `>= MIN_OMP_VERSION` so users who
+   update omp from the terminal can still run it. `TERM_PROGRAM=tern` selects TSP,
    not a managed installation; omp only skips its background installer for an actual managed
    binary, Nix or a source checkout. Update checks and a network-independent minute refresh
    read installed omp via `ompStatus(true)`. The native extension reports its public `VERSION`;
@@ -1921,9 +1928,14 @@ Executable discovery ignores relative PATH entries and normalizes an explicit ov
 absolute path before checking its version. Subsequent commands retain that checked absolute path,
 so changing a child process's project folder cannot select another project-local omp executable.
 The setup wizard uses the existing installer IPC for missing binaries and the About update dialog
-for unsupported versions. It streams output and refreshes the detected version on completion;
-managed installations name the application responsible for updating omp. Existing users whose
-omp is missing, unsupported or refused receive only this install step. There is no upper bound.
+for unsupported versions when a supported upgrade exists. It streams output and refreshes the
+detected version on completion; managed installations name the application responsible for updating
+omp, and when the latest upstream omp release exceeds `MAX_SUPPORTED_OMP_VERSION`
+(`src/shared/ompUpdates.ts`), the setup step disables its update controls and directs the user to
+update visual-omp first. Existing users whose omp is missing, unsupported or refused receive only
+this install step. Startup discovery enforces no upper bound so users who update omp externally in a
+terminal can continue running visual-omp, while in-app omp update checks and `updates:omp:run`
+refuse to upgrade beyond `MAX_SUPPORTED_OMP_VERSION`.
 
 Native first-run setup is renderer-owned, gated on loaded omp status and app preferences.
 Fresh preferences set `setupCompleted: false`; an existing preferences file without the field

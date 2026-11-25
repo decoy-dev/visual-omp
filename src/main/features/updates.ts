@@ -7,6 +7,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { z } from "zod";
 import { app, shell } from "electron";
 import type { CliResult, Platform } from "@shared/ipc";
+import { MAX_SUPPORTED_OMP_VERSION, isOmpVersionSupportedForUpdate, ompUpdateEligibility } from "@shared/ompUpdates";
 import { compareSemver, parseSemver } from "@shared/semver";
 import type {
 	AppDownload,
@@ -728,16 +729,31 @@ async function refreshInstalledOmp(): Promise<string | null> {
 async function runOmpCheck(): Promise<OmpUpdateStatus> {
 	const checkedAt = Date.now();
 	try {
-		await refreshInstalledOmp();
+		const installed = await refreshInstalledOmp();
 		const simulated: CliResult | undefined = (await devFeed().catch(() => null))?.ompCheck;
 		const parsed = parseOmpUpdateCheck(simulated ?? (await runOmp(["update", "--check"], { timeoutMs: 60_000, allowUnsupported: true })));
-		return { ...parsed, checkedAt, fromCache: false };
+		const eligibility = ompUpdateEligibility({
+			currentVersion: parsed.currentVersion ?? installed,
+			latestVersion: parsed.latestVersion,
+			maxSupportedVersion: MAX_SUPPORTED_OMP_VERSION,
+			managedBy: parsed.managedBy,
+			error: parsed.error,
+		});
+		return {
+			...parsed,
+			...eligibility,
+			maxSupportedVersion: MAX_SUPPORTED_OMP_VERSION,
+			checkedAt,
+			fromCache: false,
+		};
 	} catch (error) {
 		// runOmp rejects only when omp itself cannot be located.
 		return {
 			currentVersion: null,
 			latestVersion: null,
 			updateAvailable: false,
+			requiresAppUpdate: false,
+			maxSupportedVersion: MAX_SUPPORTED_OMP_VERSION,
 			channel: "stable",
 			packageMovedTo: null,
 			checkedAt,
@@ -777,6 +793,29 @@ function startOmpUpdate(options: OmpUpdateOptions = {}): Promise<OmpUpdateRun> {
 }
 
 async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> {
+	if (!options.plugins) {
+		const check = await checkOmp(true);
+		if (check.error) {
+			throw new Error(`Could not verify whether the latest omp release is supported by this version of visual-omp: ${check.error}`);
+		}
+		if (check.managedBy) {
+			throw new Error(`omp is managed by ${check.managedBy}. Update it from ${check.managedBy}.`);
+		}
+		if (check.requiresAppUpdate) {
+			throw new Error(
+				check.latestVersion
+					? `omp ${check.latestVersion} is newer than this version of visual-omp supports (up to ${MAX_SUPPORTED_OMP_VERSION}). Update visual-omp first.`
+					: `This version of visual-omp only updates omp up to ${MAX_SUPPORTED_OMP_VERSION}. Update visual-omp first.`,
+			);
+		}
+		if (!check.latestVersion && !isOmpVersionSupportedForUpdate(check.currentVersion, MAX_SUPPORTED_OMP_VERSION)) {
+			throw new Error(
+				check.currentVersion
+					? `omp ${check.currentVersion} is newer than this version of visual-omp supports (up to ${MAX_SUPPORTED_OMP_VERSION}). Update visual-omp first.`
+					: "Could not verify whether the installed omp release is supported by this version of visual-omp.",
+			);
+		}
+	}
 	const args = ["update", ...(options.plugins ? ["--plugins"] : []), ...(options.force ? ["--force"] : [])];
 	const [bin, env, feed] = await Promise.all([ompPath({ allowUnsupported: true }), userEnv(), devFeed().catch(() => null)]);
 	const run: OmpUpdateRun = {

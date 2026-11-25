@@ -188,6 +188,7 @@ describe("host overlay", () => {
 		const overlay = parse(await readFile(pty.args[1]!, "utf8"));
 		expect(overlay).toMatchObject({
 			collab: { autoStart: "control", relayUrl: "ws://localhost:9999", displayName: "visual-omp" },
+			update: { auto: false },
 			tui: { autoGraph: "always" },
 			worktree: { onStart: "off" },
 		});

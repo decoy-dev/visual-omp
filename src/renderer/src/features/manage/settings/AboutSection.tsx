@@ -107,6 +107,14 @@ export function AboutSection() {
 				action: { label: t("about.updateOmp"), primary: true, run: () => openSheet(OMP_UPDATE_SHEET) },
 			};
 		}
+		if (status.requiresAppUpdate) {
+			return {
+				text: status.latestVersion
+					? t("about.ompNeedsAppUpdate", { version: status.latestVersion })
+					: t("about.ompNeedsAppUpdateGeneric"),
+				tone: "ok",
+			};
+		}
 		return { text: t("about.upToDate"), tone: "ok" };
 	})();
 
