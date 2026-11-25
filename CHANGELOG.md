@@ -4,6 +4,25 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-11-24
+
+visual-omp 0.8.8 includes general security improvements and adds a crash-reporting switch during first-run setup. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Security:** General security fixes and hardening across the app.
+- **Improved:** First-run setup includes a switch to turn off crash reporting.
+
+### Detailed changes
+
+#### Security
+
+- Includes general security fixes across the main process, renderer and update checks.
+
+#### Improved
+
+- First-run setup includes a Send crash reports switch on the appearance step, enabled by default so you can opt out before finishing setup.
+
 ## [0.8.7] - 2026-11-24
 
 visual-omp 0.8.7 keeps the app version visible in a narrow sidebar, no longer reports an approved plan as failed with omp 19.1 and adds a command palette stop to the first-launch tour. It requires omp 18.15.0 or later.
